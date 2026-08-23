@@ -16,9 +16,10 @@ export interface StreamResult {
 
 /**
  * Bulletproof Mermaid diagram sanitizer:
- * 1. Converts non-standard arrows (e.g. "A -- Yes --> B") into standard Mermaid syntax ("A -->|\"Yes\"| B")
- * 2. Cleans unescaped quotes, mismatched quotes, and special characters inside node labels
- * 3. Enforces double quotes around every node label
+ * 1. Converts legacy arrow syntax (e.g. "A -- Yes --> B") into standard Mermaid ("A -->|\"Yes\"| B")
+ * 2. Enforces quoted labels on pipe arrows (e.g. "A -->|Yes| B" -> "A -->|\"Yes\"| B")
+ * 3. Sanitizes nested double quotes inside node labels to HTML entity `#quot;`
+ * 4. Ensures every node label is properly wrapped in double quotes
  */
 export function sanitizeMermaidDiagrams(markdown: string): string {
   return markdown.replace(/```mermaid([\s\S]*?)```/g, (match, mermaidBody: string) => {
@@ -33,45 +34,53 @@ export function sanitizeMermaidDiagrams(markdown: string): string {
         trimmed.startsWith("sequenceDiagram") ||
         trimmed.startsWith("classDiagram") ||
         trimmed.startsWith("stateDiagram") ||
-        trimmed.startsWith("erDiagram")
+        trimmed.startsWith("erDiagram") ||
+        trimmed.startsWith("subgraph") ||
+        trimmed === "end"
       ) {
         return line;
       }
 
-      // 1. Convert "A -- Label --> B" to "A -->|\"Label\"| B"
-      line = line.replace(/([a-zA-Z0-9_-]+)\s+--\s+([^->]+?)\s+-->\s+([a-zA-Z0-9_-]+)/g, (m, src, label, dst) => {
-        const cleanLabel = label.trim().replace(/["'\\]/g, "");
-        return `${src} -->|"${cleanLabel}"| ${dst}`;
+      // 1. Convert old arrow syntax: -- "label" --> or -- label --> to -->|"label"|
+      line = line.replace(/--\s*([^->]+?)\s*-->/g, (m, label) => {
+        let clean = label.trim().replace(/^["'\\]+|["'\\]+$/g, "").replace(/"/g, "#quot;");
+        return `-->|"${clean}"|`;
       });
 
-      // 2. Fix square bracket nodes: id[...] -> id["..."]
-      line = line.replace(/([a-zA-Z0-9_-]+)\s*\[\s*"?([\s\S]*?)"?\s*\]/g, (m, id, inner) => {
-        let cleanInner = inner
-          .replace(/"/g, "'")
-          .replace(/'+/g, "'")
-          .replace(/[\n\r]/g, " ")
-          .trim();
-        return `${id}["${cleanInner}"]`;
+      // 2. Ensure pipe arrows have quotes: -->|label| -> -->|"label"|
+      line = line.replace(/(-->|-\.->|==>)\s*\|([^|]+)\|\s*/g, (m, arrow, label) => {
+        let clean = label.trim().replace(/^["'\\]+|["'\\]+$/g, "").replace(/"/g, "#quot;");
+        return `${arrow}|"${clean}"| `;
       });
 
-      // 3. Fix decision diamond nodes: id{...} -> id{"..."}
-      line = line.replace(/([a-zA-Z0-9_-]+)\s*\{\s*"?([\s\S]*?)"?\s*\}/g, (m, id, inner) => {
-        let cleanInner = inner
-          .replace(/"/g, "'")
-          .replace(/'+/g, "'")
-          .replace(/[\n\r]/g, " ")
-          .trim();
-        return `${id}{"${cleanInner}"}`;
+      // 3. Match square bracket nodes: id[...]
+      line = line.replace(/(^|[\s;>|])([a-zA-Z0-9_-]+)\s*\[([\s\S]*?)\]/g, (m, prefix, id, inner) => {
+        let clean = inner.trim();
+        if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length >= 2) {
+          clean = clean.slice(1, -1);
+        }
+        clean = clean.replace(/"/g, "#quot;");
+        return `${prefix}${id}["${clean}"]`;
       });
 
-      // 4. Fix rounded parentheses nodes: id(...) -> id("...")
-      line = line.replace(/([a-zA-Z0-9_-]+)\s*\(\s*"?([\s\S]*?)"?\s*\)/g, (m, id, inner) => {
-        let cleanInner = inner
-          .replace(/"/g, "'")
-          .replace(/'+/g, "'")
-          .replace(/[\n\r]/g, " ")
-          .trim();
-        return `${id}("${cleanInner}")`;
+      // 4. Match decision diamond nodes: id{...}
+      line = line.replace(/(^|[\s;>|])([a-zA-Z0-9_-]+)\s*\{([\s\S]*?)\}/g, (m, prefix, id, inner) => {
+        let clean = inner.trim();
+        if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length >= 2) {
+          clean = clean.slice(1, -1);
+        }
+        clean = clean.replace(/"/g, "#quot;");
+        return `${prefix}${id}{"${clean}"}`;
+      });
+
+      // 5. Match rounded parentheses nodes: id(...)
+      line = line.replace(/(^|[\s;>|])([a-zA-Z0-9_-]+)\s*\(([\s\S]*?)\)/g, (m, prefix, id, inner) => {
+        let clean = inner.trim();
+        if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length >= 2) {
+          clean = clean.slice(1, -1);
+        }
+        clean = clean.replace(/"/g, "#quot;");
+        return `${prefix}${id}("${clean}")`;
       });
 
       return line;

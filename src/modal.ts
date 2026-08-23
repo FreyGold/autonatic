@@ -1,6 +1,6 @@
 import { App, Modal, Notice, MarkdownView, normalizePath, TFile, Menu } from "obsidian";
 import type NemotronPlugin from "./main";
-import { generateNemotronNote } from "./api";
+import { generateNemotronNote, sanitizeMermaidDiagrams } from "./api";
 import { buildUserPrompt } from "./prompts";
 import { CustomSelect, SelectOption } from "./custom-select";
 import { FolderNavigator } from "./folder-nav";
@@ -1340,7 +1340,7 @@ export class NemotronModal extends Modal {
     generateExcalidraw: boolean = true
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     let title = requestedTitle;
-    let finalContent = content;
+    let finalContent = sanitizeMermaidDiagrams(content);
     const snaps: FileSnapshot[] = [];
     const foldersCreated: string[] = [];
 
@@ -1462,12 +1462,13 @@ export class NemotronModal extends Modal {
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     const existingContent = await this.app.vault.read(file);
     let finalExistingContent = existingContent;
+    const sanitizedIncomingContent = sanitizeMermaidDiagrams(content);
     const snaps: FileSnapshot[] = [];
     const foldersCreated: string[] = [];
 
     const countWords = (text: string) => text.trim().split(/\s+/).filter((w) => w.length > 0).length;
     const currentWordCount = countWords(existingContent);
-    const newWordCount = countWords(content);
+    const newWordCount = countWords(sanitizedIncomingContent);
     const maxWords = this.plugin.settings.maxNoteWordCount || 600;
     const autoSplitEnabled = this.plugin.settings.enableAutoSplitLongNotes ?? true;
 
@@ -1518,7 +1519,7 @@ export class NemotronModal extends Modal {
       const timestampFormatted = `${currentDate} ${hours}:${minutes}`;
 
       const reasonLine = reason && reason.trim() ? `\n> **Reason:** ${reason.trim()}` : "";
-      const bodyToAppend = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
+      const bodyToAppend = sanitizedIncomingContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
 
       let part2Content = "";
       if (enableProperties) {
@@ -1566,7 +1567,7 @@ summary: "Note covering ${file.basename}"
       finalExistingContent = frontmatterBlock + existingContent.trimStart();
     }
 
-    const bodyToAppend = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
+    const bodyToAppend = sanitizedIncomingContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
 
     const now = new Date();
     const dateStr = now.toISOString().split("T")[0];
