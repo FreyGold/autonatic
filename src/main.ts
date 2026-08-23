@@ -37,6 +37,14 @@ export default class NemotronPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "open-excalidraw-diagram-tab",
+      name: "Open Excalidraw Diagram Generator",
+      callback: () => {
+        new NemotronModal(this.app, this, "", "excalidraw").open();
+      },
+    });
+
+    this.addCommand({
       id: "generate-rich-excalidraw-diagram",
       name: "Generate Rich Excalidraw Architecture Diagram for Active Note",
       callback: async () => {

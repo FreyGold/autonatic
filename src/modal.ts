@@ -14,7 +14,10 @@ import {
   VAULT_INDEX_FILENAME,
 } from "./vault-indexer";
 import { FileSnapshot, PromptHistoryItem } from "./history-manager";
-import { createMirroredExcalidrawDrawing } from "./excalidraw-generator";
+import {
+  createMirroredExcalidrawDrawing,
+  createStandaloneRichExcalidrawDrawing,
+} from "./excalidraw-generator";
 
 interface AttachedImage {
   id: string;
@@ -28,22 +31,26 @@ export class NemotronModal extends Modal {
   abortController: AbortController | null = null;
   isGenerating: boolean = false;
   attachedImages: AttachedImage[] = [];
+  excalAttachedImages: AttachedImage[] = [];
   pasteListener: (e: ClipboardEvent) => void;
   selectedMode: "smart" | "multi_note" | "new_file" | "append" = "smart";
   selectedStyle: "concise" | "detailed" = "concise";
-  enableExcalidraw: boolean = true;
+  enableExcalidrawInNoteTab: boolean = true;
   historyRowEl: HTMLElement;
   modeSelectComponent: CustomSelect;
   styleSelectComponent: CustomSelect;
   renderGalleryCallback?: () => void;
+  renderExcalGalleryCallback?: () => void;
   inputTextAreaEl?: HTMLTextAreaElement;
   customInputEl?: HTMLInputElement;
+  activeTab: "notes" | "excalidraw" = "notes";
 
-  constructor(app: App, plugin: NemotronPlugin, initialText: string = "") {
+  constructor(app: App, plugin: NemotronPlugin, initialText: string = "", defaultTab: "notes" | "excalidraw" = "notes") {
     super(app);
     this.plugin = plugin;
     this.initialText = initialText;
-    this.enableExcalidraw = plugin.settings.enableExcalidrawMindMap ?? true;
+    this.activeTab = defaultTab;
+    this.enableExcalidrawInNoteTab = plugin.settings.enableExcalidrawMindMap ?? true;
   }
 
   async onOpen() {
@@ -51,7 +58,7 @@ export class NemotronModal extends Modal {
     contentEl.empty();
     contentEl.addClass("nemotron-modal-container");
 
-    // Modal Header
+    // Header Title
     const headerRow = contentEl.createDiv({ cls: "nemotron-modal-header-row" });
     headerRow.createEl("h2", { text: "Nemotron Note Crafter", cls: "nemotron-modal-title" });
 
@@ -63,11 +70,50 @@ export class NemotronModal extends Modal {
     const apiKeyBar = contentEl.createDiv({ cls: "nemotron-api-key-bar" });
     this.renderApiKeySection(apiKeyBar);
 
-    // Detect active note
+    // Modal Nav Tabs (Note Crafter vs Excalidraw Diagram)
+    const tabNav = contentEl.createDiv({ cls: "nemotron-modal-nav-tabs" });
+    const noteTabBtn = tabNav.createEl("button", {
+      text: "Note Crafter",
+      cls: `nemotron-tab-btn ${this.activeTab === "notes" ? "is-active" : ""}`,
+    });
+    const excalTabBtn = tabNav.createEl("button", {
+      text: "Excalidraw Diagram",
+      cls: `nemotron-tab-btn ${this.activeTab === "excalidraw" ? "is-active" : ""}`,
+    });
+
+    const notePane = contentEl.createDiv({ cls: `nemotron-tab-pane ${this.activeTab === "notes" ? "" : "is-hidden"}` });
+    const excalPane = contentEl.createDiv({ cls: `nemotron-tab-pane ${this.activeTab === "excalidraw" ? "" : "is-hidden"}` });
+
+    noteTabBtn.addEventListener("click", () => {
+      this.activeTab = "notes";
+      noteTabBtn.addClass("is-active");
+      excalTabBtn.removeClass("is-active");
+      notePane.removeClass("is-hidden");
+      excalPane.addClass("is-hidden");
+    });
+
+    excalTabBtn.addEventListener("click", () => {
+      this.activeTab = "excalidraw";
+      excalTabBtn.addClass("is-active");
+      noteTabBtn.removeClass("is-active");
+      excalPane.removeClass("is-hidden");
+      notePane.addClass("is-hidden");
+    });
+
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     const hasActiveNote = !!(activeView && activeView.file);
 
-    // 1. Destination Mode Selector (4 Options)
+    // TAB 1: Note Crafter Pane
+    this.renderNoteCrafterPane(notePane, activeView, hasActiveNote);
+
+    // TAB 2: Excalidraw Diagram Pane
+    this.renderExcalidrawPane(excalPane, activeView, hasActiveNote);
+  }
+
+  // ==========================================
+  // TAB 1: NOTE CRAFTER PANE
+  // ==========================================
+  private renderNoteCrafterPane(paneEl: HTMLElement, activeView: MarkdownView | null, hasActiveNote: boolean) {
     const modeOptions: SelectOption[] = [
       {
         value: "smart",
@@ -97,15 +143,13 @@ export class NemotronModal extends Modal {
     const defaultMode = this.plugin.settings.defaultDestinationMode || "smart";
     this.selectedMode = defaultMode;
 
-    const modeContainer = contentEl.createDiv({ cls: "nemotron-form-row" });
+    const modeContainer = paneEl.createDiv({ cls: "nemotron-form-row" });
     modeContainer.createEl("label", { text: "Destination Mode:", cls: "nemotron-label" });
 
-    // Smart & Multi-Note Mode Info Banner container
-    const smartModeInfo = contentEl.createDiv({ cls: "nemotron-smart-info-banner" });
+    const smartModeInfo = paneEl.createDiv({ cls: "nemotron-smart-info-banner" });
     this.renderSmartBanner(smartModeInfo);
 
-    // New Note Options Container (Manual Folder & Title)
-    const newNoteOptionsDiv = contentEl.createDiv({ cls: "nemotron-new-note-options" });
+    const newNoteOptionsDiv = paneEl.createDiv({ cls: "nemotron-new-note-options" });
 
     const titleRow = newNoteOptionsDiv.createDiv({ cls: "nemotron-form-row" });
     titleRow.createEl("label", { text: "Note Title (optional):", cls: "nemotron-label" });
@@ -115,7 +159,6 @@ export class NemotronModal extends Modal {
       cls: "nemotron-input",
     });
 
-    // Detect initial folder
     let initialFolder = this.plugin.settings.defaultFolder || "";
     if (!initialFolder) {
       if (hasActiveNote && activeView?.file?.parent) {
@@ -173,7 +216,7 @@ export class NemotronModal extends Modal {
     );
 
     // 2. Note Output Style Selector
-    const styleContainer = contentEl.createDiv({ cls: "nemotron-form-row" });
+    const styleContainer = paneEl.createDiv({ cls: "nemotron-form-row" });
     styleContainer.createEl("label", { text: "Note Depth & Style:", cls: "nemotron-label" });
 
     const styleOptions: SelectOption[] = [
@@ -202,16 +245,16 @@ export class NemotronModal extends Modal {
     );
 
     // 3. Excalidraw Rich Architecture Diagram Toggle Row
-    const excalRow = contentEl.createDiv({ cls: "nemotron-form-row nemotron-checkbox-row" });
+    const excalRow = paneEl.createDiv({ cls: "nemotron-form-row nemotron-checkbox-row" });
     const excalCheckbox = excalRow.createEl("input", { type: "checkbox", cls: "nemotron-checkbox" });
-    excalCheckbox.id = "nemotron-excalidraw-toggle";
-    excalCheckbox.checked = this.enableExcalidraw;
+    excalCheckbox.id = "nemotron-note-excalidraw-toggle";
+    excalCheckbox.checked = this.enableExcalidrawInNoteTab;
     excalCheckbox.addEventListener("change", () => {
-      this.enableExcalidraw = excalCheckbox.checked;
+      this.enableExcalidrawInNoteTab = excalCheckbox.checked;
     });
 
     const excalLabel = excalRow.createEl("label", { cls: "nemotron-checkbox-label" });
-    excalLabel.setAttribute("for", "nemotron-excalidraw-toggle");
+    excalLabel.setAttribute("for", "nemotron-note-excalidraw-toggle");
     excalLabel.createSpan({ text: "Generate Rich Excalidraw Architecture Diagram ", cls: "nemotron-checkbox-title" });
     excalLabel.createSpan({
       text: `(Deep AI multi-container subsystems, cards & flows mirrored in /${this.plugin.settings.excalidrawFolder || "Excalidrawings"})`,
@@ -219,7 +262,7 @@ export class NemotronModal extends Modal {
     });
 
     // 4. Multi-Image Input Section
-    const imageRow = contentEl.createDiv({ cls: "nemotron-form-row" });
+    const imageRow = paneEl.createDiv({ cls: "nemotron-form-row" });
     const imageHeaderRow = imageRow.createDiv({ cls: "nemotron-image-header" });
     imageHeaderRow.createEl("label", { text: "Photos / Images / Screenshots (optional):", cls: "nemotron-label" });
     const imageCountBadge = imageHeaderRow.createSpan({ cls: "nemotron-image-badge", text: "0 attached" });
@@ -430,7 +473,7 @@ export class NemotronModal extends Modal {
     window.addEventListener("paste", this.pasteListener, true);
 
     // 5. Custom Instruction row
-    const customRow = contentEl.createDiv({ cls: "nemotron-form-row" });
+    const customRow = paneEl.createDiv({ cls: "nemotron-form-row" });
     customRow.createEl("label", { text: "Custom Instructions (optional):", cls: "nemotron-label" });
     const customInput = customRow.createEl("input", {
       type: "text",
@@ -440,7 +483,7 @@ export class NemotronModal extends Modal {
     this.customInputEl = customInput;
 
     // 6. Input Text area
-    const inputAreaRow = contentEl.createDiv({ cls: "nemotron-form-row" });
+    const inputAreaRow = paneEl.createDiv({ cls: "nemotron-form-row" });
     inputAreaRow.createEl("label", { text: "Raw Input Text (optional if photos are attached):", cls: "nemotron-label" });
     const inputTextArea = inputAreaRow.createEl("textarea", {
       cls: "nemotron-textarea",
@@ -451,11 +494,11 @@ export class NemotronModal extends Modal {
     this.inputTextAreaEl = inputTextArea;
 
     // Status area
-    const statusDiv = contentEl.createDiv({ cls: "nemotron-status" });
+    const statusDiv = paneEl.createDiv({ cls: "nemotron-status" });
     statusDiv.style.display = "none";
 
     // Streaming Preview Area
-    const previewContainer = contentEl.createDiv({ cls: "nemotron-preview-container" });
+    const previewContainer = paneEl.createDiv({ cls: "nemotron-preview-container" });
     previewContainer.style.display = "none";
     
     const reasoningDetails = previewContainer.createEl("details", { cls: "nemotron-reasoning-box" });
@@ -467,7 +510,7 @@ export class NemotronModal extends Modal {
     const contentPre = contentPreviewBox.createEl("pre", { cls: "nemotron-preview-content" });
 
     // Buttons
-    const buttonRow = contentEl.createDiv({ cls: "nemotron-button-row" });
+    const buttonRow = paneEl.createDiv({ cls: "nemotron-button-row" });
     const generateBtn = buttonRow.createEl("button", {
       text: "Transform to Obsidian Note",
       cls: "mod-cta",
@@ -602,14 +645,14 @@ export class NemotronModal extends Modal {
                   appendedCount++;
                 } else {
                   const folder = enforceMaxDepthFolder(item.targetFolder || "");
-                  const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties, this.enableExcalidraw);
+                  const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties, this.enableExcalidrawInNoteTab);
                   fileSnapshots.push(...snaps);
                   foldersCreatedList.push(...foldersCreated);
                   createdCount++;
                 }
               } else {
                 const folder = enforceMaxDepthFolder(item.targetFolder || "");
-                const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties, this.enableExcalidraw);
+                const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties, this.enableExcalidrawInNoteTab);
                 fileSnapshots.push(...snaps);
                 foldersCreatedList.push(...foldersCreated);
                 createdCount++;
@@ -647,7 +690,7 @@ export class NemotronModal extends Modal {
               new Notice(`Smart Appended to: ${decision.targetNotePath}\nReason: ${decision.reason}`, 7000);
             } else {
               const folder = enforceMaxDepthFolder(decision.targetFolder || "");
-              const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, decision.title, folder, enableProperties, this.enableExcalidraw);
+              const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, decision.title, folder, enableProperties, this.enableExcalidrawInNoteTab);
               fileSnapshots.push(...snaps);
               foldersCreatedList.push(...foldersCreated);
               new Notice(`Smart Placed in folder: ${folder || "Vault Root"}\nReason: ${decision.reason}`, 7000);
@@ -656,7 +699,7 @@ export class NemotronModal extends Modal {
             const rawFolder = decision?.targetFolder || "";
             const targetFolder = enforceMaxDepthFolder(rawFolder);
             const title = decision?.title || titleInput.value.trim();
-            const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, title, targetFolder, enableProperties, this.enableExcalidraw);
+            const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, title, targetFolder, enableProperties, this.enableExcalidrawInNoteTab);
             fileSnapshots.push(...snaps);
             foldersCreatedList.push(...foldersCreated);
             const reasonMsg = decision?.reason ? `\nReason: ${decision.reason}` : "";
@@ -676,7 +719,7 @@ export class NemotronModal extends Modal {
           this.plugin.scheduleIndexUpdate();
         } else if (mode === "new_file") {
           const targetFolder = enforceMaxDepthFolder(currentSelectedFolder);
-          const { snaps, foldersCreated } = await this.createNewNoteFile(result.content, titleInput.value.trim(), targetFolder, enableProperties, this.enableExcalidraw);
+          const { snaps, foldersCreated } = await this.createNewNoteFile(result.content, titleInput.value.trim(), targetFolder, enableProperties, this.enableExcalidrawInNoteTab);
           fileSnapshots.push(...snaps);
           foldersCreatedList.push(...foldersCreated);
           
@@ -689,7 +732,7 @@ export class NemotronModal extends Modal {
             foldersCreated: Array.from(new Set(foldersCreatedList)),
           });
 
-          new Notice("Obsidian note created with Rich Excalidraw Architecture Diagram!");
+          new Notice("Obsidian note created with Rich Excalidraw Diagram!");
           this.renderHistoryToolbar();
           this.plugin.scheduleIndexUpdate();
         } else {
@@ -724,6 +767,238 @@ export class NemotronModal extends Modal {
         this.isGenerating = false;
         generateBtn.disabled = false;
         generateBtn.setText("Transform to Obsidian Note");
+      }
+    });
+  }
+
+  // ==========================================
+  // TAB 2: EXCALIDRAW DIAGRAM PANE
+  // ==========================================
+  private renderExcalidrawPane(paneEl: HTMLElement, activeView: MarkdownView | null, hasActiveNote: boolean) {
+    const infoCard = paneEl.createDiv({ cls: "nemotron-info-card" });
+    infoCard.setText(
+      "Generate high-effort AI architecture diagrams and systems maps using Nemotron's deep visual synthesizer. Creates multi-container subsystems, detailed component cards, and labeled data flows in /Excalidrawings."
+    );
+
+    // 1. Diagram Target Source
+    const sourceOptions: SelectOption[] = [
+      {
+        value: "active_note",
+        label: hasActiveNote ? `Active Note (${activeView?.file?.basename})` : "Active Note",
+        description: hasActiveNote
+          ? `Generates rich architecture diagram solely from "${activeView?.file?.basename}".`
+          : "Disabled: Open a note in the editor first.",
+        disabled: !hasActiveNote,
+      },
+      {
+        value: "standalone",
+        label: "Standalone Diagram (Without Note)",
+        description: "Creates an independent Excalidraw drawing from your custom prompt, architecture spec, or images.",
+      },
+    ];
+
+    const defaultSource = hasActiveNote ? "active_note" : "standalone";
+    let selectedSource: "active_note" | "standalone" = defaultSource;
+
+    const sourceContainer = paneEl.createDiv({ cls: "nemotron-form-row" });
+    sourceContainer.createEl("label", { text: "Diagram Target Source:", cls: "nemotron-label" });
+
+    // Standalone Options (Title & Subfolder)
+    const standaloneOptionsDiv = paneEl.createDiv({ cls: "nemotron-standalone-excal-options" });
+    standaloneOptionsDiv.style.display = defaultSource === "standalone" ? "block" : "none";
+
+    const titleRow = standaloneOptionsDiv.createDiv({ cls: "nemotron-form-row" });
+    titleRow.createEl("label", { text: "Drawing Title:", cls: "nemotron-label" });
+    const drawingTitleInput = titleRow.createEl("input", {
+      type: "text",
+      placeholder: hasActiveNote ? `${activeView?.file?.basename} Architecture` : "System Architecture Diagram",
+      cls: "nemotron-input",
+    });
+
+    const folderRow = standaloneOptionsDiv.createDiv({ cls: "nemotron-form-row" });
+    folderRow.createEl("label", { text: "Target Folder in Excalidrawings:", cls: "nemotron-label" });
+    const excalFolderInput = folderRow.createEl("input", {
+      type: "text",
+      placeholder: "e.g. Backend/Architecture or leave blank for root Excalidrawings",
+      cls: "nemotron-input",
+    });
+
+    // Toggle: Link back to active note
+    const linkBackRow = paneEl.createDiv({ cls: "nemotron-form-row nemotron-checkbox-row" });
+    const linkBackCheckbox = linkBackRow.createEl("input", { type: "checkbox", cls: "nemotron-checkbox" });
+    linkBackCheckbox.id = "nemotron-excal-linkback";
+    linkBackCheckbox.checked = hasActiveNote;
+    linkBackCheckbox.disabled = !hasActiveNote;
+
+    const linkBackLabel = linkBackRow.createEl("label", { cls: "nemotron-checkbox-label" });
+    linkBackLabel.setAttribute("for", "nemotron-excal-linkback");
+    linkBackLabel.createSpan({ text: "Insert Visual Architecture link at the top of active note", cls: "nemotron-checkbox-title" });
+
+    new CustomSelect(
+      sourceContainer,
+      sourceOptions,
+      defaultSource,
+      (val) => {
+        selectedSource = val as "active_note" | "standalone";
+        if (selectedSource === "standalone") {
+          standaloneOptionsDiv.style.display = "block";
+          linkBackCheckbox.disabled = true;
+          linkBackCheckbox.checked = false;
+        } else {
+          standaloneOptionsDiv.style.display = "none";
+          linkBackCheckbox.disabled = false;
+          linkBackCheckbox.checked = true;
+        }
+      }
+    );
+
+    // Custom instructions & text input
+    const excalPromptRow = paneEl.createDiv({ cls: "nemotron-form-row" });
+    excalPromptRow.createEl("label", { text: "Architecture Specifications / Instructions:", cls: "nemotron-label" });
+    const excalPromptArea = excalPromptRow.createEl("textarea", {
+      cls: "nemotron-textarea",
+      placeholder: hasActiveNote
+        ? "Optional: Add specific architectural focus or subsystem requirements..."
+        : "Describe the system components, data pipeline, state machine, or microservices...",
+    });
+    excalPromptArea.rows = 4;
+
+    const excalStatusDiv = paneEl.createDiv({ cls: "nemotron-status" });
+    excalStatusDiv.style.display = "none";
+
+    const excalButtonRow = paneEl.createDiv({ cls: "nemotron-button-row" });
+    const generateExcalBtn = excalButtonRow.createEl("button", {
+      text: "Generate Rich Excalidraw Canvas",
+      cls: "mod-cta",
+    });
+    const cancelExcalBtn = excalButtonRow.createEl("button", {
+      text: "Cancel",
+    });
+
+    cancelExcalBtn.addEventListener("click", () => this.close());
+
+    generateExcalBtn.addEventListener("click", async () => {
+      if (!this.plugin.settings.apiKey || !this.plugin.settings.apiKey.trim()) {
+        new Notice("Please enter your NVIDIA API Key first.");
+        return;
+      }
+
+      generateExcalBtn.disabled = true;
+      generateExcalBtn.setText("AI Synthesizing Deep Architecture...");
+      excalStatusDiv.style.display = "block";
+      excalStatusDiv.setText("Decomposing subsystems, cards & labeled data flows with Nemotron...");
+
+      try {
+        let contentToAnalyze = "";
+        let noteTitle = "";
+        let targetNoteFile: TFile | null = null;
+
+        if (selectedSource === "active_note" && activeView?.file) {
+          targetNoteFile = activeView.file;
+          noteTitle = activeView.file.basename;
+          contentToAnalyze = await this.app.vault.read(activeView.file);
+          if (excalPromptArea.value.trim()) {
+            contentToAnalyze += `\n\nAdditional Requirements:\n${excalPromptArea.value.trim()}`;
+          }
+        } else {
+          noteTitle = drawingTitleInput.value.trim() || "System Architecture Diagram";
+          contentToAnalyze = excalPromptArea.value.trim() || noteTitle;
+        }
+
+        const rootExcalFolder = this.plugin.settings.excalidrawFolder || "Excalidrawings";
+        const fileSnapshots: FileSnapshot[] = [];
+        const foldersCreatedList: string[] = [];
+
+        if (selectedSource === "active_note" && targetNoteFile) {
+          const res = await createMirroredExcalidrawDrawing(
+            this.app,
+            this.plugin.settings,
+            targetNoteFile,
+            contentToAnalyze,
+            rootExcalFolder
+          );
+          fileSnapshots.push({
+            path: res.drawingPath,
+            isNewFile: true,
+            newContent: "",
+          });
+          foldersCreatedList.push(...res.foldersCreated);
+
+          if (linkBackCheckbox.checked) {
+            const existingNoteText = await this.app.vault.read(targetNoteFile);
+            const noteFolder = targetNoteFile.parent ? (targetNoteFile.parent.path === "/" ? "" : targetNoteFile.parent.path) : "";
+            const excalRelPath = noteFolder
+              ? `${rootExcalFolder}/${noteFolder}/${targetNoteFile.basename}.excalidraw`
+              : `${rootExcalFolder}/${targetNoteFile.basename}.excalidraw`;
+
+            const linkHeader = `> [!example] Visual Architecture Diagram\n> **Excalidraw Overview:** [[${excalRelPath}|${targetNoteFile.basename} Architecture]]\n\n`;
+
+            if (!existingNoteText.includes(excalRelPath)) {
+              let updatedNoteText = "";
+              const yamlMatch = existingNoteText.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n*)/);
+              if (yamlMatch) {
+                const yamlBlock = yamlMatch[1];
+                const rest = existingNoteText.slice(yamlBlock.length).trimStart();
+                updatedNoteText = `${yamlBlock}${linkHeader}${rest}`;
+              } else {
+                updatedNoteText = `${linkHeader}${existingNoteText.trimStart()}`;
+              }
+
+              await this.app.vault.modify(targetNoteFile, updatedNoteText);
+              fileSnapshots.push({
+                path: targetNoteFile.path,
+                isNewFile: false,
+                previousContent: existingNoteText,
+                newContent: updatedNoteText,
+              });
+            }
+          }
+
+          const leaf = this.app.workspace.getLeaf(false);
+          await leaf.openFile(res.drawingFile);
+          new Notice(`Rich Excalidraw diagram generated in ${res.drawingPath}!`, 7000);
+        } else {
+          const customSubfolder = excalFolderInput.value.trim();
+          const targetDir = customSubfolder ? `${rootExcalFolder}/${customSubfolder}` : rootExcalFolder;
+          const res = await createStandaloneRichExcalidrawDrawing(
+            this.app,
+            this.plugin.settings,
+            noteTitle,
+            contentToAnalyze,
+            targetDir,
+            hasActiveNote && activeView?.file ? activeView.file.path : undefined
+          );
+
+          fileSnapshots.push({
+            path: res.drawingPath,
+            isNewFile: true,
+            newContent: "",
+          });
+          foldersCreatedList.push(...res.foldersCreated);
+
+          const leaf = this.app.workspace.getLeaf(false);
+          await leaf.openFile(res.drawingFile);
+          new Notice(`Standalone Rich Excalidraw diagram generated in ${res.drawingPath}!`, 7000);
+        }
+
+        this.plugin.historyManager.recordGeneration({
+          id: `${Date.now()}`,
+          timestamp: Date.now(),
+          mode: "excalidraw",
+          description: `Excalidraw: ${noteTitle}`,
+          files: fileSnapshots,
+          foldersCreated: Array.from(new Set(foldersCreatedList)),
+        });
+
+        this.renderHistoryToolbar();
+        this.close();
+      } catch (err: any) {
+        console.error("Excalidraw generation error:", err);
+        excalStatusDiv.setText(`Error: ${err.message}`);
+        new Notice(`Error: ${err.message}`);
+      } finally {
+        generateExcalBtn.disabled = false;
+        generateExcalBtn.setText("Generate Rich Excalidraw Canvas");
       }
     });
   }
@@ -1078,7 +1353,7 @@ export class NemotronModal extends Modal {
     const excalRelPath = folder ? `${excalFolder}/${folder}/${safeTitle}.excalidraw` : `${excalFolder}/${safeTitle}.excalidraw`;
 
     if (generateExcalidraw) {
-      const excalHeader = `> [!example] Visual Mind Map\n> **Excalidraw Overview:** [[${excalRelPath}|${safeTitle} Diagram]]\n\n`;
+      const excalHeader = `> [!example] Visual Architecture Diagram\n> **Excalidraw Overview:** [[${excalRelPath}|${safeTitle} Architecture]]\n\n`;
 
       const yamlMatch = finalContent.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n*)/);
       if (yamlMatch) {
@@ -1217,7 +1492,7 @@ summary: "Continuation of [[${file.basename}]]"
       part2Content += bodyToAppend + "\n";
 
       const targetFolder = file.parent ? (file.parent.path === "/" ? "" : file.parent.path) : "";
-      const newPartRes = await this.createNewNoteFile(part2Content, nextPartTitle, targetFolder, enableProperties, this.enableExcalidraw);
+      const newPartRes = await this.createNewNoteFile(part2Content, nextPartTitle, targetFolder, enableProperties, this.enableExcalidrawInNoteTab);
       snaps.push(...newPartRes.snaps);
       foldersCreated.push(...newPartRes.foldersCreated);
 

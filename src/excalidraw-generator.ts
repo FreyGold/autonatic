@@ -1065,3 +1065,73 @@ ${excalidrawJson}
     foldersCreated,
   };
 }
+
+/**
+ * Creates a rich standalone Excalidraw drawing in a specified folder
+ */
+export async function createStandaloneRichExcalidrawDrawing(
+  app: App,
+  settings: NemotronPluginSettings,
+  title: string,
+  content: string,
+  targetFolder: string = "Excalidrawings",
+  sourceNotePath?: string
+): Promise<{ drawingPath: string; drawingFile: TFile; foldersCreated: string[] }> {
+  const foldersCreated: string[] = [];
+  const cleanFolder = targetFolder ? normalizePath(targetFolder) : "Excalidrawings";
+
+  const segments = cleanFolder.split("/").filter((s) => s.trim().length > 0);
+  let currentDir = "";
+
+  for (const seg of segments) {
+    currentDir = currentDir ? `${currentDir}/${seg}` : seg;
+    const exists = app.vault.getAbstractFileByPath(normalizePath(currentDir));
+    if (!exists) {
+      await app.vault.createFolder(normalizePath(currentDir));
+      foldersCreated.push(normalizePath(currentDir));
+    }
+  }
+
+  // Synthesize Rich AI Diagram Spec with Nemotron
+  const spec = await synthesizeRichDiagramSpec(settings, title, content);
+  const excalidrawJson = buildRichExcalidrawJson(spec, sourceNotePath);
+
+  let safeTitle = title.replace(/[\\/:\*\?"<>\|]/g, "_").trim() || "Excalidraw Architecture";
+  const drawingFileName = `${safeTitle}.excalidraw.md`;
+  let drawingPath = normalizePath(`${cleanFolder}/${drawingFileName}`);
+
+  let counter = 1;
+  while (app.vault.getAbstractFileByPath(drawingPath)) {
+    const altTitle = `${safeTitle} (${counter})`;
+    drawingPath = normalizePath(`${cleanFolder}/${altTitle}.excalidraw.md`);
+    counter++;
+  }
+
+  const linkedNoteHeader = sourceNotePath
+    ? `> [!info] Linked Source Note\n> Source: [[${sourceNotePath}]]\n\n`
+    : "";
+
+  const excalidrawFileContent = `---
+
+excalidraw-plugin: parsed
+tags: [ea/drawing, excalidraw, architecture]
+
+---
+==Decompressed Markdown File==
+${linkedNoteHeader}# Drawing
+\`\`\`json
+${excalidrawJson}
+\`\`\`
+%%
+# Text Elements
+%%
+`;
+
+  const drawingFile = (await app.vault.create(drawingPath, excalidrawFileContent)) as TFile;
+
+  return {
+    drawingPath,
+    drawingFile,
+    foldersCreated,
+  };
+}
