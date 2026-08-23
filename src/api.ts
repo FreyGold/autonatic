@@ -64,7 +64,7 @@ export function sanitizeMermaidDiagrams(markdown: string): string {
         return `${id}{"${cleanInner}"}`;
       });
 
-      // 4. Fix rounded nodes: id(...) -> id("...")
+      // 4. Fix rounded parentheses nodes: id(...) -> id("...")
       line = line.replace(/([a-zA-Z0-9_-]+)\s*\(\s*"?([\s\S]*?)"?\s*\)/g, (m, id, inner) => {
         let cleanInner = inner
           .replace(/"/g, "'")
@@ -77,92 +77,56 @@ export function sanitizeMermaidDiagrams(markdown: string): string {
       return line;
     });
 
-    return `\`\`\`mermaid\n${sanitizedLines.join("\n").trim()}\n\`\`\``;
+    return `\`\`\`mermaid\n${sanitizedLines.join("\n")}\n\`\`\``;
   });
 }
 
 /**
- * Sanitizes markdown structure:
- * 1. Converts pseudo-headings (e.g. "- Decision Matrix" immediately preceding a table) into real "## Decision Matrix" headings so tables render visually.
- * 2. Ensures blank lines around tables and code fences so Obsidian doesn't collapse them into list items.
+ * Multimodal OCR Extraction using Vision Model
  */
-export function sanitizeMarkdownStructure(markdown: string): string {
-  let sanitized = markdown.replace(/^[ \t]*[-*+][ \t]+([A-Z0-9][^\n:]+)\n+([ \t]*\|[^\n]+\|[ \t]*\n[ \t]*\|[\s:|-]+\|[ \t]*\n)/gm, (match, title, tableHeader) => {
-    return `\n## ${title.trim()}\n\n${tableHeader}`;
-  });
-
-  sanitized = sanitized.replace(/^[ \t]*[-*+][ \t]+([A-Z0-9][^\n:]+)\n+([ \t]*```[a-zA-Z0-9_-]*\n)/gm, (match, title, codeFence) => {
-    return `\n## ${title.trim()}\n\n${codeFence}`;
-  });
-
-  return sanitized;
-}
-
-function cleanMarkdownContent(raw: string): string {
-  let cleaned = raw.trim();
-  if (cleaned.startsWith("```markdown\n") && cleaned.endsWith("\n```")) {
-    cleaned = cleaned.slice(12, -4).trim();
-  } else if (cleaned.startsWith("```md\n") && cleaned.endsWith("\n```")) {
-    cleaned = cleaned.slice(6, -4).trim();
-  }
-
-  cleaned = sanitizeMarkdownStructure(cleaned);
-  cleaned = sanitizeMermaidDiagrams(cleaned);
-
-  return cleaned;
-}
-
-/**
- * Extract content from a single image using the vision model
- */
-async function extractContentFromImage(
+export async function extractContentFromImage(
   settings: NemotronPluginSettings,
   dataUrl: string,
-  imageIndex: number,
-  totalImages: number,
+  imageIndex: number = 0,
+  totalImages: number = 1,
   callbacks?: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<string> {
-  if (!settings.apiKey || !settings.apiKey.trim()) {
-    throw new Error("NVIDIA API key is missing. Please enter your API key in Obsidian Settings > Nemotron Note Crafter.");
-  }
-
-  const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const urlObj = new URL(urlStr);
-  const model = settings.visionModel || "meta/llama-3.2-11b-vision-instruct";
+  const visionPrompt =
+    "Transcribe and describe in high detail all visible text, headers, diagrams, tables, handwritten notes, UI layouts, and code snippets from this image. Structure it cleanly so it can be transformed into an Obsidian note.";
 
   callbacks?.onStatus?.(
     totalImages > 1
-      ? `Reading image ${imageIndex + 1} of ${totalImages}...`
-      : "Reading and extracting text & code from image..."
+      ? `Analyzing attached image ${imageIndex + 1} of ${totalImages}...`
+      : "Analyzing attached image / screenshot..."
   );
 
-  const payload = JSON.stringify({
-    model,
+  const requestBody = {
+    model: settings.visionModel || "meta/llama-3.2-11b-vision-instruct",
     messages: [
       {
         role: "user",
         content: [
-          {
-            type: "text",
-            text: "Accurately extract and transcribe all visible text, instructions, code snippets, function names, parameters, checkboxes, tables, diagrams, and details from this image.",
-          },
+          { type: "text", text: visionPrompt },
           {
             type: "image_url",
-            image_url: { url: dataUrl },
+            image_url: {
+              url: dataUrl,
+            },
           },
         ],
       },
     ],
     max_tokens: 4096,
-    temperature: 0.1,
-    stream: false,
-  });
+    temperature: 0.2,
+  };
 
-  const isNodeAvailable = typeof https !== "undefined" && typeof https.request === "function";
+  const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const urlObj = new URL(urlStr);
+  const postData = JSON.stringify(requestBody);
 
-  if (isNodeAvailable) {
-    return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
+    try {
       const isHttps = urlObj.protocol === "https:";
       const requestFn = isHttps ? https.request : http.request;
 
@@ -173,58 +137,48 @@ async function extractContentFromImage(
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${settings.apiKey}`,
-            "Content-Length": Buffer.byteLength(payload),
+            "Content-Length": Buffer.byteLength(postData),
           },
         },
         (res) => {
-          let raw = "";
-          res.on("data", (chunk) => (raw += chunk.toString()));
+          let body = "";
+          res.on("data", (chunk) => {
+            body += chunk.toString("utf-8");
+          });
+
           res.on("end", () => {
-            if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-              reject(new Error(`Vision model error (${res.statusCode}): ${raw}`));
-              return;
-            }
             try {
-              const json = JSON.parse(raw);
-              const extracted = json.choices?.[0]?.message?.content || "";
-              resolve(extracted);
-            } catch (e) {
-              reject(new Error(`Failed to parse vision response: ${raw}`));
+              if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+                reject(new Error(`Vision API error (${res.statusCode}): ${body}`));
+                return;
+              }
+              const parsed = JSON.parse(body);
+              const text = parsed.choices?.[0]?.message?.content || "";
+              resolve(text);
+            } catch (err: any) {
+              reject(new Error(`Failed to parse Vision response: ${err.message}`));
             }
           });
-          res.on("error", reject);
         }
       );
 
       if (signal) {
-        signal.addEventListener("abort", () => req.destroy(new Error("AbortError")));
+        signal.addEventListener("abort", () => {
+          req.destroy(new DOMException("Aborted", "AbortError"));
+          reject(new DOMException("Aborted", "AbortError"));
+        });
       }
 
-      req.on("error", (err: any) => {
-        if (signal?.aborted || err.message === "AbortError") {
-          const abortErr = new Error("Generation cancelled.");
-          abortErr.name = "AbortError";
-          reject(abortErr);
-        } else {
-          reject(err);
-        }
+      req.on("error", (err) => {
+        reject(err);
       });
 
-      req.write(payload);
+      req.write(postData);
       req.end();
-    });
-  } else {
-    const response = await requestUrl({
-      url: urlStr,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiKey}`,
-      },
-      body: payload,
-    });
-    return response.json?.choices?.[0]?.message?.content || "";
-  }
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
 
 /**
@@ -272,26 +226,25 @@ export async function generateNemotronNote(
       ? (settings.detailedPrompt || settings.systemPrompt)
       : settings.systemPrompt;
 
-  // Generate structured note with Nemotron-3 Ultra (550B)
-  const isNodeAvailable = typeof https !== "undefined" && typeof https.request === "function";
-
-  if (isNodeAvailable) {
-    return generateWithNodeHttps(settings, systemPrompt, combinedPrompt, callbacks, signal);
-  } else {
-    return generateWithObsidianRequestUrl(settings, systemPrompt, combinedPrompt, callbacks);
-  }
+  return streamChatCompletion(settings, systemPrompt, combinedPrompt, callbacks, signal);
 }
 
 /**
- * Streaming generation using Node's https/http module
+ * Streaming chat completion using Node's https/http module with real-time reasoning & content callbacks
  */
-function generateWithNodeHttps(
+export function streamChatCompletion(
   settings: NemotronPluginSettings,
   systemPrompt: string,
   userPrompt: string,
   callbacks?: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<StreamResult> {
+  const isNodeAvailable = typeof https !== "undefined" && typeof https.request === "function";
+
+  if (!isNodeAvailable) {
+    return generateWithObsidianRequestUrl(settings, systemPrompt, userPrompt, callbacks);
+  }
+
   return new Promise((resolve, reject) => {
     try {
       const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -353,7 +306,7 @@ function generateWithNodeHttps(
           let buffer = "";
           let isReasoningPhase = true;
 
-          callbacks?.onStatus?.("Nemotron thinking and formatting notes...");
+          callbacks?.onStatus?.("Nemotron thinking and formatting...");
 
           res.on("data", (chunk: Buffer) => {
             buffer += chunk.toString("utf-8");
@@ -362,77 +315,87 @@ function generateWithNodeHttps(
 
             for (const line of lines) {
               const trimmed = line.trim();
-              if (!trimmed || trimmed.startsWith(":")) continue;
+              if (!trimmed || !trimmed.startsWith("data: ")) continue;
+              const dataStr = trimmed.slice(6);
+              if (dataStr === "[DONE]") continue;
 
-              if (trimmed.startsWith("data:")) {
-                const dataStr = trimmed.slice(5).trim();
-                if (dataStr === "[DONE]") {
-                  break;
+              try {
+                const parsed = JSON.parse(dataStr);
+                const delta = parsed.choices?.[0]?.delta;
+                if (!delta) continue;
+
+                // 1. Direct reasoning_content field (NVIDIA NIM standard)
+                if (delta.reasoning_content) {
+                  fullReasoning += delta.reasoning_content;
+                  callbacks?.onReasoning?.(delta.reasoning_content);
                 }
 
-                try {
-                  const parsed = JSON.parse(dataStr);
-                  if (parsed.error) {
-                    reject(new Error(parsed.error.message || "API stream error"));
-                    return;
-                  }
+                // 2. Regular content chunks (with embedded <think> tag handling)
+                if (delta.content) {
+                  const chunkStr = delta.content;
 
-                  const choice = parsed.choices?.[0];
-                  if (!choice || !choice.delta) continue;
-
-                  const delta = choice.delta;
-
-                  // Reasoning tokens
-                  const reasoningChunk = delta.reasoning_content || delta.reasoning || "";
-                  if (reasoningChunk) {
-                    fullReasoning += reasoningChunk;
-                    callbacks?.onReasoning?.(reasoningChunk);
-                  }
-
-                  // Content tokens
-                  const contentChunk = delta.content || "";
-                  if (contentChunk) {
-                    if (isReasoningPhase) {
-                      isReasoningPhase = false;
-                      callbacks?.onStatus?.("Writing formatted Obsidian note...");
+                  if (isReasoningPhase) {
+                    if (chunkStr.includes("<think>")) {
+                      const afterThink = chunkStr.split("<think>")[1] || "";
+                      if (afterThink.includes("</think>")) {
+                        const [thought, realContent] = afterThink.split("</think>");
+                        fullReasoning += thought;
+                        callbacks?.onReasoning?.(thought);
+                        isReasoningPhase = false;
+                        if (realContent) {
+                          fullContent += realContent;
+                          callbacks?.onContent?.(realContent);
+                        }
+                      } else {
+                        fullReasoning += afterThink;
+                        callbacks?.onReasoning?.(afterThink);
+                      }
+                      continue;
                     }
-                    fullContent += contentChunk;
-                    callbacks?.onContent?.(contentChunk);
+
+                    if (chunkStr.includes("</think>")) {
+                      const [thought, realContent] = chunkStr.split("</think>");
+                      fullReasoning += thought;
+                      callbacks?.onReasoning?.(thought);
+                      isReasoningPhase = false;
+                      if (realContent) {
+                        fullContent += realContent;
+                        callbacks?.onContent?.(realContent);
+                      }
+                      continue;
+                    }
+
+                    fullContent += chunkStr;
+                    callbacks?.onContent?.(chunkStr);
+                  } else {
+                    fullContent += chunkStr;
+                    callbacks?.onContent?.(chunkStr);
                   }
-                } catch {
-                  continue;
                 }
-              }
+              } catch {}
             }
           });
 
           res.on("end", () => {
+            // Sanitize Mermaid diagrams inside content before resolving
+            const sanitizedContent = sanitizeMermaidDiagrams(fullContent.trim());
             resolve({
-              content: cleanMarkdownContent(fullContent),
-              reasoning: fullReasoning,
+              content: sanitizedContent,
+              reasoning: fullReasoning.trim(),
             });
-          });
-
-          res.on("error", (err) => {
-            reject(err);
           });
         }
       );
 
       if (signal) {
         signal.addEventListener("abort", () => {
-          req.destroy(new Error("AbortError"));
+          req.destroy(new DOMException("Aborted", "AbortError"));
+          reject(new DOMException("Aborted", "AbortError"));
         });
       }
 
-      req.on("error", (err: any) => {
-        if (signal?.aborted || err.message === "AbortError") {
-          const abortErr = new Error("Generation cancelled.");
-          abortErr.name = "AbortError";
-          reject(abortErr);
-        } else {
-          reject(err);
-        }
+      req.on("error", (err) => {
+        reject(err);
       });
 
       req.write(postData);
@@ -444,7 +407,7 @@ function generateWithNodeHttps(
 }
 
 /**
- * Fallback generation using Obsidian's requestUrl
+ * Fallback generation using Obsidian's built-in requestUrl (no streaming)
  */
 async function generateWithObsidianRequestUrl(
   settings: NemotronPluginSettings,
@@ -452,7 +415,7 @@ async function generateWithObsidianRequestUrl(
   userPrompt: string,
   callbacks?: StreamCallbacks
 ): Promise<StreamResult> {
-  const url = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  callbacks?.onStatus?.("Calling NVIDIA API...");
 
   const requestBody: Record<string, any> = {
     model: settings.model,
@@ -463,17 +426,10 @@ async function generateWithObsidianRequestUrl(
     temperature: settings.temperature,
     top_p: settings.topP,
     max_tokens: settings.maxTokens,
-    stream: false,
   };
 
-  if (settings.enableThinking) {
-    requestBody.chat_template_kwargs = { enable_thinking: true };
-  }
-
-  callbacks?.onStatus?.("Connecting via Obsidian requestUrl...");
-
   const response = await requestUrl({
-    url,
+    url: `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -486,13 +442,19 @@ async function generateWithObsidianRequestUrl(
     throw new Error(`NVIDIA API error (${response.status}): ${response.text}`);
   }
 
-  const json = response.json;
-  const choice = json.choices?.[0];
+  const data = response.json;
+  const choice = data.choices?.[0];
   const content = choice?.message?.content || "";
   const reasoning = choice?.message?.reasoning_content || "";
 
+  callbacks?.onContent?.(content);
+  if (reasoning) {
+    callbacks?.onReasoning?.(reasoning);
+  }
+
+  const sanitizedContent = sanitizeMermaidDiagrams(content.trim());
   return {
-    content: cleanMarkdownContent(content),
-    reasoning,
+    content: sanitizedContent,
+    reasoning: reasoning.trim(),
   };
 }

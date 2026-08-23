@@ -1,7 +1,6 @@
 import { App, TFile, normalizePath } from "obsidian";
 import type { NemotronPluginSettings } from "./settings";
-import * as https from "https";
-import * as http from "http";
+import { streamChatCompletion, StreamCallbacks } from "./api";
 
 export interface RichDiagramCard {
   title: string;
@@ -96,16 +95,15 @@ const THEME = {
 };
 
 /**
- * AI-powered Deep Semantic Diagram Synthesizer via Nemotron
+ * AI-powered Deep Semantic Diagram Synthesizer via Nemotron with live reasoning tokens streaming
  */
 export async function synthesizeRichDiagramSpec(
   settings: NemotronPluginSettings,
   noteTitle: string,
-  noteContent: string
+  noteContent: string,
+  callbacks?: StreamCallbacks,
+  signal?: AbortSignal
 ): Promise<RichDiagramSpec> {
-  const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const urlObj = new URL(urlStr);
-
   const systemPrompt = `You are a Principal Software & Systems Architect and Visual Diagram Master.
 Your mission is to transform technical notes into comprehensive, high-density, professional visual architecture diagrams.
 
@@ -153,57 +151,24 @@ Output ONLY valid JSON strictly adhering to this schema:
   }
 }`;
 
-  const requestBody = {
-    model: settings.model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: `Technical Note Title: ${noteTitle}\n\nNote Content:\n${noteContent.slice(0, 4500)}` },
-    ],
-    temperature: 0.2,
-    max_tokens: 3500,
-  };
+  callbacks?.onStatus?.("Architecting visual subsystems with Nemotron reasoning...");
+  const userPrompt = `Technical Note Title: ${noteTitle}\n\nNote Content:\n${noteContent.slice(0, 4500)}`;
 
-  const postData = JSON.stringify(requestBody);
-  const isHttps = urlObj.protocol === "https:";
-  const requestFn = isHttps ? https.request : http.request;
+  try {
+    const result = await streamChatCompletion(settings, systemPrompt, userPrompt, callbacks, signal);
+    const raw = result.content;
+    const jsonMatch = raw.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/) || [null, raw];
+    const data: RichDiagramSpec = JSON.parse((jsonMatch[1] || raw).trim());
 
-  return new Promise((resolve) => {
-    const fallbackSpec: RichDiagramSpec = createFallbackSpec(noteTitle, noteContent);
+    if (data && data.containers && Array.isArray(data.containers) && data.containers.length > 0) {
+      return data;
+    }
+  } catch (err: any) {
+    if (err.name === "AbortError") throw err;
+    console.warn("Nemotron diagram synthesis parse warning, using fallback:", err);
+  }
 
-    const req = requestFn(
-      urlObj,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${settings.apiKey}`,
-          "Content-Length": Buffer.byteLength(postData),
-        },
-      },
-      (res) => {
-        let body = "";
-        res.on("data", (chunk) => (body += chunk));
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(body);
-            const raw = parsed.choices?.[0]?.message?.content || "";
-            const jsonMatch = raw.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/) || [null, raw];
-            const data: RichDiagramSpec = JSON.parse((jsonMatch[1] || raw).trim());
-
-            if (data && data.containers && Array.isArray(data.containers) && data.containers.length > 0) {
-              resolve(data);
-              return;
-            }
-          } catch {}
-          resolve(fallbackSpec);
-        });
-      }
-    );
-
-    req.on("error", () => resolve(fallbackSpec));
-    req.write(postData);
-    req.end();
-  });
+  return createFallbackSpec(noteTitle, noteContent);
 }
 
 function createFallbackSpec(noteTitle: string, noteContent: string): RichDiagramSpec {
@@ -399,9 +364,7 @@ export function buildRichExcalidrawJson(spec: RichDiagramSpec, sourceNotePath?: 
     const contType = cont.type || "default";
     const contTheme = (THEME.container as any)[contType] || THEME.container.default;
 
-    // Calculate height based on cards
     let currentCardY = CONTAINERS_START_Y + CONTAINER_PADDING_TOP;
-
     const cardsGeometry: { card: RichDiagramCard; y: number; h: number; cardId: string }[] = [];
 
     cont.cards.forEach((card) => {
@@ -699,7 +662,7 @@ export function buildRichExcalidrawJson(spec: RichDiagramSpec, sourceNotePath?: 
           locked: false,
           text: card.codeSnippet,
           fontSize: 11,
-          fontFamily: 3, // Code / Monospace
+          fontFamily: 3,
           textAlign: "left",
           verticalAlign: "middle",
           baseline: 11,
@@ -721,7 +684,6 @@ export function buildRichExcalidrawJson(spec: RichDiagramSpec, sourceNotePath?: 
 
     if (fromGeom && toGeom) {
       const flowTheme = flow.isError ? THEME.flow.error : THEME.flow.normal;
-
       const isSameContainer = Math.abs(fromGeom.x - toGeom.x) < 50;
 
       let startX = 0;
@@ -730,19 +692,16 @@ export function buildRichExcalidrawJson(spec: RichDiagramSpec, sourceNotePath?: 
       let endY = 0;
 
       if (isSameContainer) {
-        // Vertical connection
         startX = fromGeom.x + fromGeom.w / 2;
         startY = fromGeom.y + fromGeom.h;
         endX = toGeom.x + toGeom.w / 2;
         endY = toGeom.y;
       } else if (fromGeom.x < toGeom.x) {
-        // Left-to-right connection
         startX = fromGeom.x + fromGeom.w;
         startY = fromGeom.y + fromGeom.h / 2;
         endX = toGeom.x;
         endY = toGeom.y + toGeom.h / 2;
       } else {
-        // Right-to-left connection
         startX = fromGeom.x;
         startY = fromGeom.y + fromGeom.h / 2;
         endX = toGeom.x + toGeom.w;
@@ -787,7 +746,6 @@ export function buildRichExcalidrawJson(spec: RichDiagramSpec, sourceNotePath?: 
         endArrowhead: "arrow",
       });
 
-      // Flow Label Badge
       if (flow.label && flow.label.trim()) {
         const midX = (startX + endX) / 2;
         const midY = (startY + endY) / 2;
@@ -1008,7 +966,9 @@ export async function createMirroredExcalidrawDrawing(
   settings: NemotronPluginSettings,
   noteFile: TFile,
   noteContent: string,
-  rootExcalidrawFolder: string = "Excalidrawings"
+  rootExcalidrawFolder: string = "Excalidrawings",
+  callbacks?: StreamCallbacks,
+  signal?: AbortSignal
 ): Promise<{ drawingPath: string; drawingFile: TFile; foldersCreated: string[] }> {
   const foldersCreated: string[] = [];
   const noteRelativeDir = noteFile.parent ? (noteFile.parent.path === "/" ? "" : noteFile.parent.path) : "";
@@ -1026,8 +986,7 @@ export async function createMirroredExcalidrawDrawing(
     }
   }
 
-  // Synthesize Rich AI Diagram Spec with Nemotron
-  const spec = await synthesizeRichDiagramSpec(settings, noteFile.basename, noteContent);
+  const spec = await synthesizeRichDiagramSpec(settings, noteFile.basename, noteContent, callbacks, signal);
   const excalidrawJson = buildRichExcalidrawJson(spec, noteFile.path);
 
   const drawingFileName = `${noteFile.basename}.excalidraw.md`;
@@ -1075,7 +1034,9 @@ export async function createStandaloneRichExcalidrawDrawing(
   title: string,
   content: string,
   targetFolder: string = "Excalidrawings",
-  sourceNotePath?: string
+  sourceNotePath?: string,
+  callbacks?: StreamCallbacks,
+  signal?: AbortSignal
 ): Promise<{ drawingPath: string; drawingFile: TFile; foldersCreated: string[] }> {
   const foldersCreated: string[] = [];
   const cleanFolder = targetFolder ? normalizePath(targetFolder) : "Excalidrawings";
@@ -1092,8 +1053,7 @@ export async function createStandaloneRichExcalidrawDrawing(
     }
   }
 
-  // Synthesize Rich AI Diagram Spec with Nemotron
-  const spec = await synthesizeRichDiagramSpec(settings, title, content);
+  const spec = await synthesizeRichDiagramSpec(settings, title, content, callbacks, signal);
   const excalidrawJson = buildRichExcalidrawJson(spec, sourceNotePath);
 
   let safeTitle = title.replace(/[\\/:\*\?"<>\|]/g, "_").trim() || "Excalidraw Architecture";

@@ -292,7 +292,6 @@ export class NemotronModal extends Modal {
       hiddenFileInput.click();
     });
 
-    // Gallery of Attached Images
     const imageGallery = imageRow.createDiv({ cls: "nemotron-image-gallery" });
     imageGallery.style.display = "none";
 
@@ -772,7 +771,7 @@ export class NemotronModal extends Modal {
   }
 
   // ==========================================
-  // TAB 2: EXCALIDRAW DIAGRAM PANE
+  // TAB 2: EXCALIDRAW DIAGRAM PANE (WITH LIVE THINKING & PREVIEW)
   // ==========================================
   private renderExcalidrawPane(paneEl: HTMLElement, activeView: MarkdownView | null, hasActiveNote: boolean) {
     const infoCard = paneEl.createDiv({ cls: "nemotron-info-card" });
@@ -863,9 +862,23 @@ export class NemotronModal extends Modal {
     });
     excalPromptArea.rows = 4;
 
+    // Status area for Tab 2
     const excalStatusDiv = paneEl.createDiv({ cls: "nemotron-status" });
     excalStatusDiv.style.display = "none";
 
+    // Streaming Preview Area for Tab 2 (Thinking Process & Live Schema Preview)
+    const excalPreviewContainer = paneEl.createDiv({ cls: "nemotron-preview-container" });
+    excalPreviewContainer.style.display = "none";
+    
+    const excalReasoningDetails = excalPreviewContainer.createEl("details", { cls: "nemotron-reasoning-box" });
+    excalReasoningDetails.createEl("summary", { text: "Thinking Process (Nemotron Reasoning)" });
+    const excalReasoningPre = excalReasoningDetails.createEl("pre", { cls: "nemotron-reasoning-content" });
+
+    const excalContentPreviewBox = excalPreviewContainer.createEl("div", { cls: "nemotron-content-box" });
+    excalContentPreviewBox.createEl("h4", { text: "Architecture Plan & Diagram Schema Preview:" });
+    const excalContentPre = excalContentPreviewBox.createEl("pre", { cls: "nemotron-preview-content" });
+
+    // Buttons for Tab 2
     const excalButtonRow = paneEl.createDiv({ cls: "nemotron-button-row" });
     const generateExcalBtn = excalButtonRow.createEl("button", {
       text: "Generate Rich Excalidraw Canvas",
@@ -875,18 +888,32 @@ export class NemotronModal extends Modal {
       text: "Cancel",
     });
 
-    cancelExcalBtn.addEventListener("click", () => this.close());
+    cancelExcalBtn.addEventListener("click", () => {
+      if (this.isGenerating && this.abortController) {
+        this.abortController.abort();
+      }
+      this.close();
+    });
 
     generateExcalBtn.addEventListener("click", async () => {
       if (!this.plugin.settings.apiKey || !this.plugin.settings.apiKey.trim()) {
         new Notice("Please enter your NVIDIA API Key first.");
+        excalStatusDiv.style.display = "block";
+        excalStatusDiv.setText("Error: NVIDIA API Key is required. Please set it above or in Settings.");
         return;
       }
 
+      this.isGenerating = true;
       generateExcalBtn.disabled = true;
       generateExcalBtn.setText("AI Synthesizing Deep Architecture...");
       excalStatusDiv.style.display = "block";
       excalStatusDiv.setText("Decomposing subsystems, cards & labeled data flows with Nemotron...");
+
+      excalPreviewContainer.style.display = "block";
+      excalReasoningPre.setText("");
+      excalContentPre.setText("");
+
+      this.abortController = new AbortController();
 
       try {
         let contentToAnalyze = "";
@@ -909,13 +936,28 @@ export class NemotronModal extends Modal {
         const fileSnapshots: FileSnapshot[] = [];
         const foldersCreatedList: string[] = [];
 
+        const streamCallbacks = {
+          onStatus: (status: string) => {
+            excalStatusDiv.setText(status);
+          },
+          onReasoning: (chunk: string) => {
+            excalReasoningPre.setText(excalReasoningPre.getText() + chunk);
+          },
+          onContent: (chunk: string) => {
+            excalContentPre.setText(excalContentPre.getText() + chunk);
+            excalContentPre.scrollTop = excalContentPre.scrollHeight;
+          },
+        };
+
         if (selectedSource === "active_note" && targetNoteFile) {
           const res = await createMirroredExcalidrawDrawing(
             this.app,
             this.plugin.settings,
             targetNoteFile,
             contentToAnalyze,
-            rootExcalFolder
+            rootExcalFolder,
+            streamCallbacks,
+            this.abortController.signal
           );
           fileSnapshots.push({
             path: res.drawingPath,
@@ -966,7 +1008,9 @@ export class NemotronModal extends Modal {
             noteTitle,
             contentToAnalyze,
             targetDir,
-            hasActiveNote && activeView?.file ? activeView.file.path : undefined
+            hasActiveNote && activeView?.file ? activeView.file.path : undefined,
+            streamCallbacks,
+            this.abortController.signal
           );
 
           fileSnapshots.push({
@@ -993,10 +1037,15 @@ export class NemotronModal extends Modal {
         this.renderHistoryToolbar();
         this.close();
       } catch (err: any) {
-        console.error("Excalidraw generation error:", err);
-        excalStatusDiv.setText(`Error: ${err.message}`);
-        new Notice(`Error: ${err.message}`);
+        if (err.name === "AbortError") {
+          new Notice("Excalidraw generation cancelled.");
+        } else {
+          console.error("Excalidraw generation error:", err);
+          excalStatusDiv.setText(`Error: ${err.message}`);
+          new Notice(`Error: ${err.message}`);
+        }
       } finally {
+        this.isGenerating = false;
         generateExcalBtn.disabled = false;
         generateExcalBtn.setText("Generate Rich Excalidraw Canvas");
       }
