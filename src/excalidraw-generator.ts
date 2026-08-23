@@ -1,4 +1,7 @@
 import { App, TFile, normalizePath } from "obsidian";
+import type { NemotronPluginSettings } from "./settings";
+import * as https from "https";
+import * as http from "http";
 
 export interface MindMapNode {
   id: string;
@@ -46,7 +49,7 @@ const COLOR_PALETTES = {
 };
 
 /**
- * Extracts a structured MindMap tree from a markdown note
+ * Extracts a structured MindMap tree from markdown note text
  */
 export function extractMindMapTreeFromNote(noteTitle: string, noteContent: string): MindMapNode {
   const root: MindMapNode = {
@@ -120,14 +123,115 @@ export function extractMindMapTreeFromNote(noteTitle: string, noteContent: strin
 }
 
 /**
+ * AI-powered Semantic Mind Map Synthesizer via Nemotron
+ */
+export async function synthesizeAiMindMapTree(
+  settings: NemotronPluginSettings,
+  title: string,
+  content: string,
+  diagramStyle: "mindmap" | "flowchart" | "decision" = "mindmap"
+): Promise<MindMapNode> {
+  const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const urlObj = new URL(urlStr);
+
+  const styleHint =
+    diagramStyle === "flowchart"
+      ? "Focus heavily on sequential execution steps, input/output transitions, and data flow."
+      : diagramStyle === "decision"
+      ? "Focus on decision branches, condition checks, validations, and edge cases."
+      : "Focus on hierarchical concept decomposition, key mechanisms, and technical takeaways.";
+
+  const systemPrompt = `You are an elite visual systems architect. Analyze the note/text and decompose it into a clean conceptual diagram tree.
+${styleHint}
+
+Output ONLY a JSON object strictly conforming to this schema:
+{
+  "title": "<Core Topic/Title (<= 6 words)>",
+  "branches": [
+    {
+      "title": "<Branch Name (<= 5 words)>",
+      "category": "concept" | "process" | "warning" | "success",
+      "nodes": ["<Short Point 1>", "<Short Point 2>", "<Short Point 3>"]
+    }
+  ]
+}`;
+
+  const requestBody = {
+    model: settings.model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Topic: ${title}\n\nContent:\n${content.slice(0, 4000)}` },
+    ],
+    temperature: 0.2,
+    max_tokens: 2000,
+  };
+
+  const postData = JSON.stringify(requestBody);
+  const isHttps = urlObj.protocol === "https:";
+  const requestFn = isHttps ? https.request : http.request;
+
+  return new Promise((resolve) => {
+    const fallbackTree = extractMindMapTreeFromNote(title, content);
+
+    const req = requestFn(
+      urlObj,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.apiKey}`,
+          "Content-Length": Buffer.byteLength(postData),
+        },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => (body += chunk));
+        res.on("end", () => {
+          try {
+            const parsed = JSON.parse(body);
+            const raw = parsed.choices?.[0]?.message?.content || "";
+            const jsonMatch = raw.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/) || [null, raw];
+            const data = JSON.parse((jsonMatch[1] || raw).trim());
+
+            if (data && data.branches && Array.isArray(data.branches)) {
+              const root: MindMapNode = {
+                id: "root",
+                text: data.title || title,
+                colorCategory: "root",
+                children: data.branches.map((b: any, bIdx: number) => ({
+                  id: `sec_${bIdx + 1}`,
+                  text: b.title,
+                  colorCategory: b.category || "concept",
+                  children: (b.nodes || []).map((n: string, nIdx: number) => ({
+                    id: `node_${bIdx + 1}_${nIdx + 1}`,
+                    text: n,
+                    colorCategory: b.category || "concept",
+                  })),
+                })),
+              };
+              resolve(root);
+              return;
+            }
+          } catch {}
+          resolve(fallbackTree);
+        });
+      }
+    );
+
+    req.on("error", () => resolve(fallbackTree));
+    req.write(postData);
+    req.end();
+  });
+}
+
+/**
  * Builds a balanced Excalidraw canvas layout from a MindMap tree
  */
-export function buildExcalidrawJson(mindMap: MindMapNode, sourceNotePath: string): string {
+export function buildExcalidrawJson(mindMap: MindMapNode, sourceNotePath?: string): string {
   const elements: ExcalidrawElement[] = [];
   let seedCounter = 10000;
 
   const getSeed = () => ++seedCounter;
-  const generateId = () => Math.random().toString(36).substring(2, 10);
 
   const ROOT_X = 600;
   const ROOT_Y = 80;
@@ -162,7 +266,7 @@ export function buildExcalidrawJson(mindMap: MindMapNode, sourceNotePath: string
     isDeleted: false,
     boundElements: [{ id: rootTextId, type: "text" }],
     updated: Date.now(),
-    link: `[[${sourceNotePath}]]`,
+    link: sourceNotePath ? `[[${sourceNotePath}]]` : null,
     locked: false,
   });
 
@@ -474,8 +578,7 @@ export function buildExcalidrawJson(mindMap: MindMapNode, sourceNotePath: string
 }
 
 /**
- * Creates the mirrored Excalidraw drawing file in the `Excalidrawings` folder hierarchy
- * and returns the relative path and FileSnapshot.
+ * Creates a mirrored or standalone Excalidraw drawing file
  */
 export async function createMirroredExcalidrawDrawing(
   app: App,
@@ -486,7 +589,6 @@ export async function createMirroredExcalidrawDrawing(
   const foldersCreated: string[] = [];
   const noteRelativeDir = noteFile.parent ? (noteFile.parent.path === "/" ? "" : noteFile.parent.path) : "";
 
-  // 1. Create Mirrored Folder Structure
   const targetDir = noteRelativeDir ? `${rootExcalidrawFolder}/${noteRelativeDir}` : rootExcalidrawFolder;
   const segments = targetDir.split("/").filter((s) => s.trim().length > 0);
   let currentDir = "";
@@ -500,7 +602,6 @@ export async function createMirroredExcalidrawDrawing(
     }
   }
 
-  // 2. Generate Excalidraw Markdown content
   const mindMapTree = extractMindMapTreeFromNote(noteFile.basename, noteContent);
   const excalidrawJson = buildExcalidrawJson(mindMapTree, noteFile.path);
 
@@ -536,6 +637,72 @@ ${excalidrawJson}
   return {
     drawingPath,
     drawingFile: drawingFile as TFile,
+    foldersCreated,
+  };
+}
+
+/**
+ * Creates a standalone Excalidraw drawing in a specified folder
+ */
+export async function createStandaloneExcalidrawDrawing(
+  app: App,
+  title: string,
+  mindMapTree: MindMapNode,
+  targetFolder: string = "Excalidrawings",
+  sourceNotePath?: string
+): Promise<{ drawingPath: string; drawingFile: TFile; foldersCreated: string[] }> {
+  const foldersCreated: string[] = [];
+  const cleanFolder = targetFolder ? normalizePath(targetFolder) : "Excalidrawings";
+
+  const segments = cleanFolder.split("/").filter((s) => s.trim().length > 0);
+  let currentDir = "";
+
+  for (const seg of segments) {
+    currentDir = currentDir ? `${currentDir}/${seg}` : seg;
+    const exists = app.vault.getAbstractFileByPath(normalizePath(currentDir));
+    if (!exists) {
+      await app.vault.createFolder(normalizePath(currentDir));
+      foldersCreated.push(normalizePath(currentDir));
+    }
+  }
+
+  const excalidrawJson = buildExcalidrawJson(mindMapTree, sourceNotePath);
+  let safeTitle = title.replace(/[\\/:\*\?"<>\|]/g, "_").trim() || "Excalidraw Diagram";
+  const drawingFileName = `${safeTitle}.excalidraw.md`;
+  let drawingPath = normalizePath(`${cleanFolder}/${drawingFileName}`);
+
+  let counter = 1;
+  while (app.vault.getAbstractFileByPath(drawingPath)) {
+    const altTitle = `${safeTitle} (${counter})`;
+    drawingPath = normalizePath(`${cleanFolder}/${altTitle}.excalidraw.md`);
+    counter++;
+  }
+
+  const linkedNoteHeader = sourceNotePath
+    ? `> [!info] Linked Source Note\n> Source: [[${sourceNotePath}]]\n\n`
+    : "";
+
+  const excalidrawFileContent = `---
+
+excalidraw-plugin: parsed
+tags: [ea/drawing, excalidraw, mindmap]
+
+---
+==Decompressed Markdown File==
+${linkedNoteHeader}# Drawing
+\`\`\`json
+${excalidrawJson}
+\`\`\`
+%%
+# Text Elements
+%%
+`;
+
+  const drawingFile = (await app.vault.create(drawingPath, excalidrawFileContent)) as TFile;
+
+  return {
+    drawingPath,
+    drawingFile,
     foldersCreated,
   };
 }

@@ -36,6 +36,14 @@ export default class NemotronPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "open-excalidraw-architect",
+      name: "Open Excalidraw Architect",
+      callback: () => {
+        new NemotronModal(this.app, this, "", "excalidraw").open();
+      },
+    });
+
+    this.addCommand({
       id: "undo-last-generation",
       name: "Undo Last Generation",
       callback: async () => {
