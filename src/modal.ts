@@ -14,6 +14,7 @@ import {
   VAULT_INDEX_FILENAME,
 } from "./vault-indexer";
 import { FileSnapshot, PromptHistoryItem } from "./history-manager";
+import { createMirroredExcalidrawDrawing } from "./excalidraw-generator";
 
 interface AttachedImage {
   id: string;
@@ -30,6 +31,7 @@ export class NemotronModal extends Modal {
   pasteListener: (e: ClipboardEvent) => void;
   selectedMode: "smart" | "multi_note" | "new_file" | "append" = "smart";
   selectedStyle: "concise" | "detailed" = "concise";
+  enableExcalidraw: boolean = true;
   historyRowEl: HTMLElement;
   modeSelectComponent: CustomSelect;
   styleSelectComponent: CustomSelect;
@@ -41,6 +43,7 @@ export class NemotronModal extends Modal {
     super(app);
     this.plugin = plugin;
     this.initialText = initialText;
+    this.enableExcalidraw = plugin.settings.enableExcalidrawMindMap ?? true;
   }
 
   async onOpen() {
@@ -199,7 +202,24 @@ export class NemotronModal extends Modal {
       }
     );
 
-    // 3. Multi-Image Input Section
+    // 3. Excalidraw Visual Mind Map Toggle Row
+    const excalRow = contentEl.createDiv({ cls: "nemotron-form-row nemotron-checkbox-row" });
+    const excalCheckbox = excalRow.createEl("input", { type: "checkbox", cls: "nemotron-checkbox" });
+    excalCheckbox.id = "nemotron-excalidraw-toggle";
+    excalCheckbox.checked = this.enableExcalidraw;
+    excalCheckbox.addEventListener("change", () => {
+      this.enableExcalidraw = excalCheckbox.checked;
+    });
+
+    const excalLabel = excalRow.createEl("label", { cls: "nemotron-checkbox-label" });
+    excalLabel.setAttribute("for", "nemotron-excalidraw-toggle");
+    excalLabel.createSpan({ text: "Generate Excalidraw Visual Mind Map ", cls: "nemotron-checkbox-title" });
+    excalLabel.createSpan({
+      text: `(Mirrors folder hierarchy in /${this.plugin.settings.excalidrawFolder || "Excalidrawings"} with top link)`,
+      cls: "nemotron-checkbox-desc",
+    });
+
+    // 4. Multi-Image Input Section
     const imageRow = contentEl.createDiv({ cls: "nemotron-form-row" });
     const imageHeaderRow = imageRow.createDiv({ cls: "nemotron-image-header" });
     imageHeaderRow.createEl("label", { text: "Photos / Images / Screenshots (optional):", cls: "nemotron-label" });
@@ -411,7 +431,7 @@ export class NemotronModal extends Modal {
 
     window.addEventListener("paste", this.pasteListener, true);
 
-    // 4. Custom Instruction row
+    // 5. Custom Instruction row
     const customRow = contentEl.createDiv({ cls: "nemotron-form-row" });
     customRow.createEl("label", { text: "Custom Instructions (optional):", cls: "nemotron-label" });
     const customInput = customRow.createEl("input", {
@@ -421,7 +441,7 @@ export class NemotronModal extends Modal {
     });
     this.customInputEl = customInput;
 
-    // 5. Input Text area
+    // 6. Input Text area
     const inputAreaRow = contentEl.createDiv({ cls: "nemotron-form-row" });
     inputAreaRow.createEl("label", { text: "Raw Input Text (optional if photos are attached):", cls: "nemotron-label" });
     const inputTextArea = inputAreaRow.createEl("textarea", {
@@ -563,7 +583,7 @@ export class NemotronModal extends Modal {
           this.abortController.signal
         );
 
-        statusDiv.setText("Placing notes in vault...");
+        statusDiv.setText("Placing notes and Excalidraw drawings in vault...");
 
         const fileSnapshots: FileSnapshot[] = [];
         const foldersCreatedList: string[] = [];
@@ -584,15 +604,15 @@ export class NemotronModal extends Modal {
                   appendedCount++;
                 } else {
                   const folder = enforceMaxDepthFolder(item.targetFolder || "");
-                  const { snap, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties);
-                  if (snap) fileSnapshots.push(snap);
+                  const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties, this.enableExcalidraw);
+                  fileSnapshots.push(...snaps);
                   foldersCreatedList.push(...foldersCreated);
                   createdCount++;
                 }
               } else {
                 const folder = enforceMaxDepthFolder(item.targetFolder || "");
-                const { snap, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties);
-                if (snap) fileSnapshots.push(snap);
+                const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties, this.enableExcalidraw);
+                fileSnapshots.push(...snaps);
                 foldersCreatedList.push(...foldersCreated);
                 createdCount++;
               }
@@ -629,8 +649,8 @@ export class NemotronModal extends Modal {
               new Notice(`Smart Appended to: ${decision.targetNotePath}\nReason: ${decision.reason}`, 7000);
             } else {
               const folder = enforceMaxDepthFolder(decision.targetFolder || "");
-              const { snap, foldersCreated } = await this.createNewNoteFile(cleanedContent, decision.title, folder, enableProperties);
-              if (snap) fileSnapshots.push(snap);
+              const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, decision.title, folder, enableProperties, this.enableExcalidraw);
+              fileSnapshots.push(...snaps);
               foldersCreatedList.push(...foldersCreated);
               new Notice(`Smart Placed in folder: ${folder || "Vault Root"}\nReason: ${decision.reason}`, 7000);
             }
@@ -638,8 +658,8 @@ export class NemotronModal extends Modal {
             const rawFolder = decision?.targetFolder || "";
             const targetFolder = enforceMaxDepthFolder(rawFolder);
             const title = decision?.title || titleInput.value.trim();
-            const { snap, foldersCreated } = await this.createNewNoteFile(cleanedContent, title, targetFolder, enableProperties);
-            if (snap) fileSnapshots.push(snap);
+            const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, title, targetFolder, enableProperties, this.enableExcalidraw);
+            fileSnapshots.push(...snaps);
             foldersCreatedList.push(...foldersCreated);
             const reasonMsg = decision?.reason ? `\nReason: ${decision.reason}` : "";
             new Notice(`Smart Placed in folder: "${targetFolder || "Vault Root"}"${reasonMsg}`, 7000);
@@ -658,20 +678,20 @@ export class NemotronModal extends Modal {
           this.plugin.scheduleIndexUpdate();
         } else if (mode === "new_file") {
           const targetFolder = enforceMaxDepthFolder(currentSelectedFolder);
-          const { snap, foldersCreated } = await this.createNewNoteFile(result.content, titleInput.value.trim(), targetFolder, enableProperties);
-          if (snap) fileSnapshots.push(snap);
+          const { snaps, foldersCreated } = await this.createNewNoteFile(result.content, titleInput.value.trim(), targetFolder, enableProperties, this.enableExcalidraw);
+          fileSnapshots.push(...snaps);
           foldersCreatedList.push(...foldersCreated);
           
           this.plugin.historyManager.recordGeneration({
             id: `${Date.now()}`,
             timestamp: Date.now(),
             mode: "new_file",
-            description: `Created note: ${snap?.path || "New note"}`,
+            description: `Created note: ${snaps[0]?.path || "New note"}`,
             files: fileSnapshots,
             foldersCreated: Array.from(new Set(foldersCreatedList)),
           });
 
-          new Notice("Obsidian note created and saved successfully!");
+          new Notice("Obsidian note created with Excalidraw mind map!");
           this.renderHistoryToolbar();
           this.plugin.scheduleIndexUpdate();
         } else {
@@ -996,10 +1016,12 @@ export class NemotronModal extends Modal {
     content: string,
     requestedTitle?: string,
     requestedFolder?: string,
-    enableProperties: boolean = true
-  ): Promise<{ snap: FileSnapshot; foldersCreated: string[] }> {
+    enableProperties: boolean = true,
+    generateExcalidraw: boolean = true
+  ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     let title = requestedTitle;
     let finalContent = content;
+    const snaps: FileSnapshot[] = [];
     const foldersCreated: string[] = [];
 
     if (!enableProperties) {
@@ -1055,7 +1077,45 @@ export class NemotronModal extends Modal {
       counter++;
     }
 
-    const newFile = await this.app.vault.create(filePath, finalContent);
+    // Embed Excalidraw Visual Link at the TOP of the note
+    const excalFolder = this.plugin.settings.excalidrawFolder || "Excalidrawings";
+    const excalRelPath = folder ? `${excalFolder}/${folder}/${safeTitle}.excalidraw` : `${excalFolder}/${safeTitle}.excalidraw`;
+
+    if (generateExcalidraw) {
+      const excalHeader = `> [!example] Visual Mind Map\n> **Excalidraw Overview:** [[${excalRelPath}|${safeTitle} Diagram]]\n\n`;
+
+      const yamlMatch = finalContent.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n*)/);
+      if (yamlMatch) {
+        const yamlBlock = yamlMatch[1];
+        const restContent = finalContent.slice(yamlBlock.length).trimStart();
+        finalContent = `${yamlBlock}${excalHeader}${restContent}`;
+      } else {
+        finalContent = `${excalHeader}${finalContent.trimStart()}`;
+      }
+    }
+
+    const newFile = (await this.app.vault.create(filePath, finalContent)) as TFile;
+
+    snaps.push({
+      path: filePath,
+      isNewFile: true,
+      newContent: finalContent,
+    });
+
+    // Generate Mirrored Excalidraw Drawing
+    if (generateExcalidraw) {
+      try {
+        const excalRes = await createMirroredExcalidrawDrawing(this.app, newFile, finalContent, excalFolder);
+        snaps.push({
+          path: excalRes.drawingPath,
+          isNewFile: true,
+          newContent: "",
+        });
+        foldersCreated.push(...excalRes.foldersCreated);
+      } catch (exErr) {
+        console.warn("Excalidraw generation warning:", exErr);
+      }
+    }
 
     if (this.plugin.settings.autoOpenCreatedNote) {
       const leaf = this.app.workspace.getLeaf(false);
@@ -1063,11 +1123,7 @@ export class NemotronModal extends Modal {
     }
 
     return {
-      snap: {
-        path: filePath,
-        isNewFile: true,
-        newContent: finalContent,
-      },
+      snaps,
       foldersCreated,
     };
   }
@@ -1095,7 +1151,6 @@ export class NemotronModal extends Modal {
 
     // Check if appending would exceed optimal atomic note length
     if (autoSplitEnabled && currentWordCount + newWordCount > maxWords && currentWordCount >= 200) {
-      // 1. Determine Sequential Part Title
       let baseTitle = file.basename;
       let nextPartNum = 2;
 
@@ -1122,7 +1177,7 @@ export class NemotronModal extends Modal {
         nextPartTitle = nextPartNum === 2 ? `${baseTitle} - Continued` : `${baseTitle} - Continued ${nextPartNum}`;
       }
 
-      // 2. Append Forward Link in Part 1
+      // Append Forward Link in Part 1
       const forwardContinuation = `\n\n---\n> [!info] Continued in [[${nextPartTitle}]]\n`;
       const updatedPart1Content = existingContent.trimEnd() + forwardContinuation;
       await this.app.vault.modify(file, updatedPart1Content);
@@ -1133,7 +1188,7 @@ export class NemotronModal extends Modal {
         newContent: updatedPart1Content,
       });
 
-      // 3. Create Part 2 with Backlink & Formatted Content
+      // Create Part 2 with Backlink & Formatted Content
       const currentDate = new Date().toISOString().split("T")[0];
       const now = new Date();
       const hours = String(now.getHours()).padStart(2, "0");
@@ -1164,8 +1219,8 @@ summary: "Continuation of [[${file.basename}]]"
       part2Content += bodyToAppend + "\n";
 
       const targetFolder = file.parent ? (file.parent.path === "/" ? "" : file.parent.path) : "";
-      const newPartRes = await this.createNewNoteFile(part2Content, nextPartTitle, targetFolder, enableProperties);
-      if (newPartRes.snap) snaps.push(newPartRes.snap);
+      const newPartRes = await this.createNewNoteFile(part2Content, nextPartTitle, targetFolder, enableProperties, this.enableExcalidraw);
+      snaps.push(...newPartRes.snaps);
       foldersCreated.push(...newPartRes.foldersCreated);
 
       new Notice(`Note reached optimal length (${currentWordCount} words). Created sequence: [[${nextPartTitle}]]`, 8000);

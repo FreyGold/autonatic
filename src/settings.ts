@@ -14,6 +14,8 @@ export interface NemotronPluginSettings {
   enableAutoSplitLongNotes: boolean;
   maxNoteWordCount: number;
   splitNamingFormat: "part_suffix" | "parenthesis" | "continued";
+  enableExcalidrawMindMap: boolean;
+  excalidrawFolder: string;
   temperature: number;
   topP: number;
   maxTokens: number;
@@ -35,6 +37,8 @@ export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   enableAutoSplitLongNotes: true,
   maxNoteWordCount: 600,
   splitNamingFormat: "part_suffix",
+  enableExcalidrawMindMap: true,
+  excalidrawFolder: "Excalidrawings",
   temperature: 1.0,
   topP: 0.95,
   maxTokens: 16384,
@@ -181,6 +185,34 @@ export class NemotronSettingTab extends PluginSettingTab {
           }
         });
       });
+
+    // Excalidraw Visual Mind Map Settings
+    containerEl.createEl("h3", { text: "Excalidraw Visual Mind Maps" });
+
+    new Setting(containerEl)
+      .setName("Generate Excalidraw Mind Map Drawings")
+      .setDesc("Automatically generate an Excalidraw visual mind map / architecture diagram and mirror your folder structure in the Excalidraw folder.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableExcalidrawMindMap ?? true)
+          .onChange(async (value) => {
+            this.plugin.settings.enableExcalidrawMindMap = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Excalidraw Mirrored Root Folder")
+      .setDesc("Root folder where mirrored Excalidraw diagrams are saved.")
+      .addText((text) =>
+        text
+          .setPlaceholder("Excalidrawings")
+          .setValue(this.plugin.settings.excalidrawFolder || "Excalidrawings")
+          .onChange(async (value) => {
+            this.plugin.settings.excalidrawFolder = value.trim() || "Excalidrawings";
+            await this.plugin.saveSettings();
+          })
+      );
 
     // Auto-Split Long Notes & Atomic Sizing Section
     containerEl.createEl("h3", { text: "Atomic Note Sizing & Auto-Splitting" });

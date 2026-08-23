@@ -888,3 +888,38 @@
   align-items: center;
   gap: 4px;
 }
+
+/* Checkbox Row Styling */
+.nemotron-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.nemotron-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--interactive-accent);
+  cursor: pointer;
+}
+
+.nemotron-checkbox-label {
+  font-size: 12px;
+  color: var(--text-normal);
+  cursor: pointer;
+  user-select: none;
+}
+
+.nemotron-checkbox-title {
+  font-weight: 600;
+}
+
+.nemotron-checkbox-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
