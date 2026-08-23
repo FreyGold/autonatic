@@ -1,10 +1,11 @@
-import { Plugin, MarkdownView, Editor, Notice } from "obsidian";
+import { Plugin, MarkdownView, Editor, Notice, TFile } from "obsidian";
 import { NemotronPluginSettings, DEFAULT_SETTINGS, NemotronSettingTab } from "./settings";
 import { NemotronModal } from "./modal";
 import { generateNemotronNote } from "./api";
 import { buildUserPrompt } from "./prompts";
 import { buildOrUpdateVaultIndex, VAULT_INDEX_FILENAME } from "./vault-indexer";
 import { HistoryManager, GenerationHistoryRecord } from "./history-manager";
+import { createMirroredExcalidrawDrawing } from "./excalidraw-generator";
 
 export default class NemotronPlugin extends Plugin {
   settings: NemotronPluginSettings;
@@ -36,10 +37,85 @@ export default class NemotronPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "open-excalidraw-architect",
-      name: "Open Excalidraw Architect",
-      callback: () => {
-        new NemotronModal(this.app, this, "", "excalidraw").open();
+      id: "generate-rich-excalidraw-diagram",
+      name: "Generate Rich Excalidraw Architecture Diagram for Active Note",
+      callback: async () => {
+        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!activeView || !activeView.file) {
+          new Notice("Please open a markdown note in the editor first.");
+          return;
+        }
+
+        if (!this.settings.apiKey || !this.settings.apiKey.trim()) {
+          new Notice("Please enter your NVIDIA API Key in Settings first.");
+          return;
+        }
+
+        const noteFile = activeView.file;
+        const noteContent = await this.app.vault.read(noteFile);
+        const rootExcalFolder = this.settings.excalidrawFolder || "Excalidrawings";
+
+        new Notice("AI Synthesizing Rich Excalidraw Architecture Diagram...", 8000);
+
+        try {
+          const res = await createMirroredExcalidrawDrawing(
+            this.app,
+            this.settings,
+            noteFile,
+            noteContent,
+            rootExcalFolder
+          );
+
+          // Insert Top Link in Active Note
+          const noteFolder = noteFile.parent ? (noteFile.parent.path === "/" ? "" : noteFile.parent.path) : "";
+          const excalRelPath = noteFolder
+            ? `${rootExcalFolder}/${noteFolder}/${noteFile.basename}.excalidraw`
+            : `${rootExcalFolder}/${noteFile.basename}.excalidraw`;
+
+          const linkHeader = `> [!example] Visual Architecture Diagram\n> **Excalidraw Overview:** [[${excalRelPath}|${noteFile.basename} Architecture]]\n\n`;
+
+          let updatedNoteText = noteContent;
+          if (!noteContent.includes(excalRelPath)) {
+            const yamlMatch = noteContent.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n*)/);
+            if (yamlMatch) {
+              const yamlBlock = yamlMatch[1];
+              const rest = noteContent.slice(yamlBlock.length).trimStart();
+              updatedNoteText = `${yamlBlock}${linkHeader}${rest}`;
+            } else {
+              updatedNoteText = `${linkHeader}${noteContent.trimStart()}`;
+            }
+            await this.app.vault.modify(noteFile, updatedNoteText);
+          }
+
+          this.historyManager.recordGeneration({
+            id: `${Date.now()}`,
+            timestamp: Date.now(),
+            mode: "excalidraw",
+            description: `Rich Excalidraw: ${noteFile.basename}`,
+            files: [
+              {
+                path: res.drawingPath,
+                isNewFile: true,
+                newContent: "",
+              },
+              {
+                path: noteFile.path,
+                isNewFile: false,
+                previousContent: noteContent,
+                newContent: updatedNoteText,
+              },
+            ],
+            foldersCreated: res.foldersCreated,
+          });
+
+          const leaf = this.app.workspace.getLeaf(false);
+          await leaf.openFile(res.drawingFile);
+          new Notice(`Rich Excalidraw diagram generated in ${res.drawingPath}!`, 7000);
+          this.scheduleIndexUpdate();
+        } catch (err: any) {
+          console.error("Excalidraw generation error:", err);
+          new Notice(`Error generating diagram: ${err.message}`);
+        }
       },
     });
 
