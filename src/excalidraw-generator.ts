@@ -123,13 +123,13 @@ export function extractMindMapTreeFromNote(noteTitle: string, noteContent: strin
 }
 
 /**
- * AI-powered Semantic Mind Map Synthesizer via Nemotron
+ * AI-powered Semantic Mind Map Synthesizer via Nemotron with Auto-Detection
  */
 export async function synthesizeAiMindMapTree(
   settings: NemotronPluginSettings,
   title: string,
   content: string,
-  diagramStyle: "mindmap" | "flowchart" | "decision" = "mindmap"
+  diagramStyle: "auto" | "mindmap" | "flowchart" | "decision" = "auto"
 ): Promise<MindMapNode> {
   const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const urlObj = new URL(urlStr);
@@ -139,7 +139,9 @@ export async function synthesizeAiMindMapTree(
       ? "Focus heavily on sequential execution steps, input/output transitions, and data flow."
       : diagramStyle === "decision"
       ? "Focus on decision branches, condition checks, validations, and edge cases."
-      : "Focus on hierarchical concept decomposition, key mechanisms, and technical takeaways.";
+      : diagramStyle === "mindmap"
+      ? "Focus on hierarchical concept decomposition, key mechanisms, and technical takeaways."
+      : "Autonomously determine the optimal diagram format: if the topic involves step-by-step state/pipeline flow, structure it as sequential process branches; if it involves validation/logic/rules, structure it as decision branches; if it is conceptual or architectural, structure it as a hierarchical mind map.";
 
   const systemPrompt = `You are an elite visual systems architect. Analyze the note/text and decompose it into a clean conceptual diagram tree.
 ${styleHint}

@@ -809,8 +809,13 @@ export class NemotronModal extends Modal {
     // 2. Diagram Layout Style
     const layoutOptions: SelectOption[] = [
       {
+        value: "auto",
+        label: "Auto-Detect Best Style (Recommended)",
+        description: "AI analyzes your content semantics and autonomously picks Mind Map, Architecture Flow, or Decision Matrix.",
+      },
+      {
         value: "mindmap",
-        label: "Mind Map & Knowledge Hierarchy (Default)",
+        label: "Mind Map & Knowledge Hierarchy",
         description: "Hierarchical breakdown of core themes, key concepts, and technical details.",
       },
       {
@@ -825,16 +830,16 @@ export class NemotronModal extends Modal {
       },
     ];
 
-    let selectedLayoutStyle: "mindmap" | "flowchart" | "decision" = "mindmap";
+    let selectedLayoutStyle: "auto" | "mindmap" | "flowchart" | "decision" = "auto";
     const layoutContainer = paneEl.createDiv({ cls: "nemotron-form-row" });
     layoutContainer.createEl("label", { text: "Visual Diagram Style:", cls: "nemotron-label" });
 
     new CustomSelect(
       layoutContainer,
       layoutOptions,
-      "mindmap",
+      "auto",
       (val) => {
-        selectedLayoutStyle = val as "mindmap" | "flowchart" | "decision";
+        selectedLayoutStyle = val as "auto" | "mindmap" | "flowchart" | "decision";
       }
     );
 
