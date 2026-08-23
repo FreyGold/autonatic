@@ -578,8 +578,9 @@ export class NemotronModal extends Modal {
               if (item.action === "append_to_note" && item.targetNotePath) {
                 const targetFile = this.app.vault.getAbstractFileByPath(normalizePath(item.targetNotePath));
                 if (targetFile instanceof TFile) {
-                  const snap = await this.appendToFile(targetFile, item.content, enableProperties, item.reason);
-                  if (snap) fileSnapshots.push(snap);
+                  const { snaps, foldersCreated } = await this.appendToFile(targetFile, item.content, enableProperties, item.reason);
+                  fileSnapshots.push(...snaps);
+                  foldersCreatedList.push(...foldersCreated);
                   appendedCount++;
                 } else {
                   const folder = enforceMaxDepthFolder(item.targetFolder || "");
@@ -610,7 +611,7 @@ export class NemotronModal extends Modal {
           });
 
           new Notice(
-            `Atomic Decomposition Complete: ${createdCount} note(s) created, ${appendedCount} note(s) updated.`,
+            `Atomic Decomposition Complete: ${createdCount} note(s) created, ${appendedCount} note(s) processed.`,
             8000
           );
 
@@ -622,8 +623,9 @@ export class NemotronModal extends Modal {
           if (decision && decision.action === "append_to_note" && decision.targetNotePath) {
             const targetFile = this.app.vault.getAbstractFileByPath(normalizePath(decision.targetNotePath));
             if (targetFile instanceof TFile) {
-              const snap = await this.appendToFile(targetFile, cleanedContent, enableProperties, decision.reason);
-              if (snap) fileSnapshots.push(snap);
+              const { snaps, foldersCreated } = await this.appendToFile(targetFile, cleanedContent, enableProperties, decision.reason);
+              fileSnapshots.push(...snaps);
+              foldersCreatedList.push(...foldersCreated);
               new Notice(`Smart Appended to: ${decision.targetNotePath}\nReason: ${decision.reason}`, 7000);
             } else {
               const folder = enforceMaxDepthFolder(decision.targetFolder || "");
@@ -673,16 +675,17 @@ export class NemotronModal extends Modal {
           this.renderHistoryToolbar();
           this.plugin.scheduleIndexUpdate();
         } else {
-          const snap = await this.appendToActiveNote(result.content, enableProperties, customInstruction || "Appended section via Nemotron");
-          if (snap) fileSnapshots.push(snap);
+          const { snaps, foldersCreated } = await this.appendToActiveNote(result.content, enableProperties, customInstruction || "Appended section via Nemotron");
+          fileSnapshots.push(...snaps);
+          foldersCreatedList.push(...foldersCreated);
 
           this.plugin.historyManager.recordGeneration({
             id: `${Date.now()}`,
             timestamp: Date.now(),
             mode: "append",
-            description: `Appended to note: ${snap?.path || "Active note"}`,
+            description: `Appended to note: ${snaps[0]?.path || "Active note"}`,
             files: fileSnapshots,
-            foldersCreated: [],
+            foldersCreated: Array.from(new Set(foldersCreatedList)),
           });
 
           new Notice("Appended note section successfully!");
@@ -755,7 +758,7 @@ export class NemotronModal extends Modal {
       }
     });
 
-    // Right: Native Obsidian Context Menu Dropdown for Recent Prompts
+    // Right: Native Obsidian Context Menu Dropdown for Recent Prompts (Opens Leftward)
     if (promptHistory.length > 0) {
       const promptGroup = this.historyRowEl.createDiv({ cls: "nemotron-history-group nemotron-prompt-history-group" });
       promptGroup.createSpan({ text: "Prompts:", cls: "nemotron-history-label" });
@@ -1069,17 +1072,108 @@ export class NemotronModal extends Modal {
     };
   }
 
+  /**
+   * Appends content to an existing note, or automatically splits into a sequential
+   * Part 2 (with two-way navigation links) if the note exceeds the optimal word count.
+   */
   private async appendToFile(
     file: TFile,
     content: string,
     enableProperties: boolean = true,
     reason?: string
-  ): Promise<FileSnapshot> {
+  ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     const existingContent = await this.app.vault.read(file);
     let finalExistingContent = existingContent;
+    const snaps: FileSnapshot[] = [];
+    const foldersCreated: string[] = [];
 
+    const countWords = (text: string) => text.trim().split(/\s+/).filter((w) => w.length > 0).length;
+    const currentWordCount = countWords(existingContent);
+    const newWordCount = countWords(content);
+    const maxWords = this.plugin.settings.maxNoteWordCount || 600;
+    const autoSplitEnabled = this.plugin.settings.enableAutoSplitLongNotes ?? true;
+
+    // Check if appending would exceed optimal atomic note length
+    if (autoSplitEnabled && currentWordCount + newWordCount > maxWords && currentWordCount >= 200) {
+      // 1. Determine Sequential Part Title
+      let baseTitle = file.basename;
+      let nextPartNum = 2;
+
+      const partSuffixMatch = baseTitle.match(/^(.*?)\s*-\s*Part\s*(\d+)$/i);
+      const parenMatch = baseTitle.match(/^(.*?)\s*\(Part\s*(\d+)\)$/i);
+      const continuedMatch = baseTitle.match(/^(.*?)\s*-\s*Continued(?:\s*(\d+))?$/i);
+
+      if (partSuffixMatch) {
+        baseTitle = partSuffixMatch[1].trim();
+        nextPartNum = parseInt(partSuffixMatch[2], 10) + 1;
+      } else if (parenMatch) {
+        baseTitle = parenMatch[1].trim();
+        nextPartNum = parseInt(parenMatch[2], 10) + 1;
+      } else if (continuedMatch) {
+        baseTitle = continuedMatch[1].trim();
+        nextPartNum = (continuedMatch[2] ? parseInt(continuedMatch[2], 10) : 2) + 1;
+      }
+
+      const namingFormat = this.plugin.settings.splitNamingFormat || "part_suffix";
+      let nextPartTitle = `${baseTitle} - Part ${nextPartNum}`;
+      if (namingFormat === "parenthesis") {
+        nextPartTitle = `${baseTitle} (Part ${nextPartNum})`;
+      } else if (namingFormat === "continued") {
+        nextPartTitle = nextPartNum === 2 ? `${baseTitle} - Continued` : `${baseTitle} - Continued ${nextPartNum}`;
+      }
+
+      // 2. Append Forward Link in Part 1
+      const forwardContinuation = `\n\n---\n> [!info] Continued in [[${nextPartTitle}]]\n`;
+      const updatedPart1Content = existingContent.trimEnd() + forwardContinuation;
+      await this.app.vault.modify(file, updatedPart1Content);
+      snaps.push({
+        path: file.path,
+        isNewFile: false,
+        previousContent: existingContent,
+        newContent: updatedPart1Content,
+      });
+
+      // 3. Create Part 2 with Backlink & Formatted Content
+      const currentDate = new Date().toISOString().split("T")[0];
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      const timestampFormatted = `${currentDate} ${hours}:${minutes}`;
+
+      const reasonLine = reason && reason.trim() ? `\n> **Reason:** ${reason.trim()}` : "";
+      const bodyToAppend = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
+
+      let part2Content = "";
+      if (enableProperties) {
+        part2Content += `---
+title: "${nextPartTitle}"
+aliases: []
+tags:
+  - notes
+created: "${currentDate}"
+part: ${nextPartNum}
+continued_from: "[[${file.basename}]]"
+summary: "Continuation of [[${file.basename}]]"
+---
+
+`;
+      }
+
+      part2Content += `> [!info] Continued from [[${file.basename}]]\n\n`;
+      part2Content += `> [!info] Created on ${timestampFormatted}${reasonLine}\n\n`;
+      part2Content += bodyToAppend + "\n";
+
+      const targetFolder = file.parent ? (file.parent.path === "/" ? "" : file.parent.path) : "";
+      const newPartRes = await this.createNewNoteFile(part2Content, nextPartTitle, targetFolder, enableProperties);
+      if (newPartRes.snap) snaps.push(newPartRes.snap);
+      foldersCreated.push(...newPartRes.foldersCreated);
+
+      new Notice(`Note reached optimal length (${currentWordCount} words). Created sequence: [[${nextPartTitle}]]`, 8000);
+      return { snaps, foldersCreated };
+    }
+
+    // Normal In-Place Append
     const hasFrontmatter = /^---\r?\n[\s\S]*?\r?\n---/.test(existingContent);
-
     if (enableProperties && !hasFrontmatter) {
       const currentDate = new Date().toISOString().split("T")[0];
       const frontmatterBlock = `---
@@ -1097,7 +1191,6 @@ summary: "Note covering ${file.basename}"
 
     const bodyToAppend = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
 
-    // Format Date, Time (hour:minute) and Reason Header
     const now = new Date();
     const dateStr = now.toISOString().split("T")[0];
     const hours = String(now.getHours()).padStart(2, "0");
@@ -1115,19 +1208,21 @@ summary: "Note covering ${file.basename}"
       await leaf.openFile(file);
     }
 
-    return {
+    snaps.push({
       path: file.path,
       isNewFile: false,
       previousContent: existingContent,
       newContent: updatedContent,
-    };
+    });
+
+    return { snaps, foldersCreated };
   }
 
   private async appendToActiveNote(
     content: string,
     enableProperties: boolean = true,
     reason?: string
-  ): Promise<FileSnapshot> {
+  ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!activeView || !activeView.file) {
       throw new Error("No active markdown note found to append to.");

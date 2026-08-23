@@ -11,6 +11,9 @@ export interface NemotronPluginSettings {
   defaultDestinationMode: "smart" | "multi_note" | "new_file" | "append";
   defaultNoteStyle: "concise" | "detailed";
   enableProperties: boolean;
+  enableAutoSplitLongNotes: boolean;
+  maxNoteWordCount: number;
+  splitNamingFormat: "part_suffix" | "parenthesis" | "continued";
   temperature: number;
   topP: number;
   maxTokens: number;
@@ -29,6 +32,9 @@ export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   defaultDestinationMode: "smart",
   defaultNoteStyle: "concise",
   enableProperties: true,
+  enableAutoSplitLongNotes: true,
+  maxNoteWordCount: 600,
+  splitNamingFormat: "part_suffix",
   temperature: 1.0,
   topP: 0.95,
   maxTokens: 16384,
@@ -175,6 +181,50 @@ export class NemotronSettingTab extends PluginSettingTab {
           }
         });
       });
+
+    // Auto-Split Long Notes & Atomic Sizing Section
+    containerEl.createEl("h3", { text: "Atomic Note Sizing & Auto-Splitting" });
+
+    new Setting(containerEl)
+      .setName("Auto-Split Long Notes (Part 2 Sequence)")
+      .setDesc("When appending to a note that exceeds the optimal word count, automatically creates a sequential Part 2 note with two-way breadcrumb links.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableAutoSplitLongNotes ?? true)
+          .onChange(async (value) => {
+            this.plugin.settings.enableAutoSplitLongNotes = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Max Note Word Count (Optimal Atomic Length)")
+      .setDesc("The target maximum length for a concise note before auto-splitting into a new part (Recommended: 400 - 800 words).")
+      .addSlider((slider) =>
+        slider
+          .setLimits(200, 1500, 50)
+          .setValue(this.plugin.settings.maxNoteWordCount || 600)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.maxNoteWordCount = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Split Note Naming Convention")
+      .setDesc("How subsequent continuation notes are named.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("part_suffix", "Title - Part 2 (Recommended)")
+          .addOption("parenthesis", "Title (Part 2)")
+          .addOption("continued", "Title - Continued")
+          .setValue(this.plugin.settings.splitNamingFormat || "part_suffix")
+          .onChange(async (value) => {
+            this.plugin.settings.splitNamingFormat = value as "part_suffix" | "parenthesis" | "continued";
+            await this.plugin.saveSettings();
+          })
+      );
 
     // YAML Properties Generation Toggle
     new Setting(containerEl)
