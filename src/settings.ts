@@ -1,0 +1,379 @@
+import { App, PluginSettingTab, Setting, Notice } from "obsidian";
+import type NemotronPlugin from "./main";
+import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT } from "./prompts";
+import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
+
+export interface NemotronPluginSettings {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  visionModel: string;
+  defaultDestinationMode: "smart" | "multi_note" | "new_file" | "append";
+  defaultNoteStyle: "concise" | "detailed";
+  enableProperties: boolean;
+  temperature: number;
+  topP: number;
+  maxTokens: number;
+  enableThinking: boolean;
+  defaultFolder: string;
+  systemPrompt: string;
+  detailedPrompt: string;
+  autoOpenCreatedNote: boolean;
+}
+
+export const DEFAULT_SETTINGS: NemotronPluginSettings = {
+  apiKey: "",
+  baseUrl: "https://integrate.api.nvidia.com/v1",
+  model: "nvidia/nemotron-3-ultra-550b-a55b",
+  visionModel: "meta/llama-3.2-11b-vision-instruct",
+  defaultDestinationMode: "smart",
+  defaultNoteStyle: "concise",
+  enableProperties: true,
+  temperature: 1.0,
+  topP: 0.95,
+  maxTokens: 16384,
+  enableThinking: true,
+  defaultFolder: "",
+  systemPrompt: CONCISE_OBSIDIAN_SKILL_PROMPT,
+  detailedPrompt: DETAILED_OBSIDIAN_SKILL_PROMPT,
+  autoOpenCreatedNote: true,
+};
+
+export class NemotronSettingTab extends PluginSettingTab {
+  plugin: NemotronPlugin;
+
+  constructor(app: App, plugin: NemotronPlugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+
+  async display(): Promise<void> {
+    const { containerEl } = this;
+    containerEl.empty();
+
+    containerEl.createEl("h2", { text: "Nemotron Note Crafter Settings" });
+
+    // NVIDIA NIM Quick Link & Helper Card
+    const nimCard = containerEl.createDiv({ cls: "nemotron-nim-card" });
+    const nimLeft = nimCard.createDiv({ cls: "nemotron-nim-left" });
+    nimLeft.createEl("strong", { text: "Need an NVIDIA API Key?" });
+    nimLeft.createEl("p", {
+      text: "NVIDIA NIM offers developer API access for models like Nemotron-3 Ultra 550B and Llama-3.2 Vision.",
+      cls: "nemotron-nim-desc",
+    });
+    
+    const nimBtn = nimCard.createEl("button", {
+      text: "Open NVIDIA NIM (build.nvidia.com)",
+      cls: "mod-cta nemotron-nim-btn",
+    });
+    nimBtn.setAttribute("type", "button");
+    nimBtn.addEventListener("click", () => {
+      window.open("https://build.nvidia.com", "_blank");
+    });
+
+    // API Key Setting with Instant Paste
+    const apiKeySetting = new Setting(containerEl)
+      .setName("NVIDIA API Key")
+      .setDesc("Your personal API key (starts with nvapi-...). Stored locally on your device.");
+
+    let apiKeyInputEl: HTMLInputElement;
+
+    apiKeySetting.addText((text) => {
+      text
+        .setPlaceholder("nvapi-...")
+        .setValue(this.plugin.settings.apiKey)
+        .onChange(async (value) => {
+          this.plugin.settings.apiKey = value.trim();
+          await this.plugin.saveSettings();
+        });
+      apiKeyInputEl = text.inputEl;
+      apiKeyInputEl.type = "password";
+      apiKeyInputEl.style.minWidth = "240px";
+    });
+
+    // Reveal / Mask toggle
+    apiKeySetting.addButton((btn) => {
+      btn.setButtonText("Show/Hide").setTooltip("Toggle visibility").onClick(() => {
+        if (apiKeyInputEl) {
+          apiKeyInputEl.type = apiKeyInputEl.type === "password" ? "text" : "password";
+        }
+      });
+    });
+
+    // 1-Click Paste Button
+    apiKeySetting.addButton((btn) => {
+      btn.setButtonText("Paste").setTooltip("Paste API key from clipboard").onClick(async () => {
+        let text = "";
+        try {
+          const electron = (window as any).require ? (window as any).require("electron") : null;
+          if (electron && electron.clipboard) {
+            text = electron.clipboard.readText();
+          }
+        } catch {}
+
+        if (!text && navigator.clipboard && navigator.clipboard.readText) {
+          try {
+            text = await navigator.clipboard.readText();
+          } catch {}
+        }
+
+        if (text && text.trim()) {
+          this.plugin.settings.apiKey = text.trim();
+          await this.plugin.saveSettings();
+          if (apiKeyInputEl) {
+            apiKeyInputEl.value = text.trim();
+          }
+          btn.setButtonText("Pasted!");
+          setTimeout(() => btn.setButtonText("Paste"), 2000);
+        }
+      });
+    });
+
+    // Default Destination Mode (4 options)
+    new Setting(containerEl)
+      .setName("Default Destination Mode")
+      .setDesc("Choose default placement behavior when opening the Note Crafter modal.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("smart", "Smart Placement (Single Note Auto-Route)")
+          .addOption("multi_note", "Atomic Decomposition (Multi-Note Synthesis)")
+          .addOption("new_file", "Create New Note File")
+          .addOption("append", "Append to Active Note")
+          .setValue(this.plugin.settings.defaultDestinationMode || "smart")
+          .onChange(async (value) => {
+            this.plugin.settings.defaultDestinationMode = value as "smart" | "multi_note" | "new_file" | "append";
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Vault Knowledge Index Status & Populate
+    const indexData = await loadVaultIndex(this.app);
+    const noteCount = indexData?.totalNotes || 0;
+    const folderCount = indexData?.totalFolders || 0;
+
+    new Setting(containerEl)
+      .setName("Hierarchical Vault Knowledge Tree")
+      .setDesc(
+        `Maintains a nested JSON tree (.nemotron-vault-index.json) of folders, subfolders, and notes with topics and 'about' summaries. Status: ${
+          indexData ? `Indexed ${noteCount} notes across ${folderCount} folders.` : "Not yet generated."
+        }`
+      )
+      .addButton((btn) => {
+        btn.setButtonText("Deep Analyze & Rebuild Knowledge Tree").onClick(async () => {
+          btn.setDisabled(true);
+          btn.setButtonText("Analyzing notes with AI...");
+          try {
+            const updated = await buildOrUpdateVaultIndex(this.app, this.plugin.settings, (curr, total, status) => {
+              btn.setButtonText(status.slice(0, 35) + "...");
+            });
+            new Notice(`Hierarchical Knowledge Tree indexed: ${updated.totalNotes} notes across ${updated.totalFolders} folders.`);
+            await this.display();
+          } catch (e: any) {
+            new Notice(`Error during deep indexing: ${e.message}`);
+            btn.setDisabled(false);
+            btn.setButtonText("Deep Analyze & Rebuild Knowledge Tree");
+          }
+        });
+      });
+
+    // YAML Properties Generation Toggle
+    new Setting(containerEl)
+      .setName("Generate YAML Properties / Frontmatter")
+      .setDesc("Generate YAML properties (title, tags, aliases, created, summary) at the top of notes. Turn off to generate plain notes without frontmatter.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableProperties ?? true)
+          .onChange(async (value) => {
+            this.plugin.settings.enableProperties = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Default Note Style
+    new Setting(containerEl)
+      .setName("Default Note Style")
+      .setDesc("Choose default output length and structure (Concise vs Detailed).")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("concise", "Concise & Punchy (Smart Brevity)")
+          .addOption("detailed", "Detailed & Comprehensive")
+          .setValue(this.plugin.settings.defaultNoteStyle || "concise")
+          .onChange(async (value) => {
+            this.plugin.settings.defaultNoteStyle = value as "concise" | "detailed";
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Base URL
+    new Setting(containerEl)
+      .setName("API Base URL")
+      .setDesc("The OpenAI-compatible base URL for NVIDIA API.")
+      .addText((text) =>
+        text
+          .setPlaceholder("https://integrate.api.nvidia.com/v1")
+          .setValue(this.plugin.settings.baseUrl)
+          .onChange(async (value) => {
+            this.plugin.settings.baseUrl = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Text Model Name
+    new Setting(containerEl)
+      .setName("Text Model Name")
+      .setDesc("Model identifier to use for note architecture and synthesis.")
+      .addText((text) =>
+        text
+          .setPlaceholder("nvidia/nemotron-3-ultra-550b-a55b")
+          .setValue(this.plugin.settings.model)
+          .onChange(async (value) => {
+            this.plugin.settings.model = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Vision Model Name
+    new Setting(containerEl)
+      .setName("Vision Model Name")
+      .setDesc("Multimodal OCR model used to read and transcribe attached photos/screenshots.")
+      .addText((text) =>
+        text
+          .setPlaceholder("meta/llama-3.2-11b-vision-instruct")
+          .setValue(this.plugin.settings.visionModel)
+          .onChange(async (value) => {
+            this.plugin.settings.visionModel = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Enable Thinking / Reasoning
+    new Setting(containerEl)
+      .setName("Enable Thinking (Reasoning)")
+      .setDesc("Enable deep reasoning tokens before generating structured notes.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableThinking)
+          .onChange(async (value) => {
+            this.plugin.settings.enableThinking = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Temperature
+    new Setting(containerEl)
+      .setName("Temperature")
+      .setDesc("Sampling temperature (0.0 - 2.0).")
+      .addSlider((slider) =>
+        slider
+          .setLimits(0.0, 2.0, 0.05)
+          .setValue(this.plugin.settings.temperature)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.temperature = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Top P
+    new Setting(containerEl)
+      .setName("Top P")
+      .setDesc("Nucleus sampling probability (0.0 - 1.0).")
+      .addSlider((slider) =>
+        slider
+          .setLimits(0.0, 1.0, 0.01)
+          .setValue(this.plugin.settings.topP)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.topP = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Max Tokens
+    new Setting(containerEl)
+      .setName("Max Generation Tokens")
+      .setDesc("Maximum tokens for total generation.")
+      .addText((text) =>
+        text
+          .setPlaceholder("16384")
+          .setValue(String(this.plugin.settings.maxTokens))
+          .onChange(async (value) => {
+            const parsed = parseInt(value);
+            if (!isNaN(parsed) && parsed > 0) {
+              this.plugin.settings.maxTokens = parsed;
+              await this.plugin.saveSettings();
+            }
+          })
+      );
+
+    // Default Folder
+    new Setting(containerEl)
+      .setName("Fallback Default Folder")
+      .setDesc("Fallback vault folder path (leave blank to auto-detect last modified note folder).")
+      .addText((text) =>
+        text
+          .setPlaceholder("Auto-detected")
+          .setValue(this.plugin.settings.defaultFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.defaultFolder = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Auto-open created note
+    new Setting(containerEl)
+      .setName("Auto-open Created Notes")
+      .setDesc("Automatically open newly created notes in the editor.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoOpenCreatedNote)
+          .onChange(async (value) => {
+            this.plugin.settings.autoOpenCreatedNote = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Concise Skill System Prompt
+    new Setting(containerEl)
+      .setName("Concise Skill Prompt")
+      .setDesc("System instructions used for Concise mode.")
+      .addTextArea((textArea) => {
+        textArea
+          .setValue(this.plugin.settings.systemPrompt)
+          .onChange(async (value) => {
+            this.plugin.settings.systemPrompt = value;
+            await this.plugin.saveSettings();
+          });
+        textArea.inputEl.rows = 8;
+        textArea.inputEl.cols = 50;
+      });
+
+    // Detailed Skill System Prompt
+    new Setting(containerEl)
+      .setName("Detailed Skill Prompt")
+      .setDesc("System instructions used for Detailed mode.")
+      .addTextArea((textArea) => {
+        textArea
+          .setValue(this.plugin.settings.detailedPrompt || DETAILED_OBSIDIAN_SKILL_PROMPT)
+          .onChange(async (value) => {
+            this.plugin.settings.detailedPrompt = value;
+            await this.plugin.saveSettings();
+          });
+        textArea.inputEl.rows = 8;
+        textArea.inputEl.cols = 50;
+      });
+
+    // Reset prompt button
+    new Setting(containerEl)
+      .setName("Reset Prompts to Default")
+      .setDesc("Restore default Concise and Detailed Obsidian formatting prompts.")
+      .addButton((btn) =>
+        btn.setButtonText("Reset to Default").onClick(async () => {
+          this.plugin.settings.systemPrompt = CONCISE_OBSIDIAN_SKILL_PROMPT;
+          this.plugin.settings.detailedPrompt = DETAILED_OBSIDIAN_SKILL_PROMPT;
+          await this.plugin.saveSettings();
+          this.display();
+        })
+      );
+  }
+}

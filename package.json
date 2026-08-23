@@ -1,0 +1,28 @@
+{
+  "name": "obsidian-nemotron-notes",
+  "version": "1.0.0",
+  "description": "Transform raw text into concise, beautifully structured notes the Obsidian way using NVIDIA Nemotron-3 Ultra.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "ai",
+    "notes",
+    "nvidia",
+    "nemotron"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "builtin-modules": "4.0.0",
+    "esbuild": "0.25.0",
+    "obsidian": "latest",
+    "tslib": "2.8.1",
+    "typescript": "5.7.3"
+  }
+}

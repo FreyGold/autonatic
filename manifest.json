@@ -1,0 +1,10 @@
+{
+  "id": "nemotron-note-crafter",
+  "name": "Nemotron Note Crafter",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Transform raw text into concise, beautifully structured notes the Obsidian way using NVIDIA Nemotron-3 Ultra.",
+  "author": "Antigravity",
+  "authorUrl": "https://github.com",
+  "isDesktopOnly": false
+}
