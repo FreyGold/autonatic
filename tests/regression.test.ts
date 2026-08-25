@@ -129,6 +129,67 @@ test("parallel diagram cards never overlap", async () => {
   }
 });
 
+test("architecture group titles never stack on each other", async () => {
+  const model = {
+    type: "architecture",
+    title: "Network stack",
+    groups: [
+      { id: "application", title: "Application Layer" },
+      { id: "transport", title: "Transport Layer" },
+    ],
+    nodes: [
+      { id: "http", title: "HTTP Semantics", groupId: "application", kind: "process" },
+      { id: "kernel", title: "Kernel TCP Stack", groupId: "transport", kind: "process" },
+      { id: "tcp", title: "TCP Reliable Stream", groupId: "transport", kind: "process" },
+      { id: "proxy", title: "Application Proxy", groupId: "application", kind: "process" },
+    ],
+    edges: [
+      { from: "http", to: "tcp" },
+      { from: "kernel", to: "proxy" },
+    ],
+  };
+  const result = await new DiagramEngine({ synthesize: async () => model }).generate(
+    { title: "Network stack", content: "HTTP and TCP cross application and transport boundaries." },
+    { type: "architecture", direction: "right" },
+  );
+  const scene = JSON.parse(result.excalidrawJson);
+  const titles = scene.elements.filter((element: { id: string }) => /^group-.*-title$/.test(element.id));
+  const overlaps = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) =>
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+
+  assert.equal(titles.length, 2);
+  assert.equal(overlaps(titles[0], titles[1]), false, "architecture group titles overlap");
+});
+
+test("crossing architecture edges use separate label positions", async () => {
+  const model = {
+    type: "architecture",
+    title: "Network stack",
+    groups: [{ id: "left", title: "Left Layer" }, { id: "right", title: "Right Layer" }],
+    nodes: [
+      { id: "left-top", title: "Left Top", groupId: "left", kind: "process" },
+      { id: "left-bottom", title: "Left Bottom", groupId: "left", kind: "process" },
+      { id: "right-top", title: "Right Top", groupId: "right", kind: "process" },
+      { id: "right-bottom", title: "Right Bottom", groupId: "right", kind: "process" },
+    ],
+    edges: [
+      { from: "left-top", to: "right-bottom", label: "encapsulated in" },
+      { from: "left-bottom", to: "right-top", label: "implemented by" },
+    ],
+  };
+  const result = await new DiagramEngine({ synthesize: async () => model }).generate(
+    { title: "Network stack", content: "Two layers with crossing connections." },
+    { type: "architecture", direction: "right" },
+  );
+  const scene = JSON.parse(result.excalidrawJson);
+  const labels = scene.elements.filter((element: { id: string }) => element.id.startsWith("edge-") && element.id.endsWith("-label"));
+  const overlaps = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) =>
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+
+  assert.equal(labels.length, 2);
+  assert.equal(overlaps(labels[0], labels[1]), false, "architecture edge labels overlap");
+});
+
 test("layered diagrams reorder cards to prevent avoidable arrow crossings", async () => {
   const model = {
     type: "flowchart", title: "Parallel work",
@@ -451,7 +512,7 @@ test("an updated Excalidraw file records and restores its previous content", asy
   assert.equal(result.fileSnapshot.isNewFile, false);
   assert.equal(result.fileSnapshot.previousContent, "user drawing");
   assert.equal(result.fileSnapshot.newContent, await vault.read(drawing));
-  assert.match(result.fileSnapshot.newContent, /nemotron-renderer: 5/);
+  assert.match(result.fileSnapshot.newContent, /nemotron-renderer: 6/);
 
   const history = new HistoryManager(app as never, [{
     id: "drawing",

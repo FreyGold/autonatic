@@ -1,6 +1,6 @@
 {
   "name": "obsidian-nemotron-notes",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Transform raw text into concise, beautifully structured notes the Obsidian way using NVIDIA Nemotron-3 Ultra.",
   "main": "main.js",
   "scripts": {

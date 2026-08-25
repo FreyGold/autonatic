@@ -224,6 +224,36 @@ function layout(spec: DiagramSpec, direction: "right" | "down"): Map<string, Box
     const groupOrder = [...new Set(spec.nodes.map((node) => node.groupId || "items"))]; const counters = new Map<string, number>();
     spec.nodes.forEach((node) => { const group = node.groupId || "items"; const col = groupOrder.indexOf(group); const row = counters.get(group) ?? 0; counters.set(group, row + 1); const dim = dimensions.get(node.id)!; boxes.set(node.id, { id: node.id, x: 120 + col * 380, y: 240 + row * 290, ...dim }); }); return boxes;
   }
+  if (spec.type === "architecture" && spec.nodes.some((node) => node.groupId)) {
+    const nodeGroupIds = [...new Set(spec.nodes.map((node) => node.groupId || "__ungrouped"))];
+    const declaredGroupIds = spec.groups.map((group) => group.id).filter((id) => nodeGroupIds.includes(id));
+    const groupOrder = [...declaredGroupIds, ...nodeGroupIds.filter((id) => !declaredGroupIds.includes(id))];
+    let groupOffset = direction === "right" ? 120 : 180;
+
+    for (const groupId of groupOrder) {
+      const nodes = spec.nodes.filter((node) => (node.groupId || "__ungrouped") === groupId);
+      if (direction === "right") {
+        const groupWidth = Math.max(...nodes.map((node) => dimensions.get(node.id)!.width));
+        let nodeY = 180;
+        for (const node of nodes) {
+          const dim = dimensions.get(node.id)!;
+          boxes.set(node.id, { id: node.id, x: groupOffset, y: nodeY, ...dim });
+          nodeY += dim.height + 180;
+        }
+        groupOffset += groupWidth + 360;
+      } else {
+        const groupHeight = Math.max(...nodes.map((node) => dimensions.get(node.id)!.height));
+        let nodeX = 120;
+        for (const node of nodes) {
+          const dim = dimensions.get(node.id)!;
+          boxes.set(node.id, { id: node.id, x: nodeX, y: groupOffset, ...dim });
+          nodeX += dim.width + 260;
+        }
+        groupOffset += groupHeight + 240;
+      }
+    }
+    return boxes;
+  }
   const order = new Map(spec.nodes.map((node, index) => [node.id, index]));
   const rank = new Map(spec.nodes.map((node) => [node.id, 0]));
   for (let pass = 0; pass < spec.nodes.length; pass++) {
@@ -262,6 +292,7 @@ function hash(value: string): number { let h = 2166136261; for (const char of va
 
 function renderExcalidraw(spec: DiagramSpec, options: DiagramOptions, source?: string): string {
   const palette = PALETTES[options.theme]; const boxes = layout(spec, options.direction); const elements: Record<string, unknown>[] = [];
+  const edgeLabelBoxes: Box[] = [];
   elements.push({ ...base("diagram-title", "text", 80, 55, 1000, 40), strokeColor: palette.text, backgroundColor: "transparent", fillStyle: "solid", text: spec.title, originalText: spec.title, fontSize: 28, fontFamily: 1, textAlign: "left", verticalAlign: "top", baseline: 28, containerId: null, lineHeight: 1.2, link: source ? `[[${source}]]` : null });
   if (spec.subtitle) elements.push({ ...base("diagram-subtitle", "text", 80, 98, 1000, 24), strokeColor: palette.muted, backgroundColor: "transparent", fillStyle: "solid", text: spec.subtitle, originalText: spec.subtitle, fontSize: 16, fontFamily: 1, textAlign: "left", verticalAlign: "top", baseline: 16, containerId: null, lineHeight: 1.2 });
   spec.groups.forEach((group, index) => {
@@ -306,7 +337,29 @@ function renderExcalidraw(spec: DiagramSpec, options: DiagramOptions, source?: s
     }
     const dx = endX - startX, dy = endY - startY;
     const id = `edge-${edge.from}-${edge.to}`; elements.push({ ...base(id, "arrow", startX, startY, dx, dy), strokeColor: edge.kind === "error" ? "#ef4444" : palette.edge, backgroundColor: "transparent", fillStyle: "solid", strokeStyle: edge.kind === "optional" || edge.kind === "error" ? "dashed" : "solid", points, lastCommittedPoint: null, startBinding: { elementId: from.id, focus: 0, gap: 8 }, endBinding: { elementId: to.id, focus: 0, gap: 8 }, startArrowhead: null, endArrowhead: "arrow" });
-    if (edge.label) { const label = edge.label; elements.push({ ...base(`${id}-label`, "text", labelX - 70, labelY - 18, 140, 22), strokeColor: palette.muted, backgroundColor: palette.canvas, fillStyle: "solid", text: label, originalText: label, fontSize: 13, fontFamily: 1, textAlign: "center", verticalAlign: "middle", baseline: 13, containerId: null, lineHeight: 1.2 }); }
+    if (edge.label) {
+      const labelLines = wrap(edge.label, 22);
+      const labelText = labelLines.join("\n");
+      const labelWidth = 180;
+      const labelHeight = Math.max(24, labelLines.length * 18);
+      const preferredY = labelY - labelHeight / 2;
+      let labelTop = preferredY;
+      for (let lane = 0; lane < 12; lane++) {
+        const distance = Math.ceil(lane / 2) * (labelHeight + 14);
+        const offset = lane === 0 ? 0 : lane % 2 === 1 ? -distance : distance;
+        const candidate: Box = { id: `${id}-label`, x: labelX - labelWidth / 2, y: preferredY + offset, width: labelWidth, height: labelHeight };
+        const collides = edgeLabelBoxes.some((placed) =>
+          candidate.x < placed.x + placed.width + 10 && candidate.x + candidate.width + 10 > placed.x
+          && candidate.y < placed.y + placed.height + 8 && candidate.y + candidate.height + 8 > placed.y
+        );
+        if (!collides) {
+          labelTop = candidate.y;
+          edgeLabelBoxes.push(candidate);
+          break;
+        }
+      }
+      elements.push({ ...base(`${id}-label`, "text", labelX - labelWidth / 2, labelTop, labelWidth, labelHeight), strokeColor: palette.muted, backgroundColor: palette.canvas, fillStyle: "solid", text: labelText, originalText: labelText, fontSize: 13, fontFamily: 1, textAlign: "center", verticalAlign: "middle", baseline: 13, containerId: null, lineHeight: 1.2 });
+    }
   }
   spec.nodes.forEach((node) => {
     const box = boxes.get(node.id)!; const accent = KIND_COLORS[node.kind]; const shape = node.kind === "decision" ? "diamond" : node.kind === "result" ? "ellipse" : "rectangle";

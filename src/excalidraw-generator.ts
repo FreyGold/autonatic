@@ -4,7 +4,7 @@ import type { FileSnapshot } from "./history-manager";
 import { streamChatCompletion, StreamCallbacks } from "./api";
 import { DiagramEngine, DiagramOptions, DiagramSynthesisRequest } from "./diagram-engine";
 
-export const DIAGRAM_RENDERER_VERSION = 5;
+export const DIAGRAM_RENDERER_VERSION = 6;
 
 function createDiagramEngine(settings: NemotronPluginSettings, callbacks?: StreamCallbacks): DiagramEngine {
   return new DiagramEngine({
