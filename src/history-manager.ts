@@ -21,10 +21,163 @@ export interface PromptHistoryItem {
   timestamp: number;
   rawText: string;
   customInstruction: string;
-  mode: "smart" | "multi_note" | "new_file" | "append";
+  mode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append";
   style: "concise" | "detailed";
   attachedImages?: { id: string; name: string; dataUrl: string }[];
   preview: string;
+}
+
+export class HistoryConflictError extends Error {
+  constructor(path: string, action: "undo" | "redo") {
+    super(`Cannot ${action} "${path}" because it changed after generation.`);
+    this.name = "HistoryConflictError";
+  }
+}
+
+async function readFileContent(app: App, path: string): Promise<string | null> {
+  const file = app.vault.getAbstractFileByPath(normalizePath(path));
+  return file instanceof TFile ? app.vault.read(file) : null;
+}
+
+async function validateSnapshots(
+  app: App,
+  files: FileSnapshot[],
+  direction: "undo" | "redo"
+): Promise<void> {
+  const states = new Map<string, string | null>();
+  const ordered = direction === "undo" ? [...files].reverse() : files;
+
+  for (const snapshot of ordered) {
+    const path = normalizePath(snapshot.path);
+    let current = states.get(path);
+    if (!states.has(path)) {
+      current = await readFileContent(app, path);
+    }
+
+    if (direction === "undo") {
+      if (current !== snapshot.newContent) {
+        throw new HistoryConflictError(path, direction);
+      }
+      if (!snapshot.isNewFile && snapshot.previousContent === undefined) {
+        throw new HistoryConflictError(path, direction);
+      }
+      states.set(path, snapshot.isNewFile ? null : snapshot.previousContent!);
+    } else {
+      const expected = snapshot.isNewFile ? null : snapshot.previousContent;
+      if (current !== expected) {
+        throw new HistoryConflictError(path, direction);
+      }
+      states.set(path, snapshot.newContent);
+    }
+  }
+}
+
+async function applySnapshotUndo(app: App, snapshot: FileSnapshot): Promise<void> {
+  const path = normalizePath(snapshot.path);
+  const file = app.vault.getAbstractFileByPath(path);
+
+  if (snapshot.isNewFile) {
+    if (!(file instanceof TFile) || (await app.vault.read(file)) !== snapshot.newContent) {
+      throw new HistoryConflictError(path, "undo");
+    }
+    await app.fileManager.trashFile(file);
+    return;
+  }
+
+  if (!(file instanceof TFile) || snapshot.previousContent === undefined) {
+    throw new HistoryConflictError(path, "undo");
+  }
+  await app.vault.process(file, (current) => {
+    if (current !== snapshot.newContent) throw new HistoryConflictError(path, "undo");
+    return snapshot.previousContent!;
+  });
+}
+
+async function applySnapshotRedo(app: App, snapshot: FileSnapshot): Promise<void> {
+  const path = normalizePath(snapshot.path);
+  const file = app.vault.getAbstractFileByPath(path);
+
+  if (snapshot.isNewFile) {
+    if (file) throw new HistoryConflictError(path, "redo");
+    await app.vault.create(path, snapshot.newContent);
+    return;
+  }
+
+  if (!(file instanceof TFile) || snapshot.previousContent === undefined) {
+    throw new HistoryConflictError(path, "redo");
+  }
+  await app.vault.process(file, (current) => {
+    if (current !== snapshot.previousContent) throw new HistoryConflictError(path, "redo");
+    return snapshot.newContent;
+  });
+}
+
+export async function revertFileSnapshots(
+  app: App,
+  files: FileSnapshot[],
+  foldersCreated: string[] = []
+): Promise<void> {
+  await validateSnapshots(app, files, "undo");
+  const applied: FileSnapshot[] = [];
+
+  try {
+    for (const snapshot of [...files].reverse()) {
+      await applySnapshotUndo(app, snapshot);
+      applied.push(snapshot);
+    }
+  } catch (error) {
+    for (const snapshot of [...applied].reverse()) {
+      try {
+        await applySnapshotRedo(app, snapshot);
+      } catch (restoreError) {
+        console.error("Failed to restore a file after an undo error:", restoreError);
+      }
+    }
+    throw error;
+  }
+
+  for (const folderPath of [...foldersCreated].reverse()) {
+    const folder = app.vault.getAbstractFileByPath(normalizePath(folderPath));
+    if (folder instanceof TFolder && folder.children.length === 0) {
+      try {
+        await app.fileManager.trashFile(folder);
+      } catch (error) {
+        console.warn(`Could not remove empty generated folder "${folderPath}":`, error);
+      }
+    }
+  }
+}
+
+async function reapplyFileSnapshots(
+  app: App,
+  files: FileSnapshot[],
+  foldersCreated: string[] = []
+): Promise<void> {
+  await validateSnapshots(app, files, "redo");
+
+  for (const folderPath of foldersCreated) {
+    const path = normalizePath(folderPath);
+    if (!app.vault.getAbstractFileByPath(path)) {
+      await app.vault.createFolder(path);
+    }
+  }
+
+  const applied: FileSnapshot[] = [];
+  try {
+    for (const snapshot of files) {
+      await applySnapshotRedo(app, snapshot);
+      applied.push(snapshot);
+    }
+  } catch (error) {
+    for (const snapshot of [...applied].reverse()) {
+      try {
+        await applySnapshotUndo(app, snapshot);
+      } catch (restoreError) {
+        console.error("Failed to restore a file after a redo error:", restoreError);
+      }
+    }
+    throw error;
+  }
 }
 
 export class HistoryManager {
@@ -88,33 +241,11 @@ export class HistoryManager {
   }
 
   public async undo(): Promise<GenerationHistoryRecord | null> {
-    const record = this.undoStack.pop();
+    const record = this.undoStack[this.undoStack.length - 1];
     if (!record) return null;
 
-    for (const fileSnap of record.files) {
-      const normalized = normalizePath(fileSnap.path);
-      const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
-
-      if (fileSnap.isNewFile) {
-        if (abstractFile instanceof TFile) {
-          await this.app.vault.delete(abstractFile);
-        }
-      } else if (fileSnap.previousContent !== undefined) {
-        if (abstractFile instanceof TFile) {
-          await this.app.vault.modify(abstractFile, fileSnap.previousContent);
-        } else {
-          await this.app.vault.create(normalized, fileSnap.previousContent);
-        }
-      }
-    }
-
-    for (const folderPath of [...record.foldersCreated].reverse()) {
-      const normalized = normalizePath(folderPath);
-      const folder = this.app.vault.getAbstractFileByPath(normalized);
-      if (folder instanceof TFolder && folder.children.length === 0) {
-        await this.app.vault.delete(folder);
-      }
-    }
+    await revertFileSnapshots(this.app, record.files, record.foldersCreated);
+    this.undoStack.pop();
 
     this.redoStack.push(record);
     if (this.redoStack.length > this.MAX_GENERATION_HISTORY) {
@@ -125,34 +256,11 @@ export class HistoryManager {
   }
 
   public async redo(): Promise<GenerationHistoryRecord | null> {
-    const record = this.redoStack.pop();
+    const record = this.redoStack[this.redoStack.length - 1];
     if (!record) return null;
 
-    for (const folderPath of record.foldersCreated) {
-      const normalized = normalizePath(folderPath);
-      if (!this.app.vault.getAbstractFileByPath(normalized)) {
-        await this.app.vault.createFolder(normalized);
-      }
-    }
-
-    for (const fileSnap of record.files) {
-      const normalized = normalizePath(fileSnap.path);
-      const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
-
-      if (fileSnap.isNewFile) {
-        if (abstractFile instanceof TFile) {
-          await this.app.vault.modify(abstractFile, fileSnap.newContent);
-        } else {
-          await this.app.vault.create(normalized, fileSnap.newContent);
-        }
-      } else {
-        if (abstractFile instanceof TFile) {
-          await this.app.vault.modify(abstractFile, fileSnap.newContent);
-        } else {
-          await this.app.vault.create(normalized, fileSnap.newContent);
-        }
-      }
-    }
+    await reapplyFileSnapshots(this.app, record.files, record.foldersCreated);
+    this.redoStack.pop();
 
     this.undoStack.push(record);
     if (this.undoStack.length > this.MAX_GENERATION_HISTORY) {

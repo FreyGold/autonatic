@@ -1,4 +1,7 @@
 import { App, TFolder, normalizePath } from "obsidian";
+import { CustomSelect, SelectOption } from "./custom-select";
+
+let folderNavigatorId = 0;
 
 export class FolderNavigator {
   private app: App;
@@ -6,10 +9,12 @@ export class FolderNavigator {
   private currentPath: string = "";
   private onSelect: (folderPath: string) => void;
 
-  private breadcrumbContainer: HTMLElement;
-  private subfoldersSelect: HTMLSelectElement;
-  private manualInput: HTMLInputElement;
-  private upButton: HTMLButtonElement;
+  private breadcrumbContainer!: HTMLElement;
+  private subfoldersRow!: HTMLElement;
+  private subfoldersLabelId: string;
+  private subfoldersSelect?: CustomSelect;
+  private manualInput!: HTMLInputElement;
+  private upButton!: HTMLButtonElement;
 
   constructor(
     app: App,
@@ -17,6 +22,8 @@ export class FolderNavigator {
     initialPath: string = "",
     onSelect: (folderPath: string) => void
   ) {
+    const instanceId = ++folderNavigatorId;
+    this.subfoldersLabelId = `nemotron-subfolder-label-${instanceId}`;
     this.app = app;
     this.currentPath = normalizePath(initialPath).replace(/^\/+|\/+$/g, "");
     if (this.currentPath === ".") this.currentPath = "";
@@ -44,18 +51,11 @@ export class FolderNavigator {
     this.renderBreadcrumbs();
 
     // 2. Middle row: Subfolders dropdown
-    const midRow = this.containerEl.createDiv({ cls: "nemotron-folder-mid-row" });
-    midRow.createEl("span", { text: "Subfolder:", cls: "nemotron-folder-sub-label" });
-
-    this.subfoldersSelect = midRow.createEl("select", { cls: "nemotron-folder-select" });
+    this.subfoldersRow = this.containerEl.createDiv({ cls: "nemotron-folder-mid-row" });
+    const subfolderLabel = this.subfoldersRow.createEl("label", { text: "Subfolder:", cls: "nemotron-folder-sub-label" });
+    subfolderLabel.id = this.subfoldersLabelId;
+    subfolderLabel.htmlFor = `${this.subfoldersLabelId}-control`;
     this.renderSubfoldersDropdown();
-
-    this.subfoldersSelect.addEventListener("change", () => {
-      const selected = this.subfoldersSelect.value;
-      if (selected !== "__none__") {
-        this.navigateTo(selected);
-      }
-    });
 
     // 3. Bottom row: Manual Path Input
     const bottomRow = this.containerEl.createDiv({ cls: "nemotron-folder-bottom-row" });
@@ -112,28 +112,24 @@ export class FolderNavigator {
   }
 
   private renderSubfoldersDropdown() {
-    this.subfoldersSelect.empty();
-
-    const noneOpt = this.subfoldersSelect.createEl("option", {
-      text: "-- Enter or choose a subfolder --",
-      value: "__none__",
-    });
-    noneOpt.selected = true;
-
+    this.subfoldersSelect?.destroy();
+    this.subfoldersRow.querySelector(".nemotron-custom-select-container")?.remove();
     const subfolders = this.getSubfolders(this.currentPath);
-
-    if (subfolders.length === 0) {
-      this.subfoldersSelect.disabled = true;
-      noneOpt.text = "-- No subfolders found --";
-    } else {
-      this.subfoldersSelect.disabled = false;
-      subfolders.forEach((f) => {
-        this.subfoldersSelect.createEl("option", {
-          text: f.name,
-          value: f.path,
-        });
-      });
-    }
+    const options: SelectOption[] = subfolders.length === 0
+      ? [{ value: "__none__", label: "No subfolders found", disabled: true }]
+      : [
+          { value: "__none__", label: "Enter or choose a subfolder" },
+          ...subfolders.map((folder) => ({ value: folder.path, label: folder.name })),
+        ];
+    this.subfoldersSelect = new CustomSelect(
+      this.subfoldersRow,
+      options,
+      "__none__",
+      (selected) => {
+        if (selected !== "__none__") this.navigateTo(selected);
+      },
+      { controlId: `${this.subfoldersLabelId}-control`, labelId: this.subfoldersLabelId },
+    );
   }
 
   private getSubfolders(folderPath: string): TFolder[] {
@@ -199,5 +195,9 @@ export class FolderNavigator {
 
   public getPath(): string {
     return this.currentPath;
+  }
+
+  public destroy(): void {
+    this.subfoldersSelect?.destroy();
   }
 }

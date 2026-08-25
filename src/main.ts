@@ -4,12 +4,12 @@ import { NemotronModal } from "./modal";
 import { generateNemotronNote } from "./api";
 import { buildUserPrompt } from "./prompts";
 import { buildOrUpdateVaultIndex, VAULT_INDEX_FILENAME } from "./vault-indexer";
-import { HistoryManager, GenerationHistoryRecord } from "./history-manager";
+import { FileSnapshot, HistoryManager, revertFileSnapshots } from "./history-manager";
 import { createMirroredExcalidrawDrawing } from "./excalidraw-generator";
 
 export default class NemotronPlugin extends Plugin {
-  settings: NemotronPluginSettings;
-  historyManager: HistoryManager;
+  declare settings: NemotronPluginSettings;
+  historyManager!: HistoryManager;
   private updateDebounceTimer: any = null;
 
   async onload() {
@@ -62,6 +62,9 @@ export default class NemotronPlugin extends Plugin {
         const noteFile = activeView.file;
         const noteContent = await this.app.vault.read(noteFile);
         const rootExcalFolder = this.settings.excalidrawFolder || "Excalidrawings";
+        const fileSnapshots: FileSnapshot[] = [];
+        let foldersCreated: string[] = [];
+        let generationRecorded = false;
 
         new Notice("AI Synthesizing Rich Excalidraw Architecture Diagram...", 8000);
 
@@ -73,6 +76,8 @@ export default class NemotronPlugin extends Plugin {
             noteContent,
             rootExcalFolder
           );
+          fileSnapshots.push(res.fileSnapshot);
+          foldersCreated = res.foldersCreated;
 
           // Insert Top Link in Active Note
           const noteFolder = noteFile.parent ? (noteFile.parent.path === "/" ? "" : noteFile.parent.path) : "";
@@ -92,7 +97,18 @@ export default class NemotronPlugin extends Plugin {
             } else {
               updatedNoteText = `${linkHeader}${noteContent.trimStart()}`;
             }
-            await this.app.vault.modify(noteFile, updatedNoteText);
+            await this.app.vault.process(noteFile, (current) => {
+              if (current !== noteContent) {
+                throw new Error(`Cannot add the diagram link because "${noteFile.path}" changed.`);
+              }
+              return updatedNoteText;
+            });
+            fileSnapshots.push({
+              path: noteFile.path,
+              isNewFile: false,
+              previousContent: noteContent,
+              newContent: updatedNoteText,
+            });
           }
 
           this.historyManager.recordGeneration({
@@ -100,27 +116,27 @@ export default class NemotronPlugin extends Plugin {
             timestamp: Date.now(),
             mode: "excalidraw",
             description: `Rich Excalidraw: ${noteFile.basename}`,
-            files: [
-              {
-                path: res.drawingPath,
-                isNewFile: true,
-                newContent: "",
-              },
-              {
-                path: noteFile.path,
-                isNewFile: false,
-                previousContent: noteContent,
-                newContent: updatedNoteText,
-              },
-            ],
-            foldersCreated: res.foldersCreated,
+            files: fileSnapshots,
+            foldersCreated,
           });
+          generationRecorded = true;
 
-          const leaf = this.app.workspace.getLeaf(false);
-          await leaf.openFile(res.drawingFile);
+          try {
+            const leaf = this.app.workspace.getLeaf(false);
+            await leaf.openFile(res.drawingFile);
+          } catch (openError) {
+            console.warn(`Created "${res.drawingPath}" but could not open it:`, openError);
+          }
           new Notice(`Rich Excalidraw diagram generated in ${res.drawingPath}!`, 7000);
           this.scheduleIndexUpdate();
         } catch (err: any) {
+          if (!generationRecorded && fileSnapshots.length > 0) {
+            try {
+              await revertFileSnapshots(this.app, fileSnapshots, foldersCreated);
+            } catch (rollbackError) {
+              console.error("Failed to restore files after Excalidraw error:", rollbackError);
+            }
+          }
           console.error("Excalidraw generation error:", err);
           new Notice(`Error generating diagram: ${err.message}`);
         }
@@ -131,12 +147,16 @@ export default class NemotronPlugin extends Plugin {
       id: "undo-last-generation",
       name: "Undo Last Generation",
       callback: async () => {
-        const record = await this.historyManager.undo();
-        if (record) {
-          new Notice(`Undid generation: ${record.description}`);
-          this.scheduleIndexUpdate();
-        } else {
-          new Notice("No generations to undo.");
+        try {
+          const record = await this.historyManager.undo();
+          if (record) {
+            new Notice(`Undid generation: ${record.description}`);
+            this.scheduleIndexUpdate();
+          } else {
+            new Notice("No generations to undo.");
+          }
+        } catch (err: any) {
+          new Notice(err.message || "The generation cannot be undone safely.", 8000);
         }
       },
     });
@@ -145,12 +165,16 @@ export default class NemotronPlugin extends Plugin {
       id: "redo-last-generation",
       name: "Redo Last Generation",
       callback: async () => {
-        const record = await this.historyManager.redo();
-        if (record) {
-          new Notice(`Redid generation: ${record.description}`);
-          this.scheduleIndexUpdate();
-        } else {
-          new Notice("No generations to redo.");
+        try {
+          const record = await this.historyManager.redo();
+          if (record) {
+            new Notice(`Redid generation: ${record.description}`);
+            this.scheduleIndexUpdate();
+          } else {
+            new Notice("No generations to redo.");
+          }
+        } catch (err: any) {
+          new Notice(err.message || "The generation cannot be redone safely.", 8000);
         }
       },
     });
@@ -158,7 +182,7 @@ export default class NemotronPlugin extends Plugin {
     this.addCommand({
       id: "transform-selection-nemotron",
       name: "Transform Selected Text to Structured Note",
-      editorCallback: async (editor: Editor, view: MarkdownView) => {
+      editorCallback: async (editor: Editor, view) => {
         const selection = editor.getSelection();
         if (!selection || !selection.trim()) {
           new Notice("Please select text to transform with Nemotron.");
@@ -191,9 +215,9 @@ export default class NemotronPlugin extends Plugin {
           );
           
           if (view.file) {
-            const currentContent = await this.app.vault.read(view.file);
+            const currentContent = editor.getValue();
             editor.replaceSelection(result.content);
-            const updatedContent = await this.app.vault.read(view.file);
+            const updatedContent = editor.getValue();
 
             this.historyManager.recordGeneration({
               id: `${Date.now()}`,
@@ -251,6 +275,7 @@ export default class NemotronPlugin extends Plugin {
 
   public async scheduleIndexUpdate() {
     try {
+      if (!this.settings.enableAutomaticIndexing) return;
       const exists = await this.app.vault.adapter.exists(VAULT_INDEX_FILENAME);
       if (!exists) return;
 

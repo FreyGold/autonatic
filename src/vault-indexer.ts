@@ -1,5 +1,6 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
 import type { NemotronPluginSettings } from "./settings";
+import { isExcludedPath, parseExcludedFolders } from "./privacy-controls";
 import * as https from "https";
 import * as http from "http";
 
@@ -210,7 +211,8 @@ export async function buildOrUpdateVaultIndex(
   }
 
   const now = Date.now();
-  const mdFiles = app.vault.getMarkdownFiles().filter((f) => !f.name.startsWith("."));
+  const excluded = parseExcludedFolders(settings?.excludedFolders ?? "");
+  const mdFiles = app.vault.getMarkdownFiles().filter((f) => !f.name.startsWith(".") && !isExcludedPath(f.path, excluded));
   const totalFiles = mdFiles.length;
 
   const analyzedNotesMap = new Map<string, NoteItem>();
@@ -258,7 +260,7 @@ export async function buildOrUpdateVaultIndex(
   }
 
   // Phase 2: Deep AI Semantic Analysis (if API key available)
-  if (settings && settings.apiKey && notesToAnalyzeWithAI.length > 0) {
+  if (settings?.allowRemoteVaultIndexing && settings.apiKey && notesToAnalyzeWithAI.length > 0) {
     const BATCH_SIZE = 6;
     const totalAiBatches = Math.ceil(notesToAnalyzeWithAI.length / BATCH_SIZE);
 
@@ -468,10 +470,34 @@ export function extractSmartDecision(content: string): {
   decision: SmartPlacementDecision | null;
   cleanedContent: string;
 } {
+  const toDecision = (value: unknown): SmartPlacementDecision | null => {
+    if (!value || typeof value !== "object") return null;
+    const candidate = value as Record<string, unknown>;
+    if (candidate.action !== "create_new_note" && candidate.action !== "append_to_note") return null;
+    if (typeof candidate.reason !== "string" || !candidate.reason.trim()) return null;
+
+    const readOptionalString = (key: string): string | undefined => {
+      const field = candidate[key];
+      return typeof field === "string" && field.trim() ? field.trim() : undefined;
+    };
+
+    const decision: SmartPlacementDecision = {
+      action: candidate.action,
+      reason: candidate.reason.trim(),
+      targetFolder: readOptionalString("targetFolder"),
+      targetNotePath: readOptionalString("targetNotePath"),
+      title: readOptionalString("title"),
+    };
+
+    if (decision.action === "append_to_note" && !decision.targetNotePath) return null;
+    return decision;
+  };
+
   const match = content.match(/```(?:smart-decision|json:smart-decision)\s*\r?\n([\s\S]*?)\r?\n```/);
   if (match) {
     try {
-      const decisionObj = JSON.parse(match[1]) as SmartPlacementDecision;
+      const decisionObj = toDecision(JSON.parse(match[1]));
+      if (!decisionObj) throw new Error("Invalid smart decision fields.");
       const cleaned = content.replace(/```(?:smart-decision|json:smart-decision)\s*\r?\n[\s\S]*?\r?\n```\s*/, "").trim();
       return { decision: decisionObj, cleanedContent: cleaned };
     } catch (e) {
@@ -479,10 +505,37 @@ export function extractSmartDecision(content: string): {
     }
   }
 
+  // Support responses from versions that requested a plain-text decision block.
+  const legacyMatch = content.match(/---\s*SMART DECISION\s*---\s*\r?\n([\s\S]*?)\r?\n---\s*END DECISION\s*---/i);
+  if (legacyMatch) {
+    const fields = new Map<string, string>();
+    for (const line of legacyMatch[1].split(/\r?\n/)) {
+      const fieldMatch = line.match(/^\s*(Action|Target|Folder|Title|Reason):\s*(.*?)\s*$/i);
+      if (fieldMatch) {
+        fields.set(fieldMatch[1].toLowerCase(), fieldMatch[2].replace(/^["']|["']$/g, "").trim());
+      }
+    }
+
+    const decisionObj = toDecision({
+      action: fields.get("action"),
+      targetNotePath: fields.get("target"),
+      targetFolder: fields.get("folder"),
+      title: fields.get("title"),
+      reason: fields.get("reason"),
+    });
+    if (decisionObj) {
+      return {
+        decision: decisionObj,
+        cleanedContent: content.replace(legacyMatch[0], "").trim(),
+      };
+    }
+  }
+
   const rawJsonMatch = content.match(/\{\s*"action":\s*"(create_new_note|append_to_note)"[\s\S]*?"reason":\s*"[^"]+"\s*\}/);
   if (rawJsonMatch) {
     try {
-      const decisionObj = JSON.parse(rawJsonMatch[0]) as SmartPlacementDecision;
+      const decisionObj = toDecision(JSON.parse(rawJsonMatch[0]));
+      if (!decisionObj) throw new Error("Invalid smart decision fields.");
       const cleaned = content.replace(rawJsonMatch[0], "").trim();
       return { decision: decisionObj, cleanedContent: cleaned };
     } catch {}

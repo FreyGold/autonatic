@@ -8,7 +8,7 @@ export interface NemotronPluginSettings {
   baseUrl: string;
   model: string;
   visionModel: string;
-  defaultDestinationMode: "smart" | "multi_note" | "new_file" | "append";
+  defaultDestinationMode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append";
   defaultNoteStyle: "concise" | "detailed";
   enableProperties: boolean;
   enableAutoSplitLongNotes: boolean;
@@ -24,6 +24,12 @@ export interface NemotronPluginSettings {
   systemPrompt: string;
   detailedPrompt: string;
   autoOpenCreatedNote: boolean;
+  enableAutomaticIndexing: boolean;
+  allowRemoteVaultIndexing: boolean;
+  excludedFolders: string;
+  maxVaultContextNotes: number;
+  confirmMultiFileChanges: boolean;
+  maxAutomaticDiagrams: number;
 }
 
 export const DEFAULT_SETTINGS: NemotronPluginSettings = {
@@ -47,6 +53,12 @@ export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   systemPrompt: CONCISE_OBSIDIAN_SKILL_PROMPT,
   detailedPrompt: DETAILED_OBSIDIAN_SKILL_PROMPT,
   autoOpenCreatedNote: true,
+  enableAutomaticIndexing: false,
+  allowRemoteVaultIndexing: false,
+  excludedFolders: "Private, Templates",
+  maxVaultContextNotes: 40,
+  confirmMultiFileChanges: true,
+  maxAutomaticDiagrams: 3,
 };
 
 export class NemotronSettingTab extends PluginSettingTab {
@@ -62,6 +74,13 @@ export class NemotronSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     containerEl.createEl("h2", { text: "Nemotron Note Crafter Settings" });
+    containerEl.createEl("h3", { text: "Privacy and cost controls" });
+    new Setting(containerEl).setName("Automatic index updates").setDesc("Update the local vault index after a file changes.").addToggle((c) => c.setValue(this.plugin.settings.enableAutomaticIndexing).onChange(async (v) => { this.plugin.settings.enableAutomaticIndexing = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Send note excerpts for indexing").setDesc("Consent: send short note excerpts to NVIDIA during index builds. Off uses local metadata only.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Excluded folders").setDesc("Comma-separated folder paths that indexing must ignore.").addText((c) => c.setValue(this.plugin.settings.excludedFolders).onChange(async (v) => { this.plugin.settings.excludedFolders = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Maximum context notes").setDesc("Limit the note summaries sent with one generation request.").addSlider((c) => c.setLimits(5, 100, 5).setValue(this.plugin.settings.maxVaultContextNotes).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxVaultContextNotes = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Confirm multi-file changes").setDesc("Show the planned file count before a multi-note write.").addToggle((c) => c.setValue(this.plugin.settings.confirmMultiFileChanges).onChange(async (v) => { this.plugin.settings.confirmMultiFileChanges = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Maximum automatic diagrams").setDesc("Limit diagram requests in one operation.").addSlider((c) => c.setLimits(0, 10, 1).setValue(this.plugin.settings.maxAutomaticDiagrams).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxAutomaticDiagrams = v; await this.plugin.saveSettings(); }));
 
     // NVIDIA NIM Quick Link & Helper Card
     const nimCard = containerEl.createDiv({ cls: "nemotron-nim-card" });
@@ -139,7 +158,7 @@ export class NemotronSettingTab extends PluginSettingTab {
       });
     });
 
-    // Default Destination Mode (4 options)
+    // Default Destination Mode
     new Setting(containerEl)
       .setName("Default Destination Mode")
       .setDesc("Choose default placement behavior when opening the Note Crafter modal.")
@@ -147,11 +166,12 @@ export class NemotronSettingTab extends PluginSettingTab {
         dropdown
           .addOption("smart", "Smart Placement (Single Note Auto-Route)")
           .addOption("multi_note", "Atomic Decomposition (Multi-Note Synthesis)")
+          .addOption("multi_note_folder", "Create Multiple Notes in One Folder")
           .addOption("new_file", "Create New Note File")
           .addOption("append", "Append to Active Note")
           .setValue(this.plugin.settings.defaultDestinationMode || "smart")
           .onChange(async (value) => {
-            this.plugin.settings.defaultDestinationMode = value as "smart" | "multi_note" | "new_file" | "append";
+            this.plugin.settings.defaultDestinationMode = value as "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append";
             await this.plugin.saveSettings();
           })
       );

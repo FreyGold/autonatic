@@ -11,13 +11,20 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
   - **Wikilinks**: Auto-links related concepts `[[Topic]]` for Obsidian Graph View connectivity.
   - **Structure**: Clear headings, bold lead-in bullet points, tables, and mermaid diagrams.
 - 🎯 **Dual Generation Modes**:
-  - **Create New Note File**: Creates a new `.md` file in your vault with auto-detected title or custom folder.
+  - **Create New Note File**: Creates one `.md` file with an automatic title or selected folder.
+  - **Create Multiple Notes in Folder**: Splits the input into new atomic notes and saves all notes in one selected directory.
   - **Append to Current Note**: Adds the formatted section directly to the end of your active note.
   - **In-Place Replace**: Transform selected text right inside the active editor.
 - ⚡ **Interactive UI**:
   - Ribbon icon for one-click access.
   - Streaming live preview with collapsible reasoning thought process.
   - Full settings tab to customize API keys, models, temperatures, folders, and prompt instructions.
+- 🧭 **Adaptive Excalidraw Diagrams**:
+  - Automatic mind map, flowchart, architecture, timeline, decision-tree, and comparison selection.
+  - Compact, balanced, and detailed modes with node limits.
+  - Left-to-right or top-to-bottom flow layouts.
+  - Dark and light canvas themes.
+  - Validated connections, stable element IDs, source-heading links, and local content-based fallback diagrams.
 
 ## 🚀 How to Use
 
@@ -25,10 +32,17 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 2. Paste any text into the modal (or select text in an editor first to auto-populate).
 3. Choose your destination:
    - **Create New Note File** (Specify title and folder if desired).
+   - **Create Multiple Notes in Folder** (Select one directory for all generated notes).
    - **Append to Current Active Note**.
 4. Click **⚡ Transform to Obsidian Note**.
 
 ## ⚙️ Settings
+
+## Privacy and cost
+
+This is a desktop-only plugin. Generation sends your prompt and selected vault context to the configured NVIDIA service. Remote vault indexing is off by default. You must give consent before the indexer sends note excerpts. You can exclude folders, limit context notes, and limit automatic diagrams. The API provider can charge for each request.
+
+Run `npm run check` before a release. A tag starts the release workflow. The release contains `main.js`, `manifest.json`, `styles.css`, and `versions.json`.
 
 Go to **Obsidian Settings > Nemotron Note Crafter** to configure:
 - **API Key**: Pre-configured default NVIDIA API key.

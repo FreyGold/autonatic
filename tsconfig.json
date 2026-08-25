@@ -11,7 +11,9 @@
     "isolatedModules": true,
     "strictNullChecks": true,
     "strict": true,
-    "lib": ["DOM", "ES2022"]
+    "lib": ["DOM", "ES2022"],
+    "skipLibCheck": true,
+    "noEmit": true
   },
   "include": ["src/**/*.ts"]
 }

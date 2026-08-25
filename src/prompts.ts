@@ -103,7 +103,7 @@ ${MERMAID_SYNTAX_GUIDELINES}
 
 export function buildUserPrompt(
   rawText: string,
-  mode: "smart" | "multi_note" | "new_file" | "append",
+  mode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append",
   noteStyle: "concise" | "detailed" = "concise",
   customInstruction?: string,
   existingVaultNotes?: string[],
@@ -136,6 +136,35 @@ summary: "<1-sentence summary of this note>"
 \`\`\`
 `
     : "Do NOT include YAML frontmatter/properties block in the output.";
+
+  if (mode === "multi_note_folder") {
+    return `Current Date: ${currentDate}
+Mode: Create Multiple Notes in One Folder
+${styleInstruction}
+${propertiesInstruction}
+${vaultNotesSection}
+${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
+
+Analyze the following input. Decompose it into distinct, highly focused atomic concepts.
+Create one complete standalone note for each concept. Do not append to existing notes. Do not choose a destination folder. The application will save every note in the directory selected by the user.
+
+Format your ENTIRE response as a sequence of atomic note blocks using this EXACT syntax:
+
+=== ATOMIC NOTE ===
+Action: create_new_note
+Title: <Descriptive Note Title>
+Reason: <1 sentence explaining why this concept needs a separate note>
+--- CONTENT ---
+<Complete formatted standalone Obsidian note with frontmatter if enabled, callouts, ## headings, code, mermaid>
+=== END NOTE ===
+
+Repeat for all decomposed topic pieces.
+
+Input Content:
+---
+${rawText}
+---`;
+  }
 
   if (mode === "multi_note") {
     const treeContext = vaultKnowledgeTree
@@ -204,14 +233,16 @@ Analyze the vault knowledge tree and decide the optimal location:
 - If this content naturally extends an existing note, output 'append_to_note'.
 - Otherwise, output 'create_new_note' with the most semantically relevant folder path (maximum depth 2, e.g. "Networking/TCP").
 
-Begin your output with this EXACT decision header:
---- SMART DECISION ---
-Action: <create_new_note | append_to_note>
-Target: <if append_to_note, exact path e.g. "Networking/TCP/Flow Control.md">
-Folder: <if create_new_note, folder path e.g. "Networking/TCP">
-Title: <Descriptive Note Title>
-Reason: <1 sentence explaining why this location was chosen>
---- END DECISION ---
+Begin your output with this EXACT JSON decision block:
+\`\`\`smart-decision
+{
+  "action": "<create_new_note | append_to_note>",
+  "targetNotePath": "<if append_to_note, exact path such as Networking/TCP/Flow Control.md>",
+  "targetFolder": "<if create_new_note, folder path such as Networking/TCP>",
+  "title": "<Descriptive Note Title>",
+  "reason": "<1 sentence explaining why this location was chosen>"
+}
+\`\`\`
 
 Followed immediately by the note markdown content.
 
