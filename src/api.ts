@@ -14,6 +14,69 @@ export interface StreamResult {
   reasoning: string;
 }
 
+const MERMAID_DELIMITERS: Record<string, string> = { "[": "]", "{": "}", "(": ")" };
+
+function encodeMermaidLabel(value: string): string {
+  return value
+    .trim()
+    .replace(/"/g, "#quot;")
+    .replace(/\[/g, "#91;")
+    .replace(/\]/g, "#93;")
+    .replace(/\{/g, "#123;")
+    .replace(/\}/g, "#125;")
+    .replace(/\(/g, "#40;")
+    .replace(/\)/g, "#41;");
+}
+
+function findMermaidNodeEnd(line: string, openerIndex: number): number {
+  const opener = line[openerIndex];
+  const closer = MERMAID_DELIMITERS[opener];
+  let contentStart = openerIndex + 1;
+  while (line[contentStart] === " ") contentStart++;
+
+  if (line[contentStart] === '"') {
+    for (let index = contentStart + 1; index < line.length - 1; index++) {
+      if (line[index] === '"' && line[index + 1] === closer) return index + 1;
+    }
+    return -1;
+  }
+
+  let depth = 1;
+  for (let index = openerIndex + 1; index < line.length; index++) {
+    if (line[index] === opener) depth++;
+    if (line[index] === closer) depth--;
+    if (depth === 0) return index;
+  }
+  return -1;
+}
+
+function sanitizeMermaidNodes(line: string): string {
+  const nodeStart = /(^|[\s;>|])([a-zA-Z0-9_-]+)\s*([\[\{\(])/g;
+  let result = "";
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = nodeStart.exec(line)) !== null) {
+    const prefix = match[1];
+    const id = match[2];
+    const opener = match[3];
+    const openerIndex = nodeStart.lastIndex - 1;
+    const endIndex = findMermaidNodeEnd(line, openerIndex);
+    if (endIndex < 0) continue;
+
+    let inner = line.slice(openerIndex + 1, endIndex).trim();
+    if (inner.startsWith('"') && inner.endsWith('"') && inner.length >= 2) {
+      inner = inner.slice(1, -1);
+    }
+    const closer = MERMAID_DELIMITERS[opener];
+    result += line.slice(cursor, match.index) + prefix + id + opener + '"' + encodeMermaidLabel(inner) + '"' + closer;
+    cursor = endIndex + 1;
+    nodeStart.lastIndex = cursor;
+  }
+
+  return result + line.slice(cursor);
+}
+
 /**
  * Bulletproof Mermaid diagram sanitizer:
  * 1. Converts legacy arrow syntax (e.g. "A -- Yes --> B") into standard Mermaid ("A -->|\"Yes\"| B")
@@ -53,35 +116,8 @@ export function sanitizeMermaidDiagrams(markdown: string): string {
         return `${arrow}|"${clean}"| `;
       });
 
-      // 3. Match square bracket nodes: id[...]
-      line = line.replace(/(^|[\s;>|])([a-zA-Z0-9_-]+)\s*\[([\s\S]*?)\]/g, (m, prefix, id, inner) => {
-        let clean = inner.trim();
-        if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length >= 2) {
-          clean = clean.slice(1, -1);
-        }
-        clean = clean.replace(/"/g, "#quot;");
-        return `${prefix}${id}["${clean}"]`;
-      });
-
-      // 4. Match decision diamond nodes: id{...}
-      line = line.replace(/(^|[\s;>|])([a-zA-Z0-9_-]+)\s*\{([\s\S]*?)\}/g, (m, prefix, id, inner) => {
-        let clean = inner.trim();
-        if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length >= 2) {
-          clean = clean.slice(1, -1);
-        }
-        clean = clean.replace(/"/g, "#quot;");
-        return `${prefix}${id}{"${clean}"}`;
-      });
-
-      // 5. Match rounded parentheses nodes: id(...)
-      line = line.replace(/(^|[\s;>|])([a-zA-Z0-9_-]+)\s*\(([\s\S]*?)\)/g, (m, prefix, id, inner) => {
-        let clean = inner.trim();
-        if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length >= 2) {
-          clean = clean.slice(1, -1);
-        }
-        clean = clean.replace(/"/g, "#quot;");
-        return `${prefix}${id}("${clean}")`;
-      });
+      // 3. Parse complete node labels before encoding syntax characters.
+      line = sanitizeMermaidNodes(line);
 
       return line;
     });

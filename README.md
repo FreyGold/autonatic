@@ -18,6 +18,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 - ⚡ **Interactive UI**:
   - Ribbon icon for one-click access.
   - Streaming live preview with collapsible reasoning thought process.
+  - Highlighted-text actions to improve, expand, or regenerate only the selected Markdown.
   - Full settings tab to customize API keys, models, temperatures, folders, and prompt instructions.
 - 🧭 **Adaptive Excalidraw Diagrams**:
   - Automatic mind map, flowchart, architecture, timeline, decision-tree, and comparison selection.
@@ -35,6 +36,8 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
    - **Create Multiple Notes in Folder** (Select one directory for all generated notes).
    - **Append to Current Active Note**.
 4. Click **⚡ Transform to Obsidian Note**.
+
+To edit part of an existing note, highlight the text and open the editor context menu. Use a command under **Nemotron AI**. The plugin replaces only the highlighted text.
 
 ## ⚙️ Settings
 

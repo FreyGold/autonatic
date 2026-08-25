@@ -46,6 +46,31 @@ export const WIKILINK_GUIDELINES = `
 4. **NO "Related Concepts / Related Notes" lists of fake notes**: Do NOT generate lists of non-existent notes at the bottom of the page. Keep the note focused, atomic, and actionable.
 `;
 
+export type SelectionEditAction = "improve" | "expand" | "regenerate";
+
+export function buildSelectionEditPrompt(selection: string, action: SelectionEditAction): string {
+  const instructions: Record<SelectionEditAction, string> = {
+    improve: "Improve clarity, correctness, structure, and wording. Preserve the meaning and level of detail.",
+    expand: "Expand with useful details, explanations, examples, and caveats. Preserve all correct source information.",
+    regenerate: "Rewrite the selection from scratch. Preserve its factual scope, but use a clearer and stronger structure.",
+  };
+  return `Mode: Edit Highlighted Text
+Task: ${instructions[action]}
+
+Rules:
+- Return only the replacement Markdown for the highlighted text.
+- Do not add commentary before or after the replacement.
+- Do not wrap the complete response in a code fence.
+- Do not add YAML frontmatter.
+- Preserve valid wikilinks, code blocks, equations, and Mermaid diagrams.
+- Do not refer to the text as a selection.
+
+Highlighted text:
+---
+${selection}
+---`;
+}
+
 export const CONCISE_OBSIDIAN_SKILL_PROMPT = `You are an elite knowledge architect and technical writer specialized in Smart Brevity and atomic Obsidian Flavored Markdown (OFM) notes.
 Your goal is to transform raw input text, images, or documentation into a high-density, concise, atomic note strictly "the Obsidian way".
 

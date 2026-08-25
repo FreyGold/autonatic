@@ -2,15 +2,17 @@ import { Plugin, MarkdownView, Editor, Notice, TFile } from "obsidian";
 import { NemotronPluginSettings, DEFAULT_SETTINGS, NemotronSettingTab } from "./settings";
 import { NemotronModal } from "./modal";
 import { generateNemotronNote } from "./api";
-import { buildUserPrompt } from "./prompts";
+import { buildSelectionEditPrompt, buildUserPrompt, SelectionEditAction } from "./prompts";
 import { buildOrUpdateVaultIndex, VAULT_INDEX_FILENAME } from "./vault-indexer";
 import { FileSnapshot, HistoryManager, revertFileSnapshots } from "./history-manager";
 import { createMirroredExcalidrawDrawing } from "./excalidraw-generator";
+import { CapturedSelection, captureEditorSelection, replaceCapturedSelection } from "./selection-editor";
 
 export default class NemotronPlugin extends Plugin {
   declare settings: NemotronPluginSettings;
   historyManager!: HistoryManager;
   private updateDebounceTimer: any = null;
+  private selectionEditInProgress = false;
 
   async onload() {
     await this.loadSettings();
@@ -179,73 +181,32 @@ export default class NemotronPlugin extends Plugin {
       },
     });
 
-    this.addCommand({
-      id: "transform-selection-nemotron",
-      name: "Transform Selected Text to Structured Note",
-      editorCallback: async (editor: Editor, view) => {
-        const selection = editor.getSelection();
-        if (!selection || !selection.trim()) {
-          new Notice("Please select text to transform with Nemotron.");
-          return;
-        }
+    const addSelectionCommand = (id: string, name: string, action: SelectionEditAction) => {
+      this.addCommand({
+        id,
+        name,
+        editorCallback: async (editor: Editor, view) => {
+          await this.editSelectionWithAi(editor, view.file, action);
+        },
+      });
+    };
+    addSelectionCommand("transform-selection-nemotron", "Improve Highlighted Text with AI", "improve");
+    addSelectionCommand("expand-selection-nemotron", "Expand Highlighted Text with Details", "expand");
+    addSelectionCommand("regenerate-selection-nemotron", "Regenerate Highlighted Text with AI", "regenerate");
 
-        new Notice("Generating Nemotron Note from Selection...");
+    this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor, info) => {
+      const captured = this.captureSelection(editor);
+      if (!captured) return;
 
-        const existingVaultNotes = this.app.vault
-          .getMarkdownFiles()
-          .map((f) => f.basename)
-          .filter((b) => b && !b.startsWith("."));
-
-        const prompt = buildUserPrompt(
-          selection,
-          "append",
-          this.settings.defaultNoteStyle || "concise",
-          undefined,
-          existingVaultNotes,
-          undefined,
-          this.settings.enableProperties ?? true
-        );
-
-        try {
-          const result = await generateNemotronNote(
-            this.settings,
-            prompt,
-            undefined,
-            this.settings.defaultNoteStyle || "concise"
-          );
-          
-          if (view.file) {
-            const currentContent = editor.getValue();
-            editor.replaceSelection(result.content);
-            const updatedContent = editor.getValue();
-
-            this.historyManager.recordGeneration({
-              id: `${Date.now()}`,
-              timestamp: Date.now(),
-              mode: "selection",
-              description: `Editor selection transformation in ${view.file.basename}`,
-              files: [
-                {
-                  path: view.file.path,
-                  isNewFile: false,
-                  previousContent: currentContent,
-                  newContent: updatedContent,
-                },
-              ],
-              foldersCreated: [],
-            });
-          } else {
-            editor.replaceSelection(result.content);
-          }
-
-          new Notice("Replaced selection with Nemotron Note!");
-          this.scheduleIndexUpdate();
-        } catch (err: any) {
-          console.error("Nemotron Note Crafter Selection Error:", err);
-          new Notice(`Error: ${err.message}`);
-        }
-      },
-    });
+      menu.addSeparator();
+      menu.addItem((item) => item.setTitle("Nemotron AI").setIcon("wand-sparkles").setIsLabel(true).setSection("nemotron-ai"));
+      menu.addItem((item) => item.setTitle("Improve highlighted text").setIcon("sparkles").setSection("nemotron-ai")
+        .onClick(() => { void this.editSelectionWithAi(editor, info.file, "improve", captured); }));
+      menu.addItem((item) => item.setTitle("Expand with details").setIcon("list-plus").setSection("nemotron-ai")
+        .onClick(() => { void this.editSelectionWithAi(editor, info.file, "expand", captured); }));
+      menu.addItem((item) => item.setTitle("Regenerate highlighted text").setIcon("refresh-cw").setSection("nemotron-ai")
+        .onClick(() => { void this.editSelectionWithAi(editor, info.file, "regenerate", captured); }));
+    }));
 
     this.addCommand({
       id: "rebuild-vault-knowledge-index",
@@ -271,6 +232,72 @@ export default class NemotronPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("rename", () => this.scheduleIndexUpdate()));
 
     this.addSettingTab(new NemotronSettingTab(this.app, this));
+  }
+
+  private captureSelection(editor: Editor): CapturedSelection | null {
+    return captureEditorSelection(editor);
+  }
+
+  private async editSelectionWithAi(
+    editor: Editor,
+    file: TFile | null,
+    action: SelectionEditAction,
+    captured: CapturedSelection | null = this.captureSelection(editor),
+  ): Promise<void> {
+    if (!captured) {
+      new Notice("Highlight text before you use a Nemotron AI action.");
+      return;
+    }
+    if (!this.settings.apiKey?.trim()) {
+      new Notice("Enter your NVIDIA API key in the plugin settings first.");
+      return;
+    }
+    if (this.selectionEditInProgress) {
+      new Notice("A highlighted-text edit is already in progress.");
+      return;
+    }
+
+    const actionLabel: Record<SelectionEditAction, string> = {
+      improve: "Improving",
+      expand: "Expanding",
+      regenerate: "Regenerating",
+    };
+    this.selectionEditInProgress = true;
+    new Notice(`${actionLabel[action]} highlighted text...`, 5000);
+
+    try {
+      const result = await generateNemotronNote(
+        this.settings,
+        buildSelectionEditPrompt(captured.text, action),
+        undefined,
+        this.settings.defaultNoteStyle || "concise",
+      );
+      const replacement = result.content.trim();
+      if (!replacement) throw new Error("The AI returned an empty replacement.");
+      const updatedDocument = replaceCapturedSelection(editor, captured, replacement);
+      if (file) {
+        this.historyManager.recordGeneration({
+          id: `${Date.now()}`,
+          timestamp: Date.now(),
+          mode: `selection_${action}`,
+          description: `${actionLabel[action]} text in ${file.basename}`,
+          files: [{
+            path: file.path,
+            isNewFile: false,
+            previousContent: captured.document,
+            newContent: updatedDocument,
+          }],
+          foldersCreated: [],
+        });
+      }
+      new Notice("Highlighted text updated.");
+      this.scheduleIndexUpdate();
+    } catch (error: any) {
+      console.error("Nemotron highlighted-text edit error:", error);
+      new Notice(error.message || "The highlighted text could not be updated.", 8000);
+    } finally {
+      this.selectionEditInProgress = false;
+    }
   }
 
   public async scheduleIndexUpdate() {

@@ -7,7 +7,9 @@ import { NemotronModal } from "../src/modal";
 import { createMirroredExcalidrawDrawing } from "../src/excalidraw-generator";
 import { estimateRemoteRequests, isExcludedPath, parseExcludedFolders, selectVaultContext } from "../src/privacy-controls";
 import { DiagramEngine } from "../src/diagram-engine";
-import { buildUserPrompt } from "../src/prompts";
+import { buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
+import { sanitizeMermaidDiagrams } from "../src/api";
+import { replaceCapturedSelection } from "../src/selection-editor";
 
 test("diagram engine selects a flowchart and repairs invalid model output", async () => {
   const engine = new DiagramEngine({
@@ -34,6 +36,60 @@ test("diagram engine selects a flowchart and repairs invalid model output", asyn
   assert.equal(new Set(result.spec.nodes.map((node) => node.id)).size, 2);
   assert.equal(result.spec.edges.length, 0);
   assert.match(result.excalidrawJson, /"type": "excalidraw"/);
+});
+
+test("Mermaid sanitizer preserves Go slice notation inside node labels", () => {
+  const markdown = `\`\`\`mermaid
+flowchart TD
+B1 --> C1["Write []byte to Socket"]
+\`\`\``;
+  const sanitized = sanitizeMermaidDiagrams(markdown);
+
+  assert.match(sanitized, /C1\["Write #91;#93;byte to Socket"\]/);
+  assert.doesNotMatch(sanitized, /C1\["Write \["\]byte/);
+});
+
+test("Mermaid sanitizer handles several code delimiters and nodes on one line", () => {
+  const markdown = `\`\`\`mermaid
+flowchart LR
+A["Call main(\"\") and return []byte"] --> B{"Has map[string]int?"}
+\`\`\``;
+  const sanitized = sanitizeMermaidDiagrams(markdown);
+
+  assert.match(sanitized, /A\["Call main#40;#quot;#quot;#41; and return #91;#93;byte"\]/);
+  assert.match(sanitized, /B\{"Has map#91;string#93;int\?"\}/);
+});
+
+test("highlighted-text prompts request only replacement Markdown", () => {
+  const prompt = buildSelectionEditPrompt("## Memory\nOriginal text.", "expand");
+  assert.match(prompt, /Expand with useful details/);
+  assert.match(prompt, /Return only the replacement Markdown/);
+  assert.match(prompt, /## Memory\nOriginal text\./);
+  assert.doesNotMatch(prompt, /YAML properties block/);
+});
+
+test("highlighted-text edits replace only the captured range", () => {
+  let document = "before target after";
+  const editor = {
+    getValue: () => document,
+    getRange: () => document.slice(7, 13),
+    replaceRange: (replacement: string) => { document = `${document.slice(0, 7)}${replacement}${document.slice(13)}`; },
+  };
+  const captured = { text: "target", from: { line: 0, ch: 7 }, to: { line: 0, ch: 13 }, document };
+
+  const updated = replaceCapturedSelection(editor as never, captured, "expanded details");
+  assert.equal(updated, "before expanded details after");
+});
+
+test("highlighted-text edits stop when the note changed", () => {
+  const captured = { text: "target", from: { line: 0, ch: 7 }, to: { line: 0, ch: 13 }, document: "before target after" };
+  const editor = {
+    getValue: () => "changed target after",
+    getRange: () => "target",
+    replaceRange: () => assert.fail("replaceRange must not run"),
+  };
+
+  assert.throws(() => replaceCapturedSelection(editor as never, captured, "replacement"), /note changed/);
 });
 
 test("comparison diagrams render visible group headings", async () => {
