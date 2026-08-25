@@ -5,7 +5,7 @@ import { extractSmartDecision } from "../src/vault-indexer";
 import { HistoryManager, revertFileSnapshots } from "../src/history-manager";
 import { NemotronModal } from "../src/modal";
 import { createMirroredExcalidrawDrawing } from "../src/excalidraw-generator";
-import { estimateRemoteRequests, isExcludedPath, parseExcludedFolders, selectVaultContext } from "../src/privacy-controls";
+import { estimateRemoteRequests, isExcludedPath, parseExcludedFolders, selectStrongRelatedNote, selectVaultContext } from "../src/privacy-controls";
 import { DiagramEngine } from "../src/diagram-engine";
 import { buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
 import { sanitizeMermaidDiagrams } from "../src/api";
@@ -378,6 +378,48 @@ test("vault context is relevant and bounded", () => {
   const index = { tree: { name: "Vault", path: "", about: "", topics: [], notes: [note("Cooking", "bread", 2), note("TypeScript", "compiler types", 1)], subfolders: [] } } as never;
   assert.deepEqual(selectVaultContext(index, "typescript compiler", 1).map((item) => item.title), ["TypeScript"]);
   assert.equal(estimateRemoteRequests(2, 5, 3), 6);
+});
+
+test("smart placement finds a strong existing note from generated image content", () => {
+  const note = (title: string, path: string, about: string) => ({ title, path, about, mtime: 1, tags: [] });
+  const index = {
+    tree: {
+      name: "Vault",
+      path: "",
+      about: "",
+      topics: [],
+      notes: [
+        note("Cooking", "Home/Cooking.md", "Bread recipes and kitchen tools."),
+        note(
+          "HTTP Server Implementation Guide",
+          "Notes/HTTP Protocol/HTTP Server Implementation Guide.md",
+          "Build an HTTP server in Go. Stream large responses and set Content-Length headers.",
+        ),
+      ],
+      subfolders: [],
+    },
+  } as never;
+
+  const content = "## Video streaming\nAn HTTP server can stream a large response with Content-Length or chunked encoding.";
+  assert.equal(
+    selectStrongRelatedNote(index, content)?.path,
+    "Notes/HTTP Protocol/HTTP Server Implementation Guide.md",
+  );
+});
+
+test("smart placement does not force an unrelated append", () => {
+  const index = {
+    tree: {
+      name: "Vault",
+      path: "",
+      about: "",
+      topics: [],
+      notes: [{ title: "Cooking", path: "Cooking.md", about: "Bread recipes.", mtime: 1, tags: [] }],
+      subfolders: [],
+    },
+  } as never;
+
+  assert.equal(selectStrongRelatedNote(index, "TCP socket buffer management in Go"), null);
 });
 
 class FakeVault {

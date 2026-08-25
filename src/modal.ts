@@ -13,7 +13,8 @@ import {
   enforceMaxDepthFolder,
   VAULT_INDEX_FILENAME,
 } from "./vault-indexer";
-import { selectVaultContext } from "./privacy-controls";
+import { selectStrongRelatedNote, selectVaultContext } from "./privacy-controls";
+import type { VaultKnowledgeIndex } from "./vault-indexer";
 import { FileSnapshot, PromptHistoryItem, revertFileSnapshots } from "./history-manager";
 import {
   createMirroredExcalidrawDrawing,
@@ -594,13 +595,12 @@ export class NemotronModal extends Modal {
 
       const promptText = rawText || "Extract, analyze, and synthesize all key concepts, instructions, and code from the attached image(s).";
       let vaultKnowledgeTreeText: string | undefined = undefined;
+      let vaultIndexForPlacement: VaultKnowledgeIndex | null = null;
       if (mode === "smart" || mode === "multi_note") {
         statusDiv.style.display = "block";
         statusDiv.setText("Analyzing vault knowledge tree...");
-        let vaultIndex = await loadVaultIndex(this.app);
-        if (!vaultIndex) {
-          vaultIndex = await buildOrUpdateVaultIndex(this.app, this.plugin.settings);
-        }
+        const vaultIndex = await buildOrUpdateVaultIndex(this.app, this.plugin.settings);
+        vaultIndexForPlacement = vaultIndex;
         const notes = selectVaultContext(vaultIndex, promptText, this.plugin.settings.maxVaultContextNotes);
         vaultKnowledgeTreeText = notes.map((note) => `- ${note.path}: ${note.about}`).join("\n");
       }
@@ -727,21 +727,32 @@ export class NemotronModal extends Modal {
           this.plugin.scheduleIndexUpdate();
         } else if (mode === "smart") {
           const { decision, cleanedContent } = extractSmartDecision(result.content);
-          
-          if (decision && decision.action === "append_to_note" && decision.targetNotePath) {
-            const targetFile = this.app.vault.getAbstractFileByPath(normalizePath(decision.targetNotePath));
-            if (targetFile instanceof TFile) {
-              const { snaps, foldersCreated } = await this.appendToFile(targetFile, cleanedContent, enableProperties, decision.reason);
-              fileSnapshots.push(...snaps);
-              foldersCreatedList.push(...foldersCreated);
-              new Notice(`Smart Appended to: ${decision.targetNotePath}\nReason: ${decision.reason}`, 7000);
-            } else {
-              const folder = enforceMaxDepthFolder(decision.targetFolder || "");
-              const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, decision.title, folder, enableProperties, this.enableExcalidrawInNoteTab);
-              fileSnapshots.push(...snaps);
-              foldersCreatedList.push(...foldersCreated);
-              new Notice(`Smart Placed in folder: ${folder || "Vault Root"}\nReason: ${decision.reason}`, 7000);
-            }
+          const requestedTarget = decision?.action === "append_to_note" && decision.targetNotePath
+            ? this.app.vault.getAbstractFileByPath(normalizePath(decision.targetNotePath))
+            : null;
+          const relatedNote = vaultIndexForPlacement
+            ? selectStrongRelatedNote(vaultIndexForPlacement, cleanedContent)
+            : null;
+          const relatedTarget = relatedNote
+            ? this.app.vault.getAbstractFileByPath(normalizePath(relatedNote.path))
+            : null;
+          const appendTarget = requestedTarget instanceof TFile
+            ? requestedTarget
+            : relatedTarget instanceof TFile
+            ? relatedTarget
+            : null;
+
+          if (appendTarget) {
+            const usedLocalMatch = !(requestedTarget instanceof TFile);
+            const reason = usedLocalMatch
+              ? `The generated content strongly matches the existing note "${appendTarget.basename}".`
+              : decision!.reason;
+            const { snaps, foldersCreated } = await this.appendToFile(appendTarget, cleanedContent, enableProperties, reason);
+            fileSnapshots.push(...snaps);
+            foldersCreatedList.push(...foldersCreated);
+            new Notice(`Smart appended to: ${appendTarget.path}\nReason: ${reason}`, 7000);
+          } else if (decision?.action === "append_to_note") {
+            throw new Error(`Smart placement selected a missing note: ${decision.targetNotePath}. No file was created.`);
           } else {
             const rawFolder = decision?.targetFolder || "";
             const targetFolder = enforceMaxDepthFolder(rawFolder);

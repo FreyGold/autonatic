@@ -199,12 +199,11 @@ export default class NemotronPlugin extends Plugin {
       if (!captured) return;
 
       menu.addSeparator();
-      menu.addItem((item) => item.setTitle("Nemotron AI").setIcon("wand-sparkles").setIsLabel(true).setSection("nemotron-ai"));
-      menu.addItem((item) => item.setTitle("Improve highlighted text").setIcon("sparkles").setSection("nemotron-ai")
+      menu.addItem((item) => item.setTitle("Nemotron: Improve highlighted text").setIcon("sparkles")
         .onClick(() => { void this.editSelectionWithAi(editor, info.file, "improve", captured); }));
-      menu.addItem((item) => item.setTitle("Expand with details").setIcon("list-plus").setSection("nemotron-ai")
+      menu.addItem((item) => item.setTitle("Nemotron: Expand with details").setIcon("list-plus")
         .onClick(() => { void this.editSelectionWithAi(editor, info.file, "expand", captured); }));
-      menu.addItem((item) => item.setTitle("Regenerate highlighted text").setIcon("refresh-cw").setSection("nemotron-ai")
+      menu.addItem((item) => item.setTitle("Nemotron: Regenerate highlighted text").setIcon("refresh-cw")
         .onClick(() => { void this.editSelectionWithAi(editor, info.file, "regenerate", captured); }));
     }));
 

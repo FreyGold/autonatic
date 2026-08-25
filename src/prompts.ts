@@ -255,8 +255,9 @@ ${treeContext}
 ${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
 
 Analyze the vault knowledge tree and decide the optimal location:
-- If this content naturally extends an existing note, output 'append_to_note'.
-- Otherwise, output 'create_new_note' with the most semantically relevant folder path (maximum depth 2, e.g. "Networking/TCP").
+- Prefer 'append_to_note' when any listed note covers the same subject. Use its exact path.
+- Use 'create_new_note' only when no listed note covers the same subject. Use the most semantically relevant folder path (maximum depth 2, e.g. "Networking/TCP").
+- Never invent a target note path.
 
 Begin your output with this EXACT JSON decision block:
 \`\`\`smart-decision
