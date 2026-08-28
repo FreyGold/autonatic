@@ -1,5 +1,15 @@
 # Useful Excalidraw Diagrams for Long Conversations
 
+## Implementation status
+
+The automatic note workflow now completes note placement before diagram planning. The planner receives the completed note change set. It can skip, create, or update drawings. It ranks approved candidates and applies `maxAutomaticDiagrams` as a hard operation limit.
+
+Automatic drawings use one focus question, no more than eight nodes by default, semantic colors, editable Excalidraw groups, and links to the related note. Automatic generation does not create a fallback drawing when model synthesis fails.
+
+The official Excalidraw Automate skill guided the drawing rules. The automatic path writes a closed `.excalidraw.md` file, so it does not have an active Excalidraw view or a safe Automate workbench. The existing file renderer remains the adapter for this path. Active-view automation can use the Automate workbench rules.
+
+An optional cross-note overview is not implemented yet. The current planner evaluates each changed note as one candidate.
+
 ## Executive summary
 
 The plugin should not turn a long conversation into one large drawing. Smart must first divide, create, and update the correct notes. Diagram planning must start only after those note changes finish.

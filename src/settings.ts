@@ -80,7 +80,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("Excluded folders").setDesc("Comma-separated folder paths that indexing must ignore.").addText((c) => c.setValue(this.plugin.settings.excludedFolders).onChange(async (v) => { this.plugin.settings.excludedFolders = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Maximum context notes").setDesc("Limit the note summaries sent with one generation request.").addSlider((c) => c.setLimits(5, 100, 5).setValue(this.plugin.settings.maxVaultContextNotes).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxVaultContextNotes = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Confirm multi-file changes").setDesc("Show the planned file count before a multi-note write.").addToggle((c) => c.setValue(this.plugin.settings.confirmMultiFileChanges).onChange(async (v) => { this.plugin.settings.confirmMultiFileChanges = v; await this.plugin.saveSettings(); }));
-    new Setting(containerEl).setName("Maximum automatic diagrams").setDesc("Limit diagram requests in one operation.").addSlider((c) => c.setLimits(0, 10, 1).setValue(this.plugin.settings.maxAutomaticDiagrams).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxAutomaticDiagrams = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Maximum automatic diagrams").setDesc("Limit useful diagrams created or updated after one note operation. Zero disables automatic diagrams.").addSlider((c) => c.setLimits(0, 10, 1).setValue(this.plugin.settings.maxAutomaticDiagrams).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxAutomaticDiagrams = v; await this.plugin.saveSettings(); }));
 
     // NVIDIA NIM Quick Link & Helper Card
     const nimCard = containerEl.createDiv({ cls: "nemotron-nim-card" });
@@ -206,12 +206,12 @@ export class NemotronSettingTab extends PluginSettingTab {
         });
       });
 
-    // Excalidraw Visual Mind Map Settings
-    containerEl.createEl("h3", { text: "Excalidraw Visual Mind Maps" });
+    // Useful Excalidraw diagram settings
+    containerEl.createEl("h3", { text: "Useful Excalidraw Diagrams" });
 
     new Setting(containerEl)
-      .setName("Generate Excalidraw Mind Map Drawings")
-      .setDesc("Automatically generate an Excalidraw visual mind map / architecture diagram and mirror your folder structure in the Excalidraw folder.")
+      .setName("Create useful diagrams after note placement")
+      .setDesc("Check completed note changes. Create or update a drawing only when it improves understanding. Other notes are skipped.")
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableExcalidrawMindMap ?? true)

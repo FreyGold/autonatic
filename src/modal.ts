@@ -24,7 +24,10 @@ import { FileSnapshot, PromptHistoryItem, revertFileSnapshots } from "./history-
 import {
   createMirroredExcalidrawDrawing,
   createStandaloneRichExcalidrawDrawing,
+  getMirroredDrawingPath,
+  planUsefulDiagrams,
 } from "./excalidraw-generator";
+import type { SmartNoteChange } from "./useful-diagram-planner";
 import type { DiagramOptions, DiagramType, DiagramTheme } from "./diagram-engine";
 
 interface AttachedImage {
@@ -328,7 +331,7 @@ export class NemotronModal extends Modal {
     );
     this.selectComponents.push(this.styleSelectComponent);
 
-    // 3. Excalidraw Rich Architecture Diagram Toggle Row
+    // 3. Useful Excalidraw Diagram Toggle Row
     const excalRow = paneEl.createDiv({ cls: "nemotron-form-row nemotron-checkbox-row" });
     const excalCheckbox = excalRow.createEl("input", { type: "checkbox", cls: "nemotron-checkbox" });
     excalCheckbox.id = "nemotron-note-excalidraw-toggle";
@@ -339,9 +342,9 @@ export class NemotronModal extends Modal {
 
     const excalLabel = excalRow.createEl("label", { cls: "nemotron-checkbox-label" });
     excalLabel.setAttribute("for", "nemotron-note-excalidraw-toggle");
-    excalLabel.createSpan({ text: "Generate Rich Excalidraw Architecture Diagram ", cls: "nemotron-checkbox-title" });
+    excalLabel.createSpan({ text: "Create useful diagrams after note placement", cls: "nemotron-checkbox-title" });
     excalLabel.createSpan({
-      text: `(Deep AI multi-container subsystems, cards & flows mirrored in /${this.plugin.settings.excalidrawFolder || "Excalidrawings"})`,
+      text: ` Smart can create, update, or skip diagrams. Approved drawings are mirrored in /${this.plugin.settings.excalidrawFolder || "Excalidrawings"}.`,
       cls: "nemotron-checkbox-desc",
     });
 
@@ -734,7 +737,23 @@ export class NemotronModal extends Modal {
           this.abortController.signal
         );
 
-        statusDiv.setText("Placing notes and generating rich Excalidraw diagrams...");
+        statusDiv.setText("Placing notes...");
+
+        const finishUsefulDiagrams = async () => {
+          if (!this.enableExcalidrawInNoteTab) return;
+          const summary = await this.createUsefulDiagramsAfterPlacement(
+            fileSnapshots,
+            foldersCreatedList,
+            (status) => statusDiv.setText(status),
+            this.abortController?.signal,
+          );
+          const updatedText = summary.updated > 0 ? `, ${summary.updated} updated` : "";
+          const failedText = summary.failed > 0 ? `, ${summary.failed} failed` : "";
+          new Notice(
+            `Useful diagrams: ${summary.created} created${updatedText}, ${summary.skipped} skipped${failedText}.`,
+            8000,
+          );
+        };
 
         if (mode === "multi_note" || mode === "multi_note_folder") {
           const plan = extractAtomicDecompositionPlan(result.content);
@@ -750,7 +769,6 @@ export class NemotronModal extends Modal {
                   item.title,
                   fixedTargetFolder,
                   enableProperties,
-                  this.enableExcalidrawInNoteTab,
                   null,
                 );
                 fileSnapshots.push(...snaps);
@@ -765,14 +783,14 @@ export class NemotronModal extends Modal {
                   appendedCount++;
                 } else {
                   const folder = enforceMaxDepthFolder(item.targetFolder || "");
-                  const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties, this.enableExcalidrawInNoteTab);
+                  const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties);
                   fileSnapshots.push(...snaps);
                   foldersCreatedList.push(...foldersCreated);
                   createdCount++;
                 }
               } else {
                 const folder = enforceMaxDepthFolder(item.targetFolder || "");
-                const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties, this.enableExcalidrawInNoteTab);
+                const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties);
                 fileSnapshots.push(...snaps);
                 foldersCreatedList.push(...foldersCreated);
                 createdCount++;
@@ -781,6 +799,8 @@ export class NemotronModal extends Modal {
               throw new Error(`Failed to process "${item.title}": ${itemErr.message}`, { cause: itemErr });
             }
           }
+
+          await finishUsefulDiagrams();
 
           this.plugin.historyManager.recordGeneration({
             id: `${Date.now()}`,
@@ -835,7 +855,7 @@ export class NemotronModal extends Modal {
             const rawFolder = decision?.action === "create_new_note" ? decision.targetFolder : undefined;
             const targetFolder = resolveFolderWithinScope(rawFolder, smartScopeFolder);
             const title = decision?.title || titleInput.value.trim();
-            const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, title, targetFolder, enableProperties, this.enableExcalidrawInNoteTab);
+            const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, title, targetFolder, enableProperties);
             fileSnapshots.push(...snaps);
             foldersCreatedList.push(...foldersCreated);
             const outsideScopeTarget = decision?.action === "append_to_note" && !requestedTargetIsInScope;
@@ -845,6 +865,8 @@ export class NemotronModal extends Modal {
             const reasonMsg = reason ? `\nReason: ${reason}` : "";
             new Notice(`Smart Placed in folder: "${targetFolder || "Vault Root"}"${reasonMsg}`, 7000);
           }
+
+          await finishUsefulDiagrams();
 
           this.plugin.historyManager.recordGeneration({
             id: `${Date.now()}`,
@@ -860,9 +882,11 @@ export class NemotronModal extends Modal {
           this.plugin.scheduleIndexUpdate();
         } else if (mode === "new_file") {
           const targetFolder = enforceMaxDepthFolder(currentSelectedFolder);
-          const { snaps, foldersCreated } = await this.createNewNoteFile(result.content, titleInput.value.trim(), targetFolder, enableProperties, this.enableExcalidrawInNoteTab);
+          const { snaps, foldersCreated } = await this.createNewNoteFile(result.content, titleInput.value.trim(), targetFolder, enableProperties);
           fileSnapshots.push(...snaps);
           foldersCreatedList.push(...foldersCreated);
+
+          await finishUsefulDiagrams();
           
           this.plugin.historyManager.recordGeneration({
             id: `${Date.now()}`,
@@ -874,13 +898,15 @@ export class NemotronModal extends Modal {
           });
           generationRecorded = true;
 
-          new Notice("Obsidian note created with Rich Excalidraw Diagram!");
+          new Notice("Obsidian note created successfully!");
           this.renderHistoryToolbar();
           this.plugin.scheduleIndexUpdate();
         } else {
           const { snaps, foldersCreated } = await this.appendToActiveNote(result.content, enableProperties, customInstruction || "Appended section via Nemotron");
           fileSnapshots.push(...snaps);
           foldersCreatedList.push(...foldersCreated);
+
+          await finishUsefulDiagrams();
 
           this.plugin.historyManager.recordGeneration({
             id: `${Date.now()}`,
@@ -1560,12 +1586,150 @@ export class NemotronModal extends Modal {
     contentEl.empty();
   }
 
+  private async createUsefulDiagramsAfterPlacement(
+    fileSnapshots: FileSnapshot[],
+    foldersCreatedList: string[],
+    onStatus?: (status: string) => void,
+    signal?: AbortSignal,
+  ): Promise<{ created: number; updated: number; skipped: number; failed: number }> {
+    const changes = this.collectSmartNoteChanges(fileSnapshots);
+    const plan = await planUsefulDiagrams(
+      this.plugin.settings,
+      changes,
+      this.plugin.settings.maxAutomaticDiagrams ?? 3,
+      { onStatus },
+      signal,
+    );
+    let created = 0;
+    let updated = 0;
+    let failed = 0;
+    const rootFolder = this.plugin.settings.excalidrawFolder || "Excalidrawings";
+
+    for (const decision of plan.selected) {
+      const noteFile = this.app.vault.getAbstractFileByPath(normalizePath(decision.notePath));
+      if (!(noteFile instanceof TFile)) {
+        failed++;
+        continue;
+      }
+      try {
+        onStatus?.(`${decision.action === "update" ? "Updating" : "Creating"} a useful diagram for ${noteFile.basename}...`);
+        const noteContent = await this.app.vault.read(noteFile);
+        const expectedSnapshot = [...fileSnapshots].reverse().find((snapshot) => snapshot.path === noteFile.path);
+        if (!expectedSnapshot || expectedSnapshot.newContent !== noteContent) {
+          throw new Error(`Cannot create a diagram because "${noteFile.path}" changed after note placement.`);
+        }
+        const drawing = await createMirroredExcalidrawDrawing(
+          this.app,
+          this.plugin.settings,
+          noteFile,
+          noteContent,
+          rootFolder,
+          { onStatus },
+          signal,
+          {
+            type: decision.type || "auto",
+            detail: "balanced",
+            maxNodes: 8,
+            focusQuestion: decision.focusQuestion,
+            allowFallback: false,
+          },
+        );
+        try {
+          await this.addDiagramLinkToChangedNote(noteFile, drawing.drawingPath, noteContent, fileSnapshots);
+        } catch (linkError) {
+          await revertFileSnapshots(this.app, [drawing.fileSnapshot], drawing.foldersCreated);
+          throw linkError;
+        }
+        fileSnapshots.push(drawing.fileSnapshot);
+        foldersCreatedList.push(...drawing.foldersCreated);
+        if (decision.action === "update") updated++;
+        else created++;
+      } catch (error) {
+        if ((error as Error).name === "AbortError") throw error;
+        failed++;
+        console.warn(`Useful diagram generation failed for "${decision.notePath}":`, error);
+      }
+    }
+
+    return { created, updated, skipped: plan.skipped.length, failed };
+  }
+
+  private collectSmartNoteChanges(fileSnapshots: FileSnapshot[]): SmartNoteChange[] {
+    const rootFolder = this.plugin.settings.excalidrawFolder || "Excalidrawings";
+    const collected = new Map<string, { first: FileSnapshot; last: FileSnapshot }>();
+    for (const snapshot of fileSnapshots) {
+      if (!snapshot.path.endsWith(".md") || snapshot.path.endsWith(".excalidraw.md")) continue;
+      const current = collected.get(snapshot.path);
+      if (current) current.last = snapshot;
+      else collected.set(snapshot.path, { first: snapshot, last: snapshot });
+    }
+
+    const changes: SmartNoteChange[] = [];
+    for (const [path, snapshots] of collected) {
+      const file = this.app.vault.getAbstractFileByPath(normalizePath(path));
+      if (!(file instanceof TFile)) continue;
+      const previousContent = snapshots.first.previousContent || "";
+      const finalContent = snapshots.last.newContent;
+      const addedContent = finalContent.startsWith(previousContent)
+        ? finalContent.slice(previousContent.length).trim()
+        : finalContent;
+      const drawingPath = getMirroredDrawingPath(file, rootFolder);
+      const existingDrawing = this.app.vault.getAbstractFileByPath(drawingPath);
+      changes.push({
+        path,
+        title: file.basename,
+        action: snapshots.first.isNewFile ? "created" : /Continued in \[\[/.test(addedContent) ? "split" : "appended",
+        addedContent,
+        finalContent,
+        existingDrawingPath: existingDrawing instanceof TFile ? drawingPath : undefined,
+      });
+    }
+    return changes;
+  }
+
+  private async addDiagramLinkToChangedNote(
+    noteFile: TFile,
+    drawingPath: string,
+    expectedContent: string,
+    fileSnapshots: FileSnapshot[],
+  ): Promise<void> {
+    const wikiTarget = drawingPath.replace(/\.md$/i, "");
+    const currentContent = await this.app.vault.read(noteFile);
+    if (currentContent !== expectedContent) {
+      throw new Error(`Cannot add the diagram link because "${noteFile.path}" changed.`);
+    }
+    if (currentContent.includes(`[[${wikiTarget}`)) return;
+    const callout = `> [!example] Useful diagram\n> **Excalidraw:** [[${wikiTarget}|${noteFile.basename} Diagram]]\n\n`;
+    const yamlMatch = currentContent.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n*)/);
+    const linkedContent = yamlMatch
+      ? `${yamlMatch[1]}${callout}${currentContent.slice(yamlMatch[1].length).trimStart()}`
+      : `${callout}${currentContent.trimStart()}`;
+
+    await this.app.vault.process(noteFile, (current) => {
+      if (current !== currentContent) {
+        throw new Error(`Cannot add the diagram link because "${noteFile.path}" changed.`);
+      }
+      return linkedContent;
+    });
+
+    const lastSnapshot = [...fileSnapshots].reverse().find((snapshot) => snapshot.path === noteFile.path);
+    if (lastSnapshot?.newContent === currentContent) {
+      lastSnapshot.newContent = linkedContent;
+    } else {
+      fileSnapshots.push({
+        path: noteFile.path,
+        isNewFile: false,
+        previousContent: currentContent,
+        newContent: linkedContent,
+      });
+    }
+  }
+
   private async createNewNoteFile(
     content: string,
     requestedTitle?: string,
     requestedFolder?: string,
     enableProperties: boolean = true,
-    generateExcalidraw: boolean = true,
     folderDepthLimit: number | null = 2,
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     let title = requestedTitle;
@@ -1631,7 +1795,6 @@ export class NemotronModal extends Modal {
       counter++;
     }
 
-    const excalFolder = this.plugin.settings.excalidrawFolder || "Excalidrawings";
     const newFile = (await this.app.vault.create(filePath, finalContent)) as TFile;
 
     const noteSnapshot: FileSnapshot = {
@@ -1640,47 +1803,6 @@ export class NemotronModal extends Modal {
       newContent: finalContent,
     };
     snaps.push(noteSnapshot);
-
-    // Generate High-Effort Mirrored Excalidraw Architecture Drawing with Nemotron
-    if (generateExcalidraw) {
-      try {
-        const excalRes = await createMirroredExcalidrawDrawing(
-          this.app,
-          this.plugin.settings,
-          newFile,
-          finalContent,
-          excalFolder
-        );
-        const actualTitle = newFile.basename;
-        const excalRelPath = folder
-          ? `${excalFolder}/${folder}/${actualTitle}.excalidraw`
-          : `${excalFolder}/${actualTitle}.excalidraw`;
-        const excalHeader = `> [!example] Visual Architecture Diagram\n> **Excalidraw Overview:** [[${excalRelPath}|${actualTitle} Architecture]]\n\n`;
-        const yamlMatch = finalContent.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n*)/);
-        const linkedContent = yamlMatch
-          ? `${yamlMatch[1]}${excalHeader}${finalContent.slice(yamlMatch[1].length).trimStart()}`
-          : `${excalHeader}${finalContent.trimStart()}`;
-
-        try {
-          await this.app.vault.process(newFile, (current) => {
-            if (current !== finalContent) {
-              throw new Error(`Cannot add the diagram link because "${newFile.path}" changed.`);
-            }
-            return linkedContent;
-          });
-        } catch (linkError) {
-          await revertFileSnapshots(this.app, [excalRes.fileSnapshot], excalRes.foldersCreated);
-          throw linkError;
-        }
-
-        finalContent = linkedContent;
-        noteSnapshot.newContent = linkedContent;
-        snaps.push(excalRes.fileSnapshot);
-        foldersCreated.push(...excalRes.foldersCreated);
-      } catch (exErr) {
-        console.warn("Excalidraw generation warning:", exErr);
-      }
-    }
 
     if (this.plugin.settings.autoOpenCreatedNote) {
       try {
@@ -1776,7 +1898,7 @@ summary: "Continuation of [[${file.basename}]]"
       part2Content += bodyToAppend + "\n";
 
       const targetFolder = file.parent ? (file.parent.path === "/" ? "" : file.parent.path) : "";
-      const newPartRes = await this.createNewNoteFile(part2Content, nextPartTitle, targetFolder, enableProperties, this.enableExcalidrawInNoteTab);
+      const newPartRes = await this.createNewNoteFile(part2Content, nextPartTitle, targetFolder, enableProperties);
       snaps.push(...newPartRes.snaps);
       foldersCreated.push(...newPartRes.foldersCreated);
 

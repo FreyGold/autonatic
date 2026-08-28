@@ -30,13 +30,15 @@ export interface DiagramSpec {
   takeaways: string[];
 }
 
-export interface DiagramInput { title: string; content: string; sourceNotePath?: string; }
+export interface DiagramInput { title: string; content: string; sourceNotePath?: string; focusQuestion?: string; }
 export interface DiagramOptions {
   type: DiagramType | "auto";
   detail: "compact" | "balanced" | "detailed";
   direction: "right" | "down";
   theme: DiagramTheme;
   maxNodes: number;
+  focusQuestion?: string;
+  allowFallback?: boolean;
 }
 export interface DiagramSynthesisRequest extends DiagramInput { type: DiagramType; maxNodes: number; }
 export interface DiagramSynthesizer { synthesize(request: DiagramSynthesisRequest, signal?: AbortSignal): Promise<unknown>; }
@@ -62,10 +64,15 @@ export class DiagramEngine {
         raw = await this.synthesizer.synthesize({ ...input, type: detected, maxNodes: options.maxNodes }, signal);
       } catch (error) {
         if ((error as Error).name === "AbortError") throw error;
+        if (options.allowFallback === false) throw error;
         warnings.push("Model synthesis failed. A local content diagram was used.");
       }
     }
     const spec = normalizeSpec(raw, input, detected, options, warnings);
+    if (options.allowFallback === false && warnings.length > 0) {
+      throw new Error("The model did not return a valid useful diagram.");
+    }
+    if (input.focusQuestion) spec.subtitle = input.focusQuestion.slice(0, 160);
     return { spec, warnings, excalidrawJson: renderExcalidraw(spec, options, input.sourceNotePath) };
   }
 }
@@ -303,8 +310,9 @@ function renderExcalidraw(spec: DiagramSpec, options: DiagramOptions, source?: s
     const right = Math.max(...memberBoxes.map((box) => box.x + box.width)) + 28;
     const bottom = Math.max(...memberBoxes.map((box) => box.y + box.height)) + 28;
     const color = palette.accents[index % palette.accents.length];
-    elements.push({ ...base(`group-${group.id}`, "rectangle", left, top, right - left, bottom - top), strokeColor: color, backgroundColor: "transparent", fillStyle: "solid", strokeStyle: "dashed", strokeWidth: 1, roughness: 0 });
-    elements.push({ ...base(`group-${group.id}-title`, "text", left + 16, top + 14, right - left - 32, 24), strokeColor: palette.text, backgroundColor: "transparent", fillStyle: "solid", text: group.title, originalText: group.title, fontSize: 16, fontFamily: 1, textAlign: "left", verticalAlign: "top", baseline: 16, containerId: null, lineHeight: 1.2 });
+    const groupId = `nemotron-group-${group.id}`;
+    elements.push({ ...base(`group-${group.id}`, "rectangle", left, top, right - left, bottom - top), groupIds: [groupId], strokeColor: color, backgroundColor: "transparent", fillStyle: "solid", strokeStyle: "dashed", strokeWidth: 1, roughness: 0 });
+    elements.push({ ...base(`group-${group.id}-title`, "text", left + 16, top + 14, right - left - 32, 24), groupIds: [groupId], strokeColor: palette.text, backgroundColor: "transparent", fillStyle: "solid", text: group.title, originalText: group.title, fontSize: 16, fontFamily: 1, textAlign: "left", verticalAlign: "top", baseline: 16, containerId: null, lineHeight: 1.2 });
   });
   const canvasRight = Math.max(...[...boxes.values()].map((box) => box.x + box.width));
   const canvasBottom = Math.max(...[...boxes.values()].map((box) => box.y + box.height));
@@ -363,7 +371,9 @@ function renderExcalidraw(spec: DiagramSpec, options: DiagramOptions, source?: s
   }
   spec.nodes.forEach((node) => {
     const box = boxes.get(node.id)!; const accent = KIND_COLORS[node.kind]; const shape = node.kind === "decision" ? "diamond" : node.kind === "result" ? "ellipse" : "rectangle";
-    elements.push({ ...base(node.id, shape, box.x, box.y, box.width, box.height), strokeColor: accent, backgroundColor: node.importance === 3 ? accent : palette.panel, fillStyle: "solid", boundElements: spec.edges.filter((edge) => edge.from === node.id || edge.to === node.id).map((edge) => ({ id: `edge-${edge.from}-${edge.to}`, type: "arrow" })), link: node.sourceHeading && source ? `[[${source}#${node.sourceHeading}]]` : null });
+    const nodeGroupId = `nemotron-node-${node.id}`;
+    const nodeLink = source ? `[[${source}${node.sourceHeading ? `#${node.sourceHeading}` : ""}]]` : null;
+    elements.push({ ...base(node.id, shape, box.x, box.y, box.width, box.height), groupIds: [nodeGroupId], strokeColor: accent, backgroundColor: node.importance === 3 ? accent : palette.panel, fillStyle: "solid", boundElements: spec.edges.filter((edge) => edge.from === node.id || edge.to === node.id).map((edge) => ({ id: `edge-${edge.from}-${edge.to}`, type: "arrow" })), link: nodeLink });
     const { titleLines, detailLines, contentHeight } = nodeTextMetrics(node);
     const titleText = titleLines.join("\n");
     const textColor = node.importance === 3 && options.theme === "dark" ? "#ffffff" : palette.text;
@@ -371,11 +381,11 @@ function renderExcalidraw(spec: DiagramSpec, options: DiagramOptions, source?: s
     const textWidth = isDecision ? box.width * 0.5 : box.width - 36;
     const textX = isDecision ? box.x + (box.width - textWidth) / 2 : box.x + 18;
     const contentTop = isDecision ? box.y + (box.height - contentHeight) / 2 : box.y + 16;
-    elements.push({ ...base(`${node.id}-title-text`, "text", textX, contentTop, textWidth, titleLines.length * 24), strokeColor: textColor, backgroundColor: "transparent", fillStyle: "solid", text: titleText, originalText: titleText, fontSize: node.importance === 3 ? 20 : 18, fontFamily: 1, textAlign: isDecision ? "center" : "left", verticalAlign: "top", baseline: 18, containerId: null, lineHeight: 1.25 });
+    elements.push({ ...base(`${node.id}-title-text`, "text", textX, contentTop, textWidth, titleLines.length * 24), groupIds: [nodeGroupId], strokeColor: textColor, backgroundColor: "transparent", fillStyle: "solid", text: titleText, originalText: titleText, fontSize: node.importance === 3 ? 20 : 18, fontFamily: 1, textAlign: isDecision ? "center" : "left", verticalAlign: "top", baseline: 18, containerId: null, lineHeight: 1.25 });
     if (node.details.length) {
       const detailText = detailLines.join("\n");
       const detailY = contentTop + titleLines.length * 24 + 8;
-      elements.push({ ...base(`${node.id}-detail-text`, "text", textX, detailY, textWidth, detailLines.length * 22), strokeColor: node.importance === 3 && options.theme === "dark" ? "#dbeafe" : palette.muted, backgroundColor: "transparent", fillStyle: "solid", text: detailText, originalText: detailText, fontSize: 16, fontFamily: 1, textAlign: isDecision ? "center" : "left", verticalAlign: "top", baseline: 16, containerId: null, lineHeight: 1.35 });
+      elements.push({ ...base(`${node.id}-detail-text`, "text", textX, detailY, textWidth, detailLines.length * 22), groupIds: [nodeGroupId], strokeColor: node.importance === 3 && options.theme === "dark" ? "#dbeafe" : palette.muted, backgroundColor: "transparent", fillStyle: "solid", text: detailText, originalText: detailText, fontSize: 16, fontFamily: 1, textAlign: isDecision ? "center" : "left", verticalAlign: "top", baseline: 16, containerId: null, lineHeight: 1.35 });
     }
   });
   if (spec.takeaways.length) {

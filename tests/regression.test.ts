@@ -18,6 +18,100 @@ import { DiagramEngine } from "../src/diagram-engine";
 import { buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
 import { sanitizeMermaidDiagrams } from "../src/api";
 import { replaceCapturedSelection } from "../src/selection-editor";
+import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
+
+test("useful diagram planner can skip every changed note", async () => {
+  const planner = new UsefulDiagramPlanner({
+    decide: async (request) => ({
+      decisions: request.candidates.map((candidate) => ({
+        id: candidate.id,
+        action: "skip",
+        reason: "The note is clearer as prose.",
+      })),
+    }),
+  });
+
+  const plan = await planner.plan([{
+    path: "Theory.md",
+    title: "Theory",
+    action: "created",
+    addedContent: "A concise factual explanation.",
+    finalContent: "A concise factual explanation.",
+  }], 3);
+
+  assert.equal(plan.selected.length, 0);
+  assert.equal(plan.skipped.length, 1);
+  assert.equal(plan.skipped[0].reason, "The note is clearer as prose.");
+});
+
+test("useful diagram planner applies the operation limit after ranking", async () => {
+  const planner = new UsefulDiagramPlanner({
+    decide: async (request) => ({ decisions: request.candidates.map((candidate, index) => ({
+      id: candidate.id,
+      action: "draw",
+      reason: "The process has useful relationships.",
+      focusQuestion: `How does ${candidate.title} work?`,
+      type: "flowchart",
+      priority: index + 1,
+    })) }),
+  });
+  const changes = ["Low", "High"].map((title) => ({
+    path: `${title}.md`,
+    title,
+    action: "created" as const,
+    addedContent: "First validate. Then publish.",
+    finalContent: "First validate. Then publish.",
+  }));
+
+  const plan = await planner.plan(changes, 1);
+
+  assert.deepEqual(plan.selected.map((decision) => decision.notePath), ["High.md"]);
+  assert.match(plan.decisions.find((decision) => decision.notePath === "Low.md")!.reason, /diagram limit/i);
+});
+
+test("useful diagram planner updates an existing drawing and keeps late content", async () => {
+  const lateDecision = "UNIQUE-LATE-DECISION";
+  let receivedFinalContent = "";
+  const planner = new UsefulDiagramPlanner({
+    decide: async (request) => {
+      receivedFinalContent = request.candidates[0].finalContent;
+      return { decisions: [{
+        id: request.candidates[0].id,
+        action: "draw",
+        reason: "The decision has meaningful branches.",
+        focusQuestion: "Which branch should the reader choose?",
+        type: "decision-tree",
+        priority: 5,
+      }] };
+    },
+  });
+
+  const plan = await planner.plan([{
+    path: "Choice.md",
+    title: "Choice",
+    action: "appended",
+    addedContent: `${"context ".repeat(1500)}${lateDecision}`,
+    finalContent: `${"context ".repeat(1500)}${lateDecision}`,
+    existingDrawingPath: "Excalidrawings/Choice.excalidraw.md",
+  }], 3);
+
+  assert.equal(plan.selected[0].action, "update");
+  assert.match(receivedFinalContent, new RegExp(lateDecision));
+});
+
+test("useful diagram planner does not create a fallback drawing after a model failure", async () => {
+  const planner = new UsefulDiagramPlanner({ decide: async () => { throw new Error("offline"); } });
+  const plan = await planner.plan([{
+    path: "Process.md",
+    title: "Process",
+    action: "created",
+    addedContent: "First validate. Then publish.",
+    finalContent: "First validate. Then publish.",
+  }], 3);
+
+  assert.equal(plan.selected.length, 0);
+  assert.match(plan.skipped[0].reason, /check failed/i);
+});
 
 test("diagram engine selects a flowchart and repairs invalid model output", async () => {
   const engine = new DiagramEngine({
@@ -44,6 +138,43 @@ test("diagram engine selects a flowchart and repairs invalid model output", asyn
   assert.equal(new Set(result.spec.nodes.map((node) => node.id)).size, 2);
   assert.equal(result.spec.edges.length, 0);
   assert.match(result.excalidrawJson, /"type": "excalidraw"/);
+});
+
+test("automatic useful diagrams reject fallback output", async () => {
+  const engine = new DiagramEngine({ synthesize: async () => { throw new Error("offline"); } });
+  await assert.rejects(
+    () => engine.generate(
+      { title: "Release", content: "First validate. Then publish." },
+      { allowFallback: false },
+    ),
+    /offline/,
+  );
+});
+
+test("focused diagrams show their question and group each visual card", async () => {
+  const engine = new DiagramEngine({ synthesize: async () => ({
+    type: "flowchart",
+    title: "Release",
+    nodes: [
+      { id: "validate", title: "Validate", kind: "process" },
+      { id: "publish", title: "Publish", kind: "result" },
+    ],
+    edges: [{ from: "validate", to: "publish" }],
+  }) });
+  const result = await engine.generate({
+    title: "Release",
+    content: "First validate. Then publish.",
+    sourceNotePath: "Release.md",
+    focusQuestion: "How does a safe release reach publication?",
+  });
+  const scene = JSON.parse(result.excalidrawJson);
+  const subtitle = scene.elements.find((element: { id: string }) => element.id === "diagram-subtitle");
+  const card = scene.elements.find((element: { id: string }) => element.id === "validate");
+  const cardTitle = scene.elements.find((element: { id: string }) => element.id === "validate-title-text");
+
+  assert.equal(subtitle.text, "How does a safe release reach publication?");
+  assert.deepEqual(card.groupIds, cardTitle.groupIds);
+  assert.equal(card.link, "[[Release.md]]");
 });
 
 test("Mermaid sanitizer preserves Go slice notation inside node labels", () => {
@@ -565,8 +696,8 @@ test("explicit note folders keep the complete selected path", async () => {
   };
   const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
   const result = await (modal as never as {
-    createNewNoteFile(content: string, title: string, folder: string, properties: boolean, diagram: boolean, depth: null): Promise<{ snaps: FileSnapshot[] }>;
-  }).createNewNoteFile("# Buffer Growth", "Buffer Growth", "Areas/Engineering/HTTP", false, false, null);
+    createNewNoteFile(content: string, title: string, folder: string, properties: boolean, depth: null): Promise<{ snaps: FileSnapshot[] }>;
+  }).createNewNoteFile("# Buffer Growth", "Buffer Growth", "Areas/Engineering/HTTP", false, null);
 
   assert.equal(result.snaps[0]?.path, "Areas/Engineering/HTTP/Buffer Growth.md");
 });
@@ -668,7 +799,7 @@ test("an updated Excalidraw file records and restores its previous content", asy
   assert.equal(result.fileSnapshot.isNewFile, false);
   assert.equal(result.fileSnapshot.previousContent, "user drawing");
   assert.equal(result.fileSnapshot.newContent, await vault.read(drawing));
-  assert.match(result.fileSnapshot.newContent, /nemotron-renderer: 6/);
+  assert.match(result.fileSnapshot.newContent, /nemotron-renderer: 7/);
 
   const history = new HistoryManager(app as never, [{
     id: "drawing",

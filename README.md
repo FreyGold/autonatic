@@ -23,6 +23,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
   - Full settings tab to customize API keys, models, temperatures, folders, and prompt instructions.
 - 🧭 **Adaptive Excalidraw Diagrams**:
   - Automatic mind map, flowchart, architecture, timeline, decision-tree, and comparison selection.
+  - Automatic note workflows finish note placement first. A usefulness check then creates, updates, or skips focused diagrams.
   - Compact, balanced, and detailed modes with node limits.
   - Left-to-right or top-to-bottom flow layouts.
   - Dark and light canvas themes.

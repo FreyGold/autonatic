@@ -3,8 +3,38 @@ import type { NemotronPluginSettings } from "./settings";
 import type { FileSnapshot } from "./history-manager";
 import { streamChatCompletion, StreamCallbacks } from "./api";
 import { DiagramEngine, DiagramOptions, DiagramSynthesisRequest } from "./diagram-engine";
+import {
+  DiagramPlan,
+  SmartNoteChange,
+  UsefulDiagramPlanner,
+} from "./useful-diagram-planner";
 
-export const DIAGRAM_RENDERER_VERSION = 6;
+export const DIAGRAM_RENDERER_VERSION = 7;
+
+const USEFUL_DIAGRAM_SYSTEM_PROMPT = `You decide whether a diagram will improve a set of completed Obsidian note changes.
+Return JSON only. Do not use Markdown fences.
+
+Schema:
+{
+  "decisions": [{
+    "id": "exact candidate id",
+    "action": "draw|skip",
+    "reason": "one short sentence",
+    "focusQuestion": "one clear question the drawing answers",
+    "type": "mind-map|flowchart|architecture|timeline|decision-tree|comparison",
+    "priority": 5
+  }]
+}
+
+Rules:
+- A skip is a valid and preferred result when prose is clearer.
+- Draw only an ordered process, branching decision, system dependency, comparison with clear axes, timeline, or meaningful hierarchy.
+- Skip summaries, reference lists, loosely related facts, and content that would only repeat the note in colored boxes.
+- Each approved drawing must answer one focus question.
+- Priority is an integer from 1 to 5. Five is the highest value.
+- Prefer the newly added content. Use the final note only for context.
+- Approve only the highest-value structures. It is valid to approve zero candidates.
+- Return exactly one decision for every candidate id.`;
 
 function createDiagramEngine(settings: NemotronPluginSettings, callbacks?: StreamCallbacks): DiagramEngine {
   return new DiagramEngine({
@@ -48,12 +78,37 @@ Rules:
 - A flowchart has a clear start and result. Each decision has labeled outcome branches.
 - Arrange a flowchart for a wide desktop canvas. Keep the main path concise.
 - Avoid generic labels such as Core Idea, Processing Pipeline, or Key Details.`;
-      const userPrompt = `Title: ${request.title}\n\nSource note:\n${request.content.slice(0, 9000)}`;
+      const focus = request.focusQuestion ? `\nFocus question: ${request.focusQuestion}\n` : "";
+      const userPrompt = `Title: ${request.title}${focus}\nSource note:\n${request.content}`;
       const result = await streamChatCompletion(settings, systemPrompt, userPrompt, callbacks, signal);
       const match = result.content.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/);
       return JSON.parse((match?.[1] ?? result.content).trim());
     },
   });
+}
+
+export async function planUsefulDiagrams(
+  settings: NemotronPluginSettings,
+  changes: SmartNoteChange[],
+  maxAutomaticDiagrams: number,
+  callbacks?: Pick<StreamCallbacks, "onStatus">,
+  signal?: AbortSignal,
+): Promise<DiagramPlan> {
+  const planner = new UsefulDiagramPlanner({
+    decide: async (request, planningSignal) => {
+      callbacks?.onStatus?.(`Checking ${request.candidates.length} note change(s) for useful diagrams...`);
+      const result = await streamChatCompletion(
+        settings,
+        USEFUL_DIAGRAM_SYSTEM_PROMPT,
+        JSON.stringify(request),
+        { onStatus: callbacks?.onStatus },
+        planningSignal,
+      );
+      const match = result.content.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/);
+      return JSON.parse((match?.[1] ?? result.content).trim());
+    },
+  });
+  return planner.plan(changes, maxAutomaticDiagrams, signal);
 }
 
 async function ensureFolder(app: App, target: string): Promise<string[]> {
@@ -90,6 +145,12 @@ ${json}
 `;
 }
 
+export function getMirroredDrawingPath(noteFile: TFile, rootExcalidrawFolder = "Excalidrawings"): string {
+  const noteDirectory = noteFile.parent?.path === "/" ? "" : noteFile.parent?.path || "";
+  const targetDirectory = normalizePath(noteDirectory ? `${rootExcalidrawFolder}/${noteDirectory}` : rootExcalidrawFolder);
+  return normalizePath(`${targetDirectory}/${noteFile.basename}.excalidraw.md`);
+}
+
 export async function createMirroredExcalidrawDrawing(
   app: App,
   settings: NemotronPluginSettings,
@@ -104,12 +165,17 @@ export async function createMirroredExcalidrawDrawing(
   const targetDirectory = normalizePath(noteDirectory ? `${rootExcalidrawFolder}/${noteDirectory}` : rootExcalidrawFolder);
   const foldersCreated = await ensureFolder(app, targetDirectory);
   const result = await createDiagramEngine(settings, callbacks).generate(
-    { title: noteFile.basename, content: noteContent, sourceNotePath: noteFile.path },
+    {
+      title: noteFile.basename,
+      content: noteContent,
+      sourceNotePath: noteFile.path,
+      focusQuestion: diagramOptions?.focusQuestion,
+    },
     diagramOptions,
     signal
   );
   const content = drawingContent(result.excalidrawJson, noteFile.path, noteFile.basename);
-  const drawingPath = normalizePath(`${targetDirectory}/${noteFile.basename}.excalidraw.md`);
+  const drawingPath = getMirroredDrawingPath(noteFile, rootExcalidrawFolder);
   const existing = app.vault.getAbstractFileByPath(drawingPath);
   let drawingFile: TFile;
   let fileSnapshot: FileSnapshot;
