@@ -77,7 +77,17 @@ export function resolveAtomicPlacementTarget(
   request: AtomicPlacementRequest,
   folderScope?: string,
 ): AtomicPlacementTarget {
-  const targetFolder = resolveFolderWithinScope(request.targetFolder, folderScope);
+  const requestedFolder = normalizeVaultPath(request.targetFolder ?? "");
+  const normalizedScope = folderScope === undefined ? undefined : normalizeVaultPath(folderScope);
+  const requestedFolderIsAlreadyScoped = normalizedScope === undefined
+    || isPathInFolder(requestedFolder, normalizedScope);
+  const anchoredNewFolder = request.action === "create_new_note"
+    && normalizedScope
+    && requestedFolder
+    && !requestedFolderIsAlreadyScoped
+      ? `${normalizedScope}/${requestedFolder}`
+      : request.targetFolder;
+  const targetFolder = resolveFolderWithinScope(anchoredNewFolder, folderScope);
   const canAppend = request.action === "append_to_note"
     && !!request.targetNotePath
     && (folderScope === undefined || isPathInFolder(request.targetNotePath, folderScope));

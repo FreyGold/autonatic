@@ -211,6 +211,23 @@ test("Atomic placement rejects targets outside its selected folder", () => {
   );
 });
 
+test("Atomic placement anchors topic subfolders under the selected folder", () => {
+  assert.deepEqual(
+    resolveAtomicPlacementTarget(
+      { action: "create_new_note", targetFolder: "Joins" },
+      "Database Exercises",
+    ),
+    { action: "create_new_note", targetFolder: "Database Exercises/Joins" },
+  );
+  assert.deepEqual(
+    resolveAtomicPlacementTarget(
+      { action: "create_new_note", targetFolder: "Transactions/Isolation" },
+      "Database Exercises",
+    ),
+    { action: "create_new_note", targetFolder: "Database Exercises/Transactions/Isolation" },
+  );
+});
+
 test("Atomic parsing preserves a full scoped folder path", () => {
   const [item] = extractAtomicDecompositionPlan(`=== ATOMIC NOTE ===
 Action: create_new_note
@@ -909,7 +926,29 @@ test("Atomic prompts state the selected folder scope", () => {
   assert.match(prompt, /Never append to a note outside this folder/);
 });
 
-test("explicit note folders keep the complete selected path", async () => {
+test("Atomic prompts require topic subfolders and concise source-grounded notes", () => {
+  const prompt = buildUserPrompt(
+    "A study conversation about joins and transactions.",
+    "multi_note",
+    "concise",
+    undefined,
+    [],
+    undefined,
+    true,
+    "Database Exercises",
+  );
+
+  assert.match(prompt, /major topic branch/i);
+  assert.match(prompt, /Database Exercises\/Joins/);
+  assert.match(prompt, /supported by the input/i);
+  assert.match(prompt, /usually be 80-250 words/i);
+  assert.match(prompt, /Do not add unrelated background/i);
+
+  const atomicDescription = DESTINATION_MODE_OPTIONS.find((option) => option.value === "multi_note")?.description || "";
+  assert.match(atomicDescription, /topic subfolders/i);
+});
+
+test("nested note folders create every folder in the selected path", async () => {
   const vault = new FakeVault();
   const plugin = {
     settings: {
@@ -920,10 +959,14 @@ test("explicit note folders keep the complete selected path", async () => {
   };
   const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
   const result = await (modal as never as {
-    createNewNoteFile(content: string, title: string, folder: string, properties: boolean, depth: null): Promise<{ snaps: FileSnapshot[] }>;
+    createNewNoteFile(content: string, title: string, folder: string, properties: boolean, depth: null): Promise<{
+      snaps: FileSnapshot[];
+      foldersCreated: string[];
+    }>;
   }).createNewNoteFile("# Buffer Growth", "Buffer Growth", "Areas/Engineering/HTTP", false, null);
 
   assert.equal(result.snaps[0]?.path, "Areas/Engineering/HTTP/Buffer Growth.md");
+  assert.deepEqual(result.foldersCreated, ["Areas", "Areas/Engineering", "Areas/Engineering/HTTP"]);
 });
 
 test("smart placement parses the exact decision format requested by the prompt", () => {

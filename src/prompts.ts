@@ -206,8 +206,13 @@ The user limited placement to "${placementScopeFolder || "Vault Root"}" and its 
 - Never append to a note outside this folder.
 - Create every new note in this folder or one of its subfolders.
 - Never select a note or folder outside this limit.
+- Folder values can be relative to this limit. For example, Folder: Joins resolves to "${placementScopeFolder ? `${placementScopeFolder}/Joins` : "Joins"}".
 `
       : "";
+
+    const folderExample = placementScopeFolder
+      ? `${placementScopeFolder}/Joins`
+      : "Databases/Joins";
 
     return `Current Date: ${currentDate}
 Mode: Atomic Decomposition (Multi-Note Synthesis)
@@ -218,8 +223,21 @@ ${treeContext}
 ${scopeContext}
 ${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
 
-Analyze the following input. Decompose it into distinct, highly focused atomic concepts.
-For each concept, evaluate whether it belongs inside an existing note from the vault tree (as an appended section) or should be created as a new note in an appropriate folder (maximum folder depth 2).
+### ORGANIZATION RULES
+1. First identify the major topic branches in the full conversation. Examples include Joins, Transactions, Indexes, and Normalization.
+2. Do not create one note for each message. Merge repeated questions and answers about the same atomic concept.
+3. Put every new note in a descriptive topic subfolder. Reuse the same subfolder for notes from the same major topic branch.
+4. A folder is a broad topic container. A note is one focused concept inside that container. Do not use the same narrow phrase for both.
+5. Use no more than two new folder levels. When a placement limit exists, the two levels are relative to that folder.
+6. For each concept, append only when an existing note is a strong conceptual match. Otherwise, create a new note.
+
+### CONTENT BOUNDARIES
+- Include facts, explanations, examples, exercise solutions, and code only when they are supported by the input.
+- Do not add unrelated background, extra tutorials, historical context, or speculative details.
+- Preserve useful SQL, code, formulas, and corrections from the conversation.
+- In concise mode, each note must usually be 80-250 words, excluding source code. Use more only when the input needs it.
+- Add a table, callout, or Mermaid diagram only when it makes the specific concept easier to understand.
+- Do not repeat the same explanation across notes.
 
 Format your ENTIRE response as a sequence of atomic note blocks using this EXACT syntax:
 
@@ -229,16 +247,16 @@ Target: <exact relative path of target note from vault tree, e.g. "HTTP Protocol
 Title: <Section Heading Title>
 Reason: <1 sentence explaining why this belongs in this existing note>
 --- CONTENT ---
-<Complete formatted markdown section ready to append, with ## Headings, code, mermaid, callouts>
+<Concise, source-grounded Markdown section ready to append>
 === END NOTE ===
 
 === ATOMIC NOTE ===
 Action: create_new_note
-Folder: <chosen folder path from tree or new folder up to max depth 2, e.g. "HTTP Protocol/HTTP 1.1">
+Folder: <topic subfolder path, e.g. "${folderExample}">
 Title: <Descriptive Note Title>
 Reason: <1 sentence explaining why this new note is created here>
 --- CONTENT ---
-<Complete formatted standalone Obsidian note with frontmatter if enabled, callout, ## headings, code, mermaid>
+<Concise, source-grounded standalone Obsidian note with frontmatter if enabled>
 === END NOTE ===
 
 Repeat for all decomposed topic pieces.

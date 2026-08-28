@@ -1447,7 +1447,7 @@ export class NemotronModal extends Modal {
       const isMulti = this.selectedMode === "multi_note";
       textDiv.createSpan({
         text: isMulti
-          ? "Atomic Decomposition Active: Input will be decomposed into multiple atomic notes and routed/appended across your vault."
+          ? "Atomic Decomposition Active: Groups the conversation into topic subfolders, then creates concise atomic notes or appends to strong matches."
           : "Smart Auto-Routing Active: AI analyzes your vault tree & topics to automatically place this note or append to the right note.",
       });
     }
