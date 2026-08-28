@@ -175,7 +175,6 @@ export class NemotronModal extends Modal {
     if (initialFolder === "/" || initialFolder === ".") initialFolder = "";
 
     const smartModeInfo = paneEl.createDiv({ cls: "nemotron-smart-info-banner" });
-    this.renderSmartBanner(smartModeInfo);
 
     let limitPlacementToFolder = false;
     let currentPlacementScopeFolder = initialFolder;
@@ -1388,9 +1387,8 @@ export class NemotronModal extends Modal {
   }
 
   private async renderSmartBanner(containerEl: HTMLElement) {
-    containerEl.empty();
-
     const exists = await this.app.vault.adapter.exists(VAULT_INDEX_FILENAME);
+    containerEl.empty();
 
     if (!exists) {
       const topRow = containerEl.createDiv({ cls: "nemotron-smart-top-row" });
