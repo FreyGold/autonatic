@@ -700,7 +700,6 @@
   font-size: 0.9em;
   font-weight: 500;
   line-height: 1.4;
-  border-left: 3px solid var(--interactive-accent);
 }
 
 .nemotron-preview-container {
