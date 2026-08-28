@@ -63,6 +63,30 @@ export function resolveFolderWithinScope(
   return limitedRelativeFolder ? `${scope}/${limitedRelativeFolder}` : scope;
 }
 
+export interface AtomicPlacementRequest {
+  action: "create_new_note" | "append_to_note";
+  targetNotePath?: string;
+  targetFolder?: string;
+}
+
+export type AtomicPlacementTarget =
+  | { action: "append_to_note"; targetNotePath: string; targetFolder: string }
+  | { action: "create_new_note"; targetFolder: string };
+
+export function resolveAtomicPlacementTarget(
+  request: AtomicPlacementRequest,
+  folderScope?: string,
+): AtomicPlacementTarget {
+  const targetFolder = resolveFolderWithinScope(request.targetFolder, folderScope);
+  const canAppend = request.action === "append_to_note"
+    && !!request.targetNotePath
+    && (folderScope === undefined || isPathInFolder(request.targetNotePath, folderScope));
+
+  return canAppend
+    ? { action: "append_to_note", targetNotePath: request.targetNotePath!, targetFolder }
+    : { action: "create_new_note", targetFolder };
+}
+
 export function rankVaultContext(
   index: VaultKnowledgeIndex,
   query: string,

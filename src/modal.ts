@@ -15,10 +15,16 @@ import {
 } from "./vault-indexer";
 import {
   isPathInFolder,
+  resolveAtomicPlacementTarget,
   resolveFolderWithinScope,
   selectStrongRelatedNote,
   selectVaultContext,
 } from "./privacy-controls";
+import {
+  DESTINATION_MODE_OPTIONS,
+  supportsPlacementFolderScope,
+  type DestinationMode,
+} from "./destination-modes";
 import type { VaultKnowledgeIndex } from "./vault-indexer";
 import { FileSnapshot, PromptHistoryItem, revertFileSnapshots } from "./history-manager";
 import {
@@ -44,7 +50,7 @@ export class NemotronModal extends Modal {
   attachedImages: AttachedImage[] = [];
   excalAttachedImages: AttachedImage[] = [];
   pasteListener!: (e: ClipboardEvent) => void;
-  selectedMode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append" = "smart";
+  selectedMode: DestinationMode = "smart";
   selectedStyle: "concise" | "detailed" = "concise";
   enableExcalidrawInNoteTab: boolean = true;
   historyRowEl!: HTMLElement;
@@ -52,7 +58,7 @@ export class NemotronModal extends Modal {
   styleSelectComponent!: CustomSelect;
   private selectComponents: CustomSelect[] = [];
   private folderNavigators: FolderNavigator[] = [];
-  private updateModeUI?: (mode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append") => Promise<void>;
+  private updateModeUI?: (mode: DestinationMode) => Promise<void>;
   renderGalleryCallback?: () => void;
   renderExcalGalleryCallback?: () => void;
   inputTextAreaEl?: HTMLTextAreaElement;
@@ -132,36 +138,16 @@ export class NemotronModal extends Modal {
   // TAB 1: NOTE CRAFTER PANE
   // ==========================================
   private renderNoteCrafterPane(paneEl: HTMLElement, activeView: MarkdownView | null, hasActiveNote: boolean) {
-    const modeOptions: SelectOption[] = [
-      {
-        value: "smart",
-        label: "Smart Placement (Single Note)",
-        description: "AI analyzes your vault hierarchy to place the note in the best folder or note.",
-      },
-      {
-        value: "multi_note",
-        label: "Atomic Decomposition (Multi-Note)",
-        description: "Splits input into distinct atomic notes, auto-creating new files and/or appending across relevant vault notes.",
-      },
-      {
-        value: "multi_note_folder",
-        label: "Create Multiple Notes in Folder",
-        description: "Splits the input into separate new notes and saves every note in one selected directory.",
-      },
-      {
-        value: "new_file",
-        label: "Create New Note File",
-        description: "Manually pick a destination folder and title for a new note file.",
-      },
-      {
-        value: "append",
-        label: hasActiveNote ? `Append to Active Note (${activeView?.file?.basename})` : "Append to Active Note",
-        description: hasActiveNote
-          ? `Pastes formatted note section directly to the end of "${activeView?.file?.basename}".`
-          : "Disabled: Open a note in the editor first to append.",
-        disabled: !hasActiveNote,
-      },
-    ];
+    const modeOptions: SelectOption[] = DESTINATION_MODE_OPTIONS.map((option) => option.value === "append"
+      ? {
+          ...option,
+          label: hasActiveNote ? `Append to Active Note (${activeView?.file?.basename})` : option.label,
+          description: hasActiveNote
+            ? `Adds the generated content to "${activeView?.file?.basename}".`
+            : "Disabled: Open a note in the editor first to append.",
+          disabled: !hasActiveNote,
+        }
+      : { ...option });
 
     const defaultMode = this.plugin.settings.defaultDestinationMode || "smart";
     this.selectedMode = defaultMode;
@@ -191,8 +177,8 @@ export class NemotronModal extends Modal {
     const smartModeInfo = paneEl.createDiv({ cls: "nemotron-smart-info-banner" });
     this.renderSmartBanner(smartModeInfo);
 
-    let limitSmartToFolder = false;
-    let currentSmartScopeFolder = initialFolder;
+    let limitPlacementToFolder = false;
+    let currentPlacementScopeFolder = initialFolder;
     const smartScopeOptionsDiv = paneEl.createDiv({ cls: "nemotron-smart-scope-options" });
     const smartScopeToggleRow = smartScopeOptionsDiv.createDiv({ cls: "nemotron-checkbox-row nemotron-smart-scope-toggle" });
     const smartScopeCheckbox = smartScopeToggleRow.createEl("input", { type: "checkbox", cls: "nemotron-checkbox" });
@@ -201,16 +187,16 @@ export class NemotronModal extends Modal {
 
     const smartScopeToggleLabel = smartScopeToggleRow.createEl("label", { cls: "nemotron-checkbox-label" });
     smartScopeToggleLabel.htmlFor = smartScopeCheckbox.id;
-    smartScopeToggleLabel.createSpan({ text: "Limit Smart Placement to a folder", cls: "nemotron-checkbox-title" });
+    smartScopeToggleLabel.createSpan({ text: "Limit note placement to a folder", cls: "nemotron-checkbox-title" });
     smartScopeToggleLabel.createSpan({
-      text: " Smart can create or append only in this folder and its subfolders.",
+      text: " Smart Placement and Atomic Decomposition can create or append only in this folder and its subfolders.",
       cls: "nemotron-checkbox-desc",
     });
 
     const smartScopeFolderOptions = smartScopeOptionsDiv.createDiv({ cls: "nemotron-smart-scope-folder" });
     smartScopeFolderOptions.id = "nemotron-smart-folder-scope-options";
     const smartScopeFolderRow = smartScopeFolderOptions.createDiv({ cls: "nemotron-form-row" });
-    smartScopeFolderRow.createEl("label", { text: "Smart Placement Folder:", cls: "nemotron-label" });
+    smartScopeFolderRow.createEl("label", { text: "Placement Folder:", cls: "nemotron-label" });
     smartScopeFolderRow.createEl("div", {
       text: "The limit includes all notes and folders below the selected folder.",
       cls: "nemotron-folder-scope-help",
@@ -220,15 +206,15 @@ export class NemotronModal extends Modal {
       smartScopeFolderRow,
       initialFolder,
       (newPath) => {
-        currentSmartScopeFolder = newPath;
+        currentPlacementScopeFolder = newPath;
       },
     );
     this.folderNavigators.push(smartFolderNavigator);
 
     const updateSmartScopeVisibility = () => {
-      limitSmartToFolder = smartScopeCheckbox.checked;
-      smartScopeCheckbox.setAttribute("aria-expanded", limitSmartToFolder ? "true" : "false");
-      smartScopeFolderOptions.style.display = limitSmartToFolder ? "block" : "none";
+      limitPlacementToFolder = smartScopeCheckbox.checked;
+      smartScopeCheckbox.setAttribute("aria-expanded", limitPlacementToFolder ? "true" : "false");
+      smartScopeFolderOptions.style.display = limitPlacementToFolder ? "block" : "none";
     };
     smartScopeCheckbox.addEventListener("change", updateSmartScopeVisibility);
     updateSmartScopeVisibility();
@@ -260,16 +246,11 @@ export class NemotronModal extends Modal {
     );
     this.folderNavigators.push(folderNavigator);
 
-    const updateModeUI = async (mode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append") => {
+    const updateModeUI = async (mode: DestinationMode) => {
       this.selectedMode = mode;
-      if (mode === "smart") {
+      if (supportsPlacementFolderScope(mode)) {
         smartModeInfo.style.display = "flex";
         smartScopeOptionsDiv.style.display = "block";
-        await this.renderSmartBanner(smartModeInfo);
-        newNoteOptionsDiv.style.display = "none";
-      } else if (mode === "multi_note") {
-        smartModeInfo.style.display = "flex";
-        smartScopeOptionsDiv.style.display = "none";
         await this.renderSmartBanner(smartModeInfo);
         newNoteOptionsDiv.style.display = "none";
       } else if (mode === "new_file" || mode === "multi_note_folder") {
@@ -292,7 +273,7 @@ export class NemotronModal extends Modal {
       modeOptions,
       defaultMode,
       (val) => {
-        updateModeUI(val as "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append");
+        updateModeUI(val as DestinationMode);
       },
       { controlId: "nemotron-destination-mode", labelId: modeLabel.id },
     );
@@ -633,14 +614,14 @@ export class NemotronModal extends Modal {
       const mode = this.selectedMode;
       const enableProperties = this.plugin.settings.enableProperties ?? true;
       const customInstruction = customInput.value.trim();
-      const smartScopeFolder = mode === "smart" && limitSmartToFolder
-        ? currentSmartScopeFolder
+      const placementScopeFolder = supportsPlacementFolderScope(mode) && limitPlacementToFolder
+        ? currentPlacementScopeFolder
         : undefined;
 
-      if (smartScopeFolder) {
-        const scopeTarget = this.app.vault.getAbstractFileByPath(normalizePath(smartScopeFolder));
+      if (placementScopeFolder) {
+        const scopeTarget = this.app.vault.getAbstractFileByPath(normalizePath(placementScopeFolder));
         if (!(scopeTarget instanceof TFolder)) {
-          new Notice(`The Smart Placement folder does not exist: ${smartScopeFolder}`);
+          new Notice(`The placement folder does not exist: ${placementScopeFolder}`);
           return;
         }
       }
@@ -659,7 +640,7 @@ export class NemotronModal extends Modal {
 
       const existingVaultNotes = this.app.vault
         .getMarkdownFiles()
-        .filter((file) => smartScopeFolder === undefined || isPathInFolder(file.path, smartScopeFolder))
+        .filter((file) => placementScopeFolder === undefined || isPathInFolder(file.path, placementScopeFolder))
         .map((f) => f.basename)
         .filter((b) => b && !b.startsWith("."));
 
@@ -675,7 +656,7 @@ export class NemotronModal extends Modal {
           vaultIndex,
           promptText,
           this.plugin.settings.maxVaultContextNotes,
-          mode === "smart" ? smartScopeFolder : undefined,
+          placementScopeFolder,
         );
         vaultKnowledgeTreeText = notes.map((note) => `- ${note.path}: ${note.about}`).join("\n");
       }
@@ -688,7 +669,7 @@ export class NemotronModal extends Modal {
         existingVaultNotes,
         vaultKnowledgeTreeText,
         enableProperties,
-        smartScopeFolder,
+        placementScopeFolder,
       );
 
       this.isGenerating = true;
@@ -701,8 +682,8 @@ export class NemotronModal extends Modal {
           : mode === "multi_note"
           ? "Decomposing into atomic notes & routing across vault..."
           : mode === "smart"
-          ? smartScopeFolder !== undefined
-            ? `Analyzing notes in ${smartScopeFolder || "Vault Root"}...`
+          ? placementScopeFolder !== undefined
+            ? `Analyzing notes in ${placementScopeFolder || "Vault Root"}...`
             : "Analyzing vault tree & generating note..."
           : "Starting note generation..."
       );
@@ -774,26 +755,27 @@ export class NemotronModal extends Modal {
                 fileSnapshots.push(...snaps);
                 foldersCreatedList.push(...foldersCreated);
                 createdCount++;
-              } else if (item.action === "append_to_note" && item.targetNotePath) {
-                const targetFile = this.app.vault.getAbstractFileByPath(normalizePath(item.targetNotePath));
+              } else {
+                const target = resolveAtomicPlacementTarget(item, placementScopeFolder);
+                const targetFile = target.action === "append_to_note"
+                  ? this.app.vault.getAbstractFileByPath(normalizePath(target.targetNotePath))
+                  : null;
                 if (targetFile instanceof TFile) {
                   const { snaps, foldersCreated } = await this.appendToFile(targetFile, item.content, enableProperties, item.reason);
                   fileSnapshots.push(...snaps);
                   foldersCreatedList.push(...foldersCreated);
                   appendedCount++;
                 } else {
-                  const folder = enforceMaxDepthFolder(item.targetFolder || "");
-                  const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties);
+                  const { snaps, foldersCreated } = await this.createNewNoteFile(
+                    item.content,
+                    item.title,
+                    target.targetFolder,
+                    enableProperties,
+                  );
                   fileSnapshots.push(...snaps);
                   foldersCreatedList.push(...foldersCreated);
                   createdCount++;
                 }
-              } else {
-                const folder = enforceMaxDepthFolder(item.targetFolder || "");
-                const { snaps, foldersCreated } = await this.createNewNoteFile(item.content, item.title, folder, enableProperties);
-                fileSnapshots.push(...snaps);
-                foldersCreatedList.push(...foldersCreated);
-                createdCount++;
               }
             } catch (itemErr: any) {
               throw new Error(`Failed to process "${item.title}": ${itemErr.message}`, { cause: itemErr });
@@ -823,13 +805,13 @@ export class NemotronModal extends Modal {
         } else if (mode === "smart") {
           const { decision, cleanedContent } = extractSmartDecision(result.content);
           const requestedTargetIsInScope = decision?.action === "append_to_note" && decision.targetNotePath
-            ? smartScopeFolder === undefined || isPathInFolder(decision.targetNotePath, smartScopeFolder)
+            ? placementScopeFolder === undefined || isPathInFolder(decision.targetNotePath, placementScopeFolder)
             : false;
           const requestedTarget = requestedTargetIsInScope && decision?.targetNotePath
             ? this.app.vault.getAbstractFileByPath(normalizePath(decision.targetNotePath))
             : null;
           const relatedNote = vaultIndexForPlacement
-            ? selectStrongRelatedNote(vaultIndexForPlacement, cleanedContent, smartScopeFolder)
+            ? selectStrongRelatedNote(vaultIndexForPlacement, cleanedContent, placementScopeFolder)
             : null;
           const relatedTarget = relatedNote
             ? this.app.vault.getAbstractFileByPath(normalizePath(relatedNote.path))
@@ -853,14 +835,14 @@ export class NemotronModal extends Modal {
             throw new Error(`Smart placement selected a missing note: ${decision.targetNotePath}. No file was created.`);
           } else {
             const rawFolder = decision?.action === "create_new_note" ? decision.targetFolder : undefined;
-            const targetFolder = resolveFolderWithinScope(rawFolder, smartScopeFolder);
+            const targetFolder = resolveFolderWithinScope(rawFolder, placementScopeFolder);
             const title = decision?.title || titleInput.value.trim();
             const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, title, targetFolder, enableProperties);
             fileSnapshots.push(...snaps);
             foldersCreatedList.push(...foldersCreated);
             const outsideScopeTarget = decision?.action === "append_to_note" && !requestedTargetIsInScope;
             const reason = outsideScopeTarget
-              ? `The suggested note was outside the selected folder scope. A new note was created inside ${smartScopeFolder || "Vault Root"}.`
+              ? `The suggested note was outside the selected folder scope. A new note was created inside ${placementScopeFolder || "Vault Root"}.`
               : decision?.reason;
             const reasonMsg = reason ? `\nReason: ${reason}` : "";
             new Notice(`Smart Placed in folder: "${targetFolder || "Vault Root"}"${reasonMsg}`, 7000);

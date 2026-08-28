@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type NemotronPlugin from "./main";
 import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT } from "./prompts";
 import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
+import { DESTINATION_MODE_OPTIONS, type DestinationMode } from "./destination-modes";
 
 export interface NemotronPluginSettings {
   apiKey: string;
@@ -162,19 +163,17 @@ export class NemotronSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Default Destination Mode")
       .setDesc("Choose default placement behavior when opening the Note Crafter modal.")
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("smart", "Smart Placement (Single Note Auto-Route)")
-          .addOption("multi_note", "Atomic Decomposition (Multi-Note Synthesis)")
-          .addOption("multi_note_folder", "Create Multiple Notes in One Folder")
-          .addOption("new_file", "Create New Note File")
-          .addOption("append", "Append to Active Note")
+      .addDropdown((dropdown) => {
+        for (const option of DESTINATION_MODE_OPTIONS) {
+          dropdown.addOption(option.value, option.label);
+        }
+        return dropdown
           .setValue(this.plugin.settings.defaultDestinationMode || "smart")
           .onChange(async (value) => {
-            this.plugin.settings.defaultDestinationMode = value as "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append";
+            this.plugin.settings.defaultDestinationMode = value as DestinationMode;
             await this.plugin.saveSettings();
-          })
-      );
+          });
+      });
 
     // Vault Knowledge Index Status & Populate
     const indexData = await loadVaultIndex(this.app);

@@ -134,7 +134,7 @@ export function buildUserPrompt(
   existingVaultNotes?: string[],
   vaultKnowledgeTree?: string,
   enableProperties: boolean = true,
-  smartScopeFolder?: string,
+  placementScopeFolder?: string,
 ): string {
   const currentDate = new Date().toISOString().split("T")[0];
 
@@ -200,6 +200,14 @@ ${vaultKnowledgeTree}
 \`\`\`
 `
       : "";
+    const scopeContext = placementScopeFolder !== undefined
+      ? `### PLACEMENT FOLDER LIMIT
+The user limited placement to "${placementScopeFolder || "Vault Root"}" and its subfolders.
+- Never append to a note outside this folder.
+- Create every new note in this folder or one of its subfolders.
+- Never select a note or folder outside this limit.
+`
+      : "";
 
     return `Current Date: ${currentDate}
 Mode: Atomic Decomposition (Multi-Note Synthesis)
@@ -207,6 +215,7 @@ ${styleInstruction}
 ${propertiesInstruction}
 ${vaultNotesSection}
 ${treeContext}
+${scopeContext}
 ${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
 
 Analyze the following input. Decompose it into distinct, highly focused atomic concepts.
@@ -246,9 +255,9 @@ ${vaultKnowledgeTree}
 \`\`\`
 `
       : "";
-    const scopeContext = smartScopeFolder !== undefined
+    const scopeContext = placementScopeFolder !== undefined
       ? `### SMART PLACEMENT SCOPE
-The user limited placement to "${smartScopeFolder || "Vault Root"}" and its subfolders.
+The user limited placement to "${placementScopeFolder || "Vault Root"}" and its subfolders.
 - Append only to a listed note in this scope.
 - For a new note, use the selected folder path or one of its subfolders.
 - Never select a note or folder outside this scope.

@@ -579,7 +579,7 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
 
     results.push({
       action,
-      targetFolder: enforceMaxDepthFolder(targetFolder),
+      targetFolder: normalizeFolderPath(targetFolder),
       targetNotePath,
       title: title || "Synthesized Note",
       reason: reasonMatch ? reasonMatch[1].trim() : "Decomposed topic piece",
@@ -604,7 +604,7 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
       if (Array.isArray(items) && items.length > 0) {
         return items.map((it) => ({
           action: it.action === "append_to_note" ? "append_to_note" : "create_new_note",
-          targetFolder: enforceMaxDepthFolder(it.targetFolder || ""),
+          targetFolder: normalizeFolderPath(it.targetFolder || ""),
           targetNotePath: it.targetNotePath,
           title: it.title || "Synthesized Note",
           reason: it.reason || "",
@@ -632,7 +632,7 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
 
           results.push({
             action,
-            targetFolder: enforceMaxDepthFolder(targetFolderMatch ? targetFolderMatch[1] : ""),
+            targetFolder: normalizeFolderPath(targetFolderMatch ? targetFolderMatch[1] : ""),
             targetNotePath: targetNoteMatch ? targetNoteMatch[1] : undefined,
             title: titleMatch ? titleMatch[1] : "Synthesized Note",
             reason: reasonMatch ? reasonMatch[1] : "",
@@ -673,11 +673,14 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
  * Normalizes folder path to ensure max depth of 2 (e.g. "Cat1/Cat2")
  */
 export function enforceMaxDepthFolder(folderPath?: string, maxDepth: number = 2): string {
-  if (!folderPath) return "";
-  const cleaned = normalizePath(folderPath).replace(/^\/+|\/+$/g, "");
-  if (!cleaned || cleaned === "." || cleaned === "/") return "";
-
+  const cleaned = normalizeFolderPath(folderPath);
   const segments = cleaned.split("/").filter((s) => s.trim().length > 0);
   const capped = segments.slice(0, maxDepth);
   return capped.join("/");
+}
+
+function normalizeFolderPath(folderPath?: string): string {
+  if (!folderPath) return "";
+  const cleaned = normalizePath(folderPath).replace(/^\/+|\/+$/g, "");
+  return !cleaned || cleaned === "." || cleaned === "/" ? "" : cleaned;
 }

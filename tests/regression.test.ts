@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { TFile, TFolder } from "obsidian";
-import { extractSmartDecision } from "../src/vault-indexer";
+import { extractAtomicDecompositionPlan, extractSmartDecision } from "../src/vault-indexer";
 import { HistoryManager, revertFileSnapshots } from "../src/history-manager";
 import { NemotronModal } from "../src/modal";
 import { createMirroredExcalidrawDrawing } from "../src/excalidraw-generator";
@@ -10,6 +10,7 @@ import {
   isExcludedPath,
   isPathInFolder,
   parseExcludedFolders,
+  resolveAtomicPlacementTarget,
   resolveFolderWithinScope,
   selectStrongRelatedNote,
   selectVaultContext,
@@ -19,6 +20,50 @@ import { buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
 import { sanitizeMermaidDiagrams } from "../src/api";
 import { replaceCapturedSelection } from "../src/selection-editor";
 import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
+import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/destination-modes";
+
+test("Smart and Atomic placement expose the same folder limit", () => {
+  assert.equal(supportsPlacementFolderScope("smart"), true);
+  assert.equal(supportsPlacementFolderScope("multi_note"), true);
+  assert.equal(supportsPlacementFolderScope("multi_note_folder"), false);
+
+  const smartLabel = DESTINATION_MODE_OPTIONS.find((option) => option.value === "smart")?.label || "";
+  assert.match(smartLabel, /Smart Placement/);
+  assert.doesNotMatch(smartLabel, /Single Note/i);
+});
+
+test("Atomic placement rejects targets outside its selected folder", () => {
+  assert.deepEqual(
+    resolveAtomicPlacementTarget(
+      { action: "append_to_note", targetNotePath: "Practical/HTTP.md", targetFolder: "Practical" },
+      "Theoretical",
+    ),
+    { action: "create_new_note", targetFolder: "Theoretical" },
+  );
+  assert.deepEqual(
+    resolveAtomicPlacementTarget(
+      { action: "create_new_note", targetFolder: "Theoretical/Networking/HTTP" },
+      "Theoretical",
+    ),
+    { action: "create_new_note", targetFolder: "Theoretical/Networking/HTTP" },
+  );
+});
+
+test("Atomic parsing preserves a full scoped folder path", () => {
+  const [item] = extractAtomicDecompositionPlan(`=== ATOMIC NOTE ===
+Action: create_new_note
+Folder: Areas/Theoretical/Networking/HTTP
+Title: HTTP semantics
+--- CONTENT ---
+Protocol theory.
+=== END NOTE ===`);
+
+  assert.equal(item.targetFolder, "Areas/Theoretical/Networking/HTTP");
+  assert.deepEqual(
+    resolveAtomicPlacementTarget(item, "Areas/Theoretical"),
+    { action: "create_new_note", targetFolder: "Areas/Theoretical/Networking/HTTP" },
+  );
+});
 
 test("useful diagram planner can skip every changed note", async () => {
   const planner = new UsefulDiagramPlanner({
@@ -683,6 +728,23 @@ test("Smart prompts state the selected folder scope", () => {
   assert.match(prompt, /SMART PLACEMENT SCOPE/);
   assert.match(prompt, /limited placement to "Theoretical" and its subfolders/);
   assert.match(prompt, /Never select a note or folder outside this scope/);
+});
+
+test("Atomic prompts state the selected folder scope", () => {
+  const prompt = buildUserPrompt(
+    "HTTP protocol semantics",
+    "multi_note",
+    "concise",
+    undefined,
+    ["HTTP"],
+    "- Theoretical/HTTP.md: Protocol semantics",
+    true,
+    "Theoretical",
+  );
+
+  assert.match(prompt, /PLACEMENT FOLDER LIMIT/);
+  assert.match(prompt, /limited placement to "Theoretical" and its subfolders/);
+  assert.match(prompt, /Never append to a note outside this folder/);
 });
 
 test("explicit note folders keep the complete selected path", async () => {
