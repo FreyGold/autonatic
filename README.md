@@ -1,10 +1,10 @@
 # Nemotron Note Crafter - Obsidian Plugin
 
-Transform raw, dense, or unorganized text into concise, beautifully structured notes strictly formatted **"The Obsidian Way"**, powered by NVIDIA's `nvidia/nemotron-3-ultra-550b-a55b` model.
+Transform raw, dense, or unorganized text into concise, beautifully structured notes strictly formatted **"The Obsidian Way"**, powered by NVIDIA's `nvidia/nemotron-3.5-lightning-30b-a3b` model.
 
 ## ✨ Features
 
-- 🧠 **NVIDIA Nemotron-3 Ultra Integration**: Pre-configured with NVIDIA integrate API, streaming responses, and reasoning/thinking support.
+- 🧠 **NVIDIA Nemotron Integration**: Pre-configured with NVIDIA integrate API, streaming responses, and reasoning/thinking support.
 - 📝 **The Obsidian Way Skill Prompt**:
   - **YAML Properties / Frontmatter**: `title`, `aliases`, `tags`, `created`, `summary`, `status`.
   - **Callouts**: Strategic use of `> [!summary]`, `> [!info]`, `> [!tip]`, `> [!warning]`.
@@ -51,7 +51,7 @@ Run `npm run check` before a release. A tag starts the release workflow. The rel
 
 Go to **Obsidian Settings > Nemotron Note Crafter** to configure:
 - **API Key**: Pre-configured default NVIDIA API key.
-- **Model**: `nvidia/nemotron-3-ultra-550b-a55b`.
+- **Model**: `nvidia/nemotron-3.5-lightning-30b-a3b`.
 - **Enable Thinking**: Toggle deep reasoning tokens.
 - **Obsidian Skill System Prompt**: Customize the formatting instructions.
 - **Default Folder**: Folder path where new notes are created.

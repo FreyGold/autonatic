@@ -3,6 +3,7 @@ import type NemotronPlugin from "./main";
 import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT } from "./prompts";
 import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
 import { DESTINATION_MODE_OPTIONS, type DestinationMode } from "./destination-modes";
+import { DEFAULT_TEXT_MODEL } from "./model-defaults";
 
 export interface NemotronPluginSettings {
   apiKey: string;
@@ -36,7 +37,7 @@ export interface NemotronPluginSettings {
 export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   apiKey: "",
   baseUrl: "https://integrate.api.nvidia.com/v1",
-  model: "nvidia/nemotron-3-ultra-550b-a55b",
+  model: DEFAULT_TEXT_MODEL,
   visionModel: "meta/llama-3.2-11b-vision-instruct",
   defaultDestinationMode: "smart",
   defaultNoteStyle: "concise",
@@ -88,7 +89,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     const nimLeft = nimCard.createDiv({ cls: "nemotron-nim-left" });
     nimLeft.createEl("strong", { text: "Need an NVIDIA API Key?" });
     nimLeft.createEl("p", {
-      text: "NVIDIA NIM offers developer API access for models like Nemotron-3 Ultra 550B and Llama-3.2 Vision.",
+      text: "NVIDIA NIM offers developer API access for models like Nemotron 3.5 Lightning and Llama 3.2 Vision.",
       cls: "nemotron-nim-desc",
     });
     
@@ -325,7 +326,7 @@ export class NemotronSettingTab extends PluginSettingTab {
       .setDesc("Model identifier to use for note architecture and synthesis.")
       .addText((text) =>
         text
-          .setPlaceholder("nvidia/nemotron-3-ultra-550b-a55b")
+          .setPlaceholder(DEFAULT_TEXT_MODEL)
           .setValue(this.plugin.settings.model)
           .onChange(async (value) => {
             this.plugin.settings.model = value.trim();

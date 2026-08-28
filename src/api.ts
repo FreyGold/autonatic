@@ -312,7 +312,7 @@ export function streamChatCompletion(
       }
 
       const postData = JSON.stringify(requestBody);
-      callbacks?.onStatus?.("Structuring notes with Nemotron-3 Ultra reasoning...");
+      callbacks?.onStatus?.("Structuring notes with Nemotron reasoning...");
 
       const isHttps = urlObj.protocol === "https:";
       const requestFn = isHttps ? https.request : http.request;

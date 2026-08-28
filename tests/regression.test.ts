@@ -21,6 +21,14 @@ import { sanitizeMermaidDiagrams } from "../src/api";
 import { replaceCapturedSelection } from "../src/selection-editor";
 import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
 import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/destination-modes";
+import { DEFAULT_TEXT_MODEL, resolveTextModel } from "../src/model-defaults";
+
+test("Lightning is the default text model", () => {
+  assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3.5-lightning-30b-a3b");
+  assert.equal(resolveTextModel(), DEFAULT_TEXT_MODEL);
+  assert.equal(resolveTextModel("nvidia/nemotron-3-ultra-550b-a55b"), DEFAULT_TEXT_MODEL);
+  assert.equal(resolveTextModel("custom/model"), "custom/model");
+});
 
 test("Smart and Atomic placement expose the same folder limit", () => {
   assert.equal(supportsPlacementFolderScope("smart"), true);

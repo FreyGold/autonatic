@@ -1,5 +1,10 @@
 import { Plugin, MarkdownView, Editor, Notice, TFile } from "obsidian";
-import { NemotronPluginSettings, DEFAULT_SETTINGS, NemotronSettingTab } from "./settings";
+import {
+  NemotronPluginSettings,
+  DEFAULT_SETTINGS,
+  NemotronSettingTab,
+} from "./settings";
+import { resolveTextModel } from "./model-defaults";
 import { NemotronModal } from "./modal";
 import { generateNemotronNote } from "./api";
 import { buildSelectionEditPrompt, buildUserPrompt, SelectionEditAction } from "./prompts";
@@ -330,7 +335,10 @@ export default class NemotronPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const savedSettings = (await this.loadData()) || {};
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
+
+    this.settings.model = resolveTextModel(savedSettings.model);
   }
 
   async saveSettings() {
