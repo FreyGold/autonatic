@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import { NemotronPluginSettings } from "./settings";
+import { DEFAULT_TEXT_MODEL, LIGHTNING_FALLBACK_TEXT_MODEL } from "./model-defaults";
 import * as https from "https";
 import * as http from "http";
 
@@ -285,6 +286,31 @@ export async function streamChatCompletion(
   signal?: AbortSignal
 ): Promise<StreamResult> {
   try {
+    return await streamWithTimeoutRetry(settings, systemPrompt, userPrompt, callbacks, signal);
+  } catch (error) {
+    if (settings.model === DEFAULT_TEXT_MODEL && isNotFoundError(error) && !signal?.aborted) {
+      callbacks?.onStatus?.("Lightning is unavailable from NVIDIA. Using Nemotron 3 Super...");
+      return streamWithTimeoutRetry(
+        { ...settings, model: LIGHTNING_FALLBACK_TEXT_MODEL },
+        systemPrompt,
+        userPrompt,
+        callbacks,
+        signal
+      );
+    }
+
+    throw error;
+  }
+}
+
+async function streamWithTimeoutRetry(
+  settings: NemotronPluginSettings,
+  systemPrompt: string,
+  userPrompt: string,
+  callbacks?: StreamCallbacks,
+  signal?: AbortSignal
+): Promise<StreamResult> {
+  try {
     return await streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
   } catch (error) {
     if (!isRetryableTimeout(error) || signal?.aborted) {
@@ -294,6 +320,21 @@ export async function streamChatCompletion(
     callbacks?.onStatus?.("NVIDIA connection timed out. Retrying once...");
     return streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
   }
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof Error && (error as Error & { statusCode?: number }).statusCode === 404;
+}
+
+function createNvidiaApiError(statusCode: number, responseBody: string): Error & { statusCode: number } {
+  let detail = responseBody.trim();
+  try {
+    const parsed = JSON.parse(responseBody);
+    if (parsed.error?.message) detail = parsed.error.message;
+  } catch {}
+
+  if (!detail) detail = "The requested model endpoint is unavailable.";
+  return Object.assign(new Error(`NVIDIA API error (${statusCode}): ${detail}`), { statusCode });
 }
 
 function isRetryableTimeout(error: unknown): boolean {
@@ -359,14 +400,7 @@ function streamChatCompletionAttempt(
               errBody += chunk.toString();
             });
             res.on("end", () => {
-              let msg = `NVIDIA API error (${res.statusCode}): ${errBody}`;
-              try {
-                const parsed = JSON.parse(errBody);
-                if (parsed.error?.message) {
-                  msg = `NVIDIA API error (${res.statusCode}): ${parsed.error.message}`;
-                }
-              } catch {}
-              reject(new Error(msg));
+              reject(createNvidiaApiError(res.statusCode || 500, errBody));
             });
             return;
           }
@@ -516,7 +550,7 @@ async function generateWithObsidianRequestUrl(
   });
 
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(`NVIDIA API error (${response.status}): ${response.text}`);
+    throw createNvidiaApiError(response.status, response.text);
   }
 
   const data = response.json;
