@@ -1,6 +1,5 @@
 import { requestUrl } from "obsidian";
 import { NemotronPluginSettings } from "./settings";
-import { DEFAULT_TEXT_MODEL, LIGHTNING_FALLBACK_TEXT_MODEL } from "./model-defaults";
 import * as https from "https";
 import * as http from "http";
 
@@ -285,22 +284,7 @@ export async function streamChatCompletion(
   callbacks?: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<StreamResult> {
-  try {
-    return await streamWithTimeoutRetry(settings, systemPrompt, userPrompt, callbacks, signal);
-  } catch (error) {
-    if (settings.model === DEFAULT_TEXT_MODEL && isNotFoundError(error) && !signal?.aborted) {
-      callbacks?.onStatus?.("Lightning is unavailable from NVIDIA. Using Nemotron 3 Super...");
-      return streamWithTimeoutRetry(
-        { ...settings, model: LIGHTNING_FALLBACK_TEXT_MODEL },
-        systemPrompt,
-        userPrompt,
-        callbacks,
-        signal
-      );
-    }
-
-    throw error;
-  }
+  return streamWithTimeoutRetry(settings, systemPrompt, userPrompt, callbacks, signal);
 }
 
 async function streamWithTimeoutRetry(
@@ -320,10 +304,6 @@ async function streamWithTimeoutRetry(
     callbacks?.onStatus?.("NVIDIA connection timed out. Retrying once...");
     return streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
   }
-}
-
-function isNotFoundError(error: unknown): boolean {
-  return error instanceof Error && (error as Error & { statusCode?: number }).statusCode === 404;
 }
 
 function createNvidiaApiError(statusCode: number, responseBody: string): Error & { statusCode: number } {

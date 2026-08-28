@@ -23,7 +23,7 @@ import { sanitizeMermaidDiagrams, streamChatCompletion } from "../src/api";
 import { replaceCapturedSelection } from "../src/selection-editor";
 import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
 import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/destination-modes";
-import { DEFAULT_TEXT_MODEL, LIGHTNING_FALLBACK_TEXT_MODEL, resolveTextModel } from "../src/model-defaults";
+import { DEFAULT_TEXT_MODEL, resolveTextModel } from "../src/model-defaults";
 
 test("Lightning is the default text model", () => {
   assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3.5-lightning-30b-a3b");
@@ -81,7 +81,7 @@ test("streaming retries one temporary read timeout", async () => {
   }
 });
 
-test("Lightning falls back to Super when NVIDIA returns an empty route 404", async () => {
+test("Lightning never substitutes another model after a route 404", async () => {
   const originalRequest = http.request;
   const requestedModels: string[] = [];
 
@@ -99,12 +99,8 @@ test("Lightning falls back to Super when NVIDIA returns an empty route 404", asy
     request.end = () => {
       queueMicrotask(() => {
         requestedModels.push(JSON.parse(requestBody).model);
-        const isLightning = requestedModels.length === 1;
-        const response = Object.assign(new EventEmitter(), { statusCode: isLightning ? 404 : 200 });
+        const response = Object.assign(new EventEmitter(), { statusCode: 404 });
         onResponse(response);
-        if (!isLightning) {
-          response.emit("data", Buffer.from('data: {"choices":[{"delta":{"content":"Super response"}}]}\n\n'));
-        }
         response.emit("end");
       });
     };
@@ -112,23 +108,20 @@ test("Lightning falls back to Super when NVIDIA returns an empty route 404", asy
   };
 
   try {
-    const statuses: string[] = [];
-    const result = await streamChatCompletion({
-      apiKey: "test-key",
-      baseUrl: "http://nvidia.test/v1",
-      model: DEFAULT_TEXT_MODEL,
-      temperature: 1,
-      topP: 0.95,
-      maxTokens: 100,
-      enableThinking: true,
-    } as never, "system", "user", { onStatus: (status) => statuses.push(status) });
+    await assert.rejects(
+      () => streamChatCompletion({
+        apiKey: "test-key",
+        baseUrl: "http://nvidia.test/v1",
+        model: DEFAULT_TEXT_MODEL,
+        temperature: 1,
+        topP: 0.95,
+        maxTokens: 100,
+        enableThinking: true,
+      } as never, "system", "user"),
+      /requested model endpoint is unavailable/i
+    );
 
-    assert.equal(result.content, "Super response");
-    assert.deepEqual(requestedModels, [
-      "nvidia/nemotron-3.5-lightning-30b-a3b",
-      LIGHTNING_FALLBACK_TEXT_MODEL,
-    ]);
-    assert.match(statuses.join(" "), /Lightning.*Super/i);
+    assert.deepEqual(requestedModels, ["nvidia/nemotron-3.5-lightning-30b-a3b"]);
   } finally {
     (http as any).request = originalRequest;
   }
