@@ -252,6 +252,7 @@ Reason: <1 sentence explaining why this belongs in this existing note>
 
 === ATOMIC NOTE ===
 Action: create_new_note
+Topic: <broad major topic branch, e.g. "Joins"; REQUIRED for every new note>
 Folder: <topic subfolder path, e.g. "${folderExample}">
 Title: <Descriptive Note Title>
 Reason: <1 sentence explaining why this new note is created here>

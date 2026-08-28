@@ -67,6 +67,7 @@ export interface AtomicPlacementRequest {
   action: "create_new_note" | "append_to_note";
   targetNotePath?: string;
   targetFolder?: string;
+  topicFolder?: string;
 }
 
 export type AtomicPlacementTarget =
@@ -79,14 +80,23 @@ export function resolveAtomicPlacementTarget(
 ): AtomicPlacementTarget {
   const requestedFolder = normalizeVaultPath(request.targetFolder ?? "");
   const normalizedScope = folderScope === undefined ? undefined : normalizeVaultPath(folderScope);
+  const rawTopicFolder = normalizeVaultPath(request.topicFolder ?? "");
+  const topicFolder = normalizedScope && isPathInFolder(rawTopicFolder, normalizedScope)
+    ? rawTopicFolder.slice(normalizedScope.length).replace(/^\/+/, "")
+    : rawTopicFolder;
+  const limitedTopicFolder = topicFolder.split("/").filter(Boolean).slice(0, 2).join("/");
   const requestedFolderIsAlreadyScoped = normalizedScope === undefined
     || isPathInFolder(requestedFolder, normalizedScope);
-  const anchoredNewFolder = request.action === "create_new_note"
-    && normalizedScope
-    && requestedFolder
-    && !requestedFolderIsAlreadyScoped
-      ? `${normalizedScope}/${requestedFolder}`
-      : request.targetFolder;
+  const requestedFolderIsScopeRoot = request.action === "create_new_note"
+    && normalizedScope !== undefined
+    && requestedFolder === normalizedScope;
+  let anchoredNewFolder = request.targetFolder;
+  if (request.action === "create_new_note" && (!requestedFolder || requestedFolderIsScopeRoot)) {
+    const requiredSubfolder = limitedTopicFolder || "Atomic Notes";
+    anchoredNewFolder = normalizedScope ? `${normalizedScope}/${requiredSubfolder}` : requiredSubfolder;
+  } else if (request.action === "create_new_note" && normalizedScope && !requestedFolderIsAlreadyScoped) {
+    anchoredNewFolder = `${normalizedScope}/${requestedFolder}`;
+  }
   const targetFolder = resolveFolderWithinScope(anchoredNewFolder, folderScope);
   const canAppend = request.action === "append_to_note"
     && !!request.targetNotePath

@@ -228,6 +228,30 @@ test("Atomic placement anchors topic subfolders under the selected folder", () =
   );
 });
 
+test("Atomic topic metadata prevents new notes from staying in the selected folder root", () => {
+  const [item] = extractAtomicDecompositionPlan(`=== ATOMIC NOTE ===
+Action: create_new_note
+Folder: DB/SQL
+Topic: Joins
+Title: JOIN Types.md
+--- CONTENT ---
+Join notes.
+=== END NOTE ===`);
+
+  assert.equal((item as { topicFolder?: string }).topicFolder, "Joins");
+  assert.deepEqual(
+    resolveAtomicPlacementTarget(item, "DB/SQL"),
+    { action: "create_new_note", targetFolder: "DB/SQL/Joins" },
+  );
+  assert.deepEqual(
+    resolveAtomicPlacementTarget(
+      { action: "create_new_note", targetFolder: "DB/SQL" },
+      "DB/SQL",
+    ),
+    { action: "create_new_note", targetFolder: "DB/SQL/Atomic Notes" },
+  );
+});
+
 test("Atomic parsing preserves a full scoped folder path", () => {
   const [item] = extractAtomicDecompositionPlan(`=== ATOMIC NOTE ===
 Action: create_new_note
@@ -940,6 +964,7 @@ test("Atomic prompts require topic subfolders and concise source-grounded notes"
 
   assert.match(prompt, /major topic branch/i);
   assert.match(prompt, /Database Exercises\/Joins/);
+  assert.match(prompt, /Topic: <broad major topic branch/i);
   assert.match(prompt, /supported by the input/i);
   assert.match(prompt, /usually be 80-250 words/i);
   assert.match(prompt, /Do not add unrelated background/i);
@@ -963,7 +988,7 @@ test("nested note folders create every folder in the selected path", async () =>
       snaps: FileSnapshot[];
       foldersCreated: string[];
     }>;
-  }).createNewNoteFile("# Buffer Growth", "Buffer Growth", "Areas/Engineering/HTTP", false, null);
+  }).createNewNoteFile("# Buffer Growth", "Buffer Growth.md", "Areas/Engineering/HTTP", false, null);
 
   assert.equal(result.snaps[0]?.path, "Areas/Engineering/HTTP/Buffer Growth.md");
   assert.deepEqual(result.foldersCreated, ["Areas", "Areas/Engineering", "Areas/Engineering/HTTP"]);

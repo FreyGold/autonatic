@@ -1743,6 +1743,7 @@ export class NemotronModal extends Modal {
       }
     }
 
+    title = title.replace(/(?:\.md)+$/i, "");
     let safeTitle = title.replace(/[\\/:\*\?"<>\|]/g, "_").trim();
     if (!safeTitle) {
       const dateStr = new Date().toISOString().slice(0, 19).replace(/[:]/g, "-");
