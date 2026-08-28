@@ -89,7 +89,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     const nimLeft = nimCard.createDiv({ cls: "nemotron-nim-left" });
     nimLeft.createEl("strong", { text: "Need an NVIDIA API Key?" });
     nimLeft.createEl("p", {
-      text: "NVIDIA NIM offers developer API access for models like Nemotron 3.5 Lightning and Llama 3.2 Vision.",
+      text: "NVIDIA NIM offers developer API access for models like Nemotron 3 Super and Llama 3.2 Vision.",
       cls: "nemotron-nim-desc",
     });
     

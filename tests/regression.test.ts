@@ -25,10 +25,11 @@ import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
 import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/destination-modes";
 import { DEFAULT_TEXT_MODEL, resolveTextModel } from "../src/model-defaults";
 
-test("Lightning is the default text model", () => {
-  assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3.5-lightning-30b-a3b");
+test("Super is the default text model", () => {
+  assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3-super-120b-a12b");
   assert.equal(resolveTextModel(), DEFAULT_TEXT_MODEL);
   assert.equal(resolveTextModel("nvidia/nemotron-3-ultra-550b-a55b"), DEFAULT_TEXT_MODEL);
+  assert.equal(resolveTextModel("nvidia/nemotron-3.5-lightning-30b-a3b"), DEFAULT_TEXT_MODEL);
   assert.equal(resolveTextModel("custom/model"), "custom/model");
 });
 
@@ -81,7 +82,7 @@ test("streaming retries one temporary read timeout", async () => {
   }
 });
 
-test("Lightning never substitutes another model after a route 404", async () => {
+test("the configured model is not substituted after a route 404", async () => {
   const originalRequest = http.request;
   const requestedModels: string[] = [];
 
@@ -121,7 +122,7 @@ test("Lightning never substitutes another model after a route 404", async () => 
       /requested model endpoint is unavailable/i
     );
 
-    assert.deepEqual(requestedModels, ["nvidia/nemotron-3.5-lightning-30b-a3b"]);
+    assert.deepEqual(requestedModels, [DEFAULT_TEXT_MODEL]);
   } finally {
     (http as any).request = originalRequest;
   }
