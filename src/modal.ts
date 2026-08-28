@@ -1456,6 +1456,13 @@ export class NemotronModal extends Modal {
   private renderApiKeySection(containerEl: HTMLElement) {
     containerEl.empty();
 
+    const modelRow = containerEl.createDiv({ cls: "nemotron-current-model-row" });
+    modelRow.createSpan({ text: "Current model", cls: "nemotron-current-model-label" });
+    modelRow.createEl("code", {
+      text: this.plugin.settings.model || "Not set",
+      cls: "nemotron-current-model-value",
+    });
+
     const isSet = !!(this.plugin.settings.apiKey && this.plugin.settings.apiKey.trim());
 
     if (!isSet) {

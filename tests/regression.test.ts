@@ -82,6 +82,62 @@ test("streaming retries one temporary read timeout", async () => {
   }
 });
 
+test("streaming retries the same model after a temporary degraded-function response", async () => {
+  const originalRequest = http.request;
+  const requestedModels: string[] = [];
+
+  (http as any).request = (_url: URL, _options: unknown, onResponse: (response: EventEmitter & { statusCode: number }) => void) => {
+    let requestBody = "";
+    const request = new EventEmitter() as EventEmitter & {
+      destroy: (error?: Error) => void;
+      end: () => void;
+      write: (chunk: string) => void;
+    };
+    request.write = (chunk: string) => { requestBody += chunk; };
+    request.destroy = (error?: Error) => {
+      if (error) request.emit("error", error);
+    };
+    request.end = () => {
+      queueMicrotask(() => {
+        requestedModels.push(JSON.parse(requestBody).model);
+        const isFirstAttempt = requestedModels.length === 1;
+        const response = Object.assign(new EventEmitter(), { statusCode: isFirstAttempt ? 400 : 200 });
+        onResponse(response);
+        if (isFirstAttempt) {
+          response.emit("data", Buffer.from(JSON.stringify({
+            status: 400,
+            title: "Bad Request",
+            detail: "Function is in DEGRADED state and cannot be invoked",
+          })));
+        } else {
+          response.emit("data", Buffer.from('data: {"choices":[{"delta":{"content":"Recovered"}}]}\n\n'));
+        }
+        response.emit("end");
+      });
+    };
+    return request;
+  };
+
+  try {
+    const statuses: string[] = [];
+    const result = await streamChatCompletion({
+      apiKey: "test-key",
+      baseUrl: "http://nvidia.test/v1",
+      model: DEFAULT_TEXT_MODEL,
+      temperature: 1,
+      topP: 0.95,
+      maxTokens: 100,
+      enableThinking: true,
+    } as never, "system", "user", { onStatus: (status) => statuses.push(status) });
+
+    assert.equal(result.content, "Recovered");
+    assert.deepEqual(requestedModels, [DEFAULT_TEXT_MODEL, DEFAULT_TEXT_MODEL]);
+    assert.match(statuses.join(" "), /degraded.*retry/i);
+  } finally {
+    (http as any).request = originalRequest;
+  }
+});
+
 test("the configured model is not substituted after a route 404", async () => {
   const originalRequest = http.request;
   const requestedModels: string[] = [];

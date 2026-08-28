@@ -297,30 +297,59 @@ async function streamWithTimeoutRetry(
   try {
     return await streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
   } catch (error) {
-    if (!isRetryableTimeout(error) || signal?.aborted) {
+    const retryStatus = getRetryStatus(error);
+    if (!retryStatus || signal?.aborted) {
       throw error;
     }
 
-    callbacks?.onStatus?.("NVIDIA connection timed out. Retrying once...");
+    callbacks?.onStatus?.(retryStatus);
     return streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
   }
 }
 
-function createNvidiaApiError(statusCode: number, responseBody: string): Error & { statusCode: number } {
+type NvidiaApiError = Error & {
+  statusCode: number;
+  responseBody: string;
+};
+
+function createNvidiaApiError(statusCode: number, responseBody: string): NvidiaApiError {
   let detail = responseBody.trim();
   try {
     const parsed = JSON.parse(responseBody);
     if (parsed.error?.message) detail = parsed.error.message;
+    else if (parsed.detail) detail = String(parsed.detail);
   } catch {}
 
   if (!detail) detail = "The requested model endpoint is unavailable.";
-  return Object.assign(new Error(`NVIDIA API error (${statusCode}): ${detail}`), { statusCode });
+  return Object.assign(new Error(`NVIDIA API error (${statusCode}): ${detail}`), {
+    statusCode,
+    responseBody,
+  });
 }
 
 function isRetryableTimeout(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const networkError = error as Error & { code?: string; receivedResponseData?: boolean };
   return networkError.code === "ETIMEDOUT" && !networkError.receivedResponseData;
+}
+
+function isRetryableDegradedFunction(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const apiError = error as Partial<NvidiaApiError>;
+  if (apiError.statusCode !== 400) return false;
+
+  const providerMessage = `${error.message}\n${apiError.responseBody || ""}`;
+  return /\bDEGRADED\b[\s\S]*\bcannot be invoked\b/i.test(providerMessage);
+}
+
+function getRetryStatus(error: unknown): string | null {
+  if (isRetryableTimeout(error)) {
+    return "NVIDIA connection timed out. Retrying once...";
+  }
+  if (isRetryableDegradedFunction(error)) {
+    return "NVIDIA function is temporarily degraded. Retrying the same model once...";
+  }
+  return null;
 }
 
 function streamChatCompletionAttempt(
