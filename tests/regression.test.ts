@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import http from "node:http";
 import test from "node:test";
 import { TFile, TFolder } from "obsidian";
 import { extractAtomicDecompositionPlan, extractSmartDecision } from "../src/vault-indexer";
@@ -17,7 +19,7 @@ import {
 } from "../src/privacy-controls";
 import { DiagramEngine } from "../src/diagram-engine";
 import { buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
-import { sanitizeMermaidDiagrams } from "../src/api";
+import { sanitizeMermaidDiagrams, streamChatCompletion } from "../src/api";
 import { replaceCapturedSelection } from "../src/selection-editor";
 import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
 import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/destination-modes";
@@ -28,6 +30,55 @@ test("Lightning is the default text model", () => {
   assert.equal(resolveTextModel(), DEFAULT_TEXT_MODEL);
   assert.equal(resolveTextModel("nvidia/nemotron-3-ultra-550b-a55b"), DEFAULT_TEXT_MODEL);
   assert.equal(resolveTextModel("custom/model"), "custom/model");
+});
+
+test("streaming retries one temporary read timeout", async () => {
+  const originalRequest = http.request;
+  let attempts = 0;
+
+  (http as any).request = (_url: URL, _options: unknown, onResponse: (response: EventEmitter & { statusCode: number }) => void) => {
+    const request = new EventEmitter() as EventEmitter & {
+      destroy: (error?: Error) => void;
+      end: () => void;
+      write: () => void;
+    };
+    request.write = () => {};
+    request.destroy = (error?: Error) => {
+      if (error) request.emit("error", error);
+    };
+    request.end = () => {
+      queueMicrotask(() => {
+        attempts += 1;
+        if (attempts === 1) {
+          request.emit("error", Object.assign(new Error("read ETIMEDOUT"), { code: "ETIMEDOUT" }));
+          return;
+        }
+
+        const response = Object.assign(new EventEmitter(), { statusCode: 200 });
+        onResponse(response);
+        response.emit("data", Buffer.from('data: {"choices":[{"delta":{"content":"Recovered"}}]}\n\n'));
+        response.emit("end");
+      });
+    };
+    return request;
+  };
+
+  try {
+    const result = await streamChatCompletion({
+      apiKey: "test-key",
+      baseUrl: "http://nvidia.test/v1",
+      model: DEFAULT_TEXT_MODEL,
+      temperature: 1,
+      topP: 0.95,
+      maxTokens: 100,
+      enableThinking: true,
+    } as never, "system", "user");
+
+    assert.equal(result.content, "Recovered");
+    assert.equal(attempts, 2);
+  } finally {
+    (http as any).request = originalRequest;
+  }
 });
 
 test("Smart and Atomic placement expose the same folder limit", () => {

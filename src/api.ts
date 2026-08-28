@@ -277,7 +277,32 @@ export async function generateNemotronNote(
 /**
  * Streaming chat completion using Node's https/http module with real-time reasoning & content callbacks
  */
-export function streamChatCompletion(
+export async function streamChatCompletion(
+  settings: NemotronPluginSettings,
+  systemPrompt: string,
+  userPrompt: string,
+  callbacks?: StreamCallbacks,
+  signal?: AbortSignal
+): Promise<StreamResult> {
+  try {
+    return await streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
+  } catch (error) {
+    if (!isRetryableTimeout(error) || signal?.aborted) {
+      throw error;
+    }
+
+    callbacks?.onStatus?.("NVIDIA connection timed out. Retrying once...");
+    return streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
+  }
+}
+
+function isRetryableTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const networkError = error as Error & { code?: string; receivedResponseData?: boolean };
+  return networkError.code === "ETIMEDOUT" && !networkError.receivedResponseData;
+}
+
+function streamChatCompletionAttempt(
   settings: NemotronPluginSettings,
   systemPrompt: string,
   userPrompt: string,
@@ -350,10 +375,12 @@ export function streamChatCompletion(
           let fullReasoning = "";
           let buffer = "";
           let isReasoningPhase = true;
+          let receivedResponseData = false;
 
           callbacks?.onStatus?.("Nemotron thinking and formatting...");
 
           res.on("data", (chunk: Buffer) => {
+            receivedResponseData = true;
             buffer += chunk.toString("utf-8");
             const lines = buffer.split("\n");
             buffer = lines.pop() || "";
@@ -428,6 +455,11 @@ export function streamChatCompletion(
               content: sanitizedContent,
               reasoning: fullReasoning.trim(),
             });
+          });
+
+          res.on("error", (error: Error & { receivedResponseData?: boolean }) => {
+            error.receivedResponseData = receivedResponseData;
+            reject(error);
           });
         }
       );
