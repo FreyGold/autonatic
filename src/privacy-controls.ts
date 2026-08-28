@@ -22,11 +22,56 @@ export interface RankedVaultNote {
   titleMatches: number;
 }
 
-export function rankVaultContext(index: VaultKnowledgeIndex, query: string): RankedVaultNote[] {
+function normalizeVaultPath(value: string): string {
+  const segments: string[] = [];
+  for (const segment of value.trim().replace(/\\/g, "/").split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return segments.join("/");
+}
+
+export function isPathInFolder(path: string, folder: string): boolean {
+  const normalizedPath = normalizeVaultPath(path);
+  const normalizedFolder = normalizeVaultPath(folder);
+  return normalizedFolder === ""
+    || normalizedPath === normalizedFolder
+    || normalizedPath.startsWith(`${normalizedFolder}/`);
+}
+
+export function resolveFolderWithinScope(
+  requestedFolder: string | undefined,
+  scopeFolder: string | undefined,
+  maxRelativeDepth: number = 2,
+): string {
+  const requested = normalizeVaultPath(requestedFolder ?? "");
+  const safeDepth = Math.max(0, maxRelativeDepth);
+
+  if (scopeFolder === undefined) {
+    return requested.split("/").filter(Boolean).slice(0, safeDepth).join("/");
+  }
+
+  const scope = normalizeVaultPath(scopeFolder);
+  if (!scope) {
+    return requested.split("/").filter(Boolean).slice(0, safeDepth).join("/");
+  }
+  if (!isPathInFolder(requested, scope)) return scope;
+
+  const relativeFolder = requested === scope ? "" : requested.slice(scope.length + 1);
+  const limitedRelativeFolder = relativeFolder.split("/").filter(Boolean).slice(0, safeDepth).join("/");
+  return limitedRelativeFolder ? `${scope}/${limitedRelativeFolder}` : scope;
+}
+
+export function rankVaultContext(
+  index: VaultKnowledgeIndex,
+  query: string,
+  folderScope?: string,
+): RankedVaultNote[] {
   const queryTerms = searchTerms(query);
   const notes: NoteItem[] = [];
   const visit = (node: VaultKnowledgeIndex["tree"]) => {
-    notes.push(...node.notes);
+    notes.push(...node.notes.filter((note) => folderScope === undefined || isPathInFolder(note.path, folderScope)));
     node.subfolders.forEach(visit);
   };
   visit(index.tree);
@@ -50,8 +95,12 @@ export function rankVaultContext(index: VaultKnowledgeIndex, query: string): Ran
   }).sort((a, b) => b.score - a.score || b.titleMatches - a.titleMatches || b.note.mtime - a.note.mtime);
 }
 
-export function selectStrongRelatedNote(index: VaultKnowledgeIndex, query: string): NoteItem | null {
-  const [best, second] = rankVaultContext(index, query);
+export function selectStrongRelatedNote(
+  index: VaultKnowledgeIndex,
+  query: string,
+  folderScope?: string,
+): NoteItem | null {
+  const [best, second] = rankVaultContext(index, query, folderScope);
   if (!best) return null;
 
   const hasStrongTitleMatch = best.titleMatches >= 2 && best.score >= 14;
@@ -72,6 +121,11 @@ export function estimateRemoteRequests(images: number, notes: number, diagrams: 
   return Math.max(0, images) + 1 + Math.min(Math.max(0, notes), Math.max(0, diagrams));
 }
 
-export function selectVaultContext(index: VaultKnowledgeIndex, query: string, limit: number): NoteItem[] {
-  return rankVaultContext(index, query).slice(0, Math.max(0, limit)).map(({ note }) => note);
+export function selectVaultContext(
+  index: VaultKnowledgeIndex,
+  query: string,
+  limit: number,
+  folderScope?: string,
+): NoteItem[] {
+  return rankVaultContext(index, query, folderScope).slice(0, Math.max(0, limit)).map(({ note }) => note);
 }

@@ -12,6 +12,7 @@ export class FolderNavigator {
   private breadcrumbContainer!: HTMLElement;
   private subfoldersRow!: HTMLElement;
   private subfoldersLabelId: string;
+  private manualInputId: string;
   private subfoldersSelect?: CustomSelect;
   private manualInput!: HTMLInputElement;
   private upButton!: HTMLButtonElement;
@@ -24,6 +25,7 @@ export class FolderNavigator {
   ) {
     const instanceId = ++folderNavigatorId;
     this.subfoldersLabelId = `nemotron-subfolder-label-${instanceId}`;
+    this.manualInputId = `nemotron-folder-path-${instanceId}`;
     this.app = app;
     this.currentPath = normalizePath(initialPath).replace(/^\/+|\/+$/g, "");
     if (this.currentPath === ".") this.currentPath = "";
@@ -59,13 +61,16 @@ export class FolderNavigator {
 
     // 3. Bottom row: Manual Path Input
     const bottomRow = this.containerEl.createDiv({ cls: "nemotron-folder-bottom-row" });
-    bottomRow.createEl("span", { text: "Path:", cls: "nemotron-folder-input-label" });
+    const pathLabel = bottomRow.createEl("label", { text: "Path:", cls: "nemotron-folder-input-label" });
+    pathLabel.htmlFor = this.manualInputId;
 
     this.manualInput = bottomRow.createEl("input", {
       type: "text",
       cls: "nemotron-input nemotron-folder-input",
       placeholder: "Vault root (or enter custom folder path)",
     });
+    this.manualInput.id = this.manualInputId;
+    this.manualInput.name = "folder-path";
     this.manualInput.value = this.currentPath;
 
     this.manualInput.addEventListener("input", () => {

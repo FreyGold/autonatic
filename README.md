@@ -18,6 +18,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 - ⚡ **Interactive UI**:
   - Ribbon icon for one-click access.
   - Streaming live preview with collapsible reasoning thought process.
+  - Optional folder scope for Smart Placement. Smart can create or append only in the selected folder and its subfolders.
   - Highlighted-text actions to improve, expand, or regenerate only the selected Markdown.
   - Full settings tab to customize API keys, models, temperatures, folders, and prompt instructions.
 - 🧭 **Adaptive Excalidraw Diagrams**:

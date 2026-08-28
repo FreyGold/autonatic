@@ -133,7 +133,8 @@ export function buildUserPrompt(
   customInstruction?: string,
   existingVaultNotes?: string[],
   vaultKnowledgeTree?: string,
-  enableProperties: boolean = true
+  enableProperties: boolean = true,
+  smartScopeFolder?: string,
 ): string {
   const currentDate = new Date().toISOString().split("T")[0];
 
@@ -245,6 +246,14 @@ ${vaultKnowledgeTree}
 \`\`\`
 `
       : "";
+    const scopeContext = smartScopeFolder !== undefined
+      ? `### SMART PLACEMENT SCOPE
+The user limited placement to "${smartScopeFolder || "Vault Root"}" and its subfolders.
+- Append only to a listed note in this scope.
+- For a new note, use the selected folder path or one of its subfolders.
+- Never select a note or folder outside this scope.
+`
+      : "";
 
     return `Current Date: ${currentDate}
 Mode: Smart Placement
@@ -252,6 +261,7 @@ ${styleInstruction}
 ${propertiesInstruction}
 ${vaultNotesSection}
 ${treeContext}
+${scopeContext}
 ${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
 
 Analyze the vault knowledge tree and decide the optimal location:

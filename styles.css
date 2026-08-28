@@ -660,6 +660,33 @@
   border: 1px solid var(--background-modifier-border);
 }
 
+.nemotron-smart-scope-options {
+  background-color: var(--background-secondary-alt);
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.nemotron-smart-scope-toggle {
+  margin-bottom: 0;
+}
+
+.nemotron-smart-scope-folder {
+  margin-top: 12px;
+}
+
+.nemotron-smart-scope-folder .nemotron-form-row {
+  margin-bottom: 0;
+}
+
+.nemotron-folder-scope-help {
+  margin: -4px 0 8px;
+  color: var(--text-muted);
+  font-size: 0.82em;
+  line-height: 1.4;
+}
+
 .nemotron-new-note-options .nemotron-form-row:last-child {
   margin-bottom: 0;
 }

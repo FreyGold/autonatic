@@ -5,7 +5,15 @@ import { extractSmartDecision } from "../src/vault-indexer";
 import { HistoryManager, revertFileSnapshots } from "../src/history-manager";
 import { NemotronModal } from "../src/modal";
 import { createMirroredExcalidrawDrawing } from "../src/excalidraw-generator";
-import { estimateRemoteRequests, isExcludedPath, parseExcludedFolders, selectStrongRelatedNote, selectVaultContext } from "../src/privacy-controls";
+import {
+  estimateRemoteRequests,
+  isExcludedPath,
+  isPathInFolder,
+  parseExcludedFolders,
+  resolveFolderWithinScope,
+  selectStrongRelatedNote,
+  selectVaultContext,
+} from "../src/privacy-controls";
 import { DiagramEngine } from "../src/diagram-engine";
 import { buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
 import { sanitizeMermaidDiagrams } from "../src/api";
@@ -380,6 +388,39 @@ test("vault context is relevant and bounded", () => {
   assert.equal(estimateRemoteRequests(2, 5, 3), 6);
 });
 
+test("Smart folder scope excludes notes outside the selected folder", () => {
+  const note = (title: string, path: string, about: string) => ({ title, path, about, mtime: 1, tags: [] });
+  const index = {
+    tree: {
+      name: "Vault",
+      path: "",
+      about: "",
+      topics: [],
+      notes: [
+        note("Practical HTTP", "Practical/HTTP.md", "HTTP server implementation and socket buffers."),
+        note("Theoretical HTTP", "Theoretical/Networking/HTTP.md", "HTTP protocol theory and semantics."),
+      ],
+      subfolders: [],
+    },
+  } as never;
+
+  const selected = selectVaultContext(index, "HTTP protocol", 10, "Theoretical");
+  assert.deepEqual(selected.map((item) => item.path), ["Theoretical/Networking/HTTP.md"]);
+  assert.equal(isPathInFolder("Theoretical/Networking/HTTP.md", "Theoretical"), true);
+  assert.equal(isPathInFolder("Practical/HTTP.md", "Theoretical"), false);
+});
+
+test("Smart folder scope keeps new notes under the full selected path", () => {
+  assert.equal(
+    resolveFolderWithinScope("Areas/Theoretical/Networking/TCP/Details", "Areas/Theoretical", 2),
+    "Areas/Theoretical/Networking/TCP",
+  );
+  assert.equal(
+    resolveFolderWithinScope("Areas/Practical", "Areas/Theoretical", 2),
+    "Areas/Theoretical",
+  );
+});
+
 test("smart placement finds a strong existing note from generated image content", () => {
   const note = (title: string, path: string, about: string) => ({ title, path, about, mtime: 1, tags: [] });
   const index = {
@@ -494,6 +535,23 @@ test("folder multi-note mode requests new notes only", () => {
   assert.match(prompt, /Action: create_new_note/);
   assert.match(prompt, /save every note in the directory selected by the user/);
   assert.doesNotMatch(prompt, /Action: append_to_note/);
+});
+
+test("Smart prompts state the selected folder scope", () => {
+  const prompt = buildUserPrompt(
+    "HTTP protocol semantics",
+    "smart",
+    "concise",
+    undefined,
+    ["HTTP"],
+    "- Theoretical/HTTP.md: Protocol semantics",
+    true,
+    "Theoretical",
+  );
+
+  assert.match(prompt, /SMART PLACEMENT SCOPE/);
+  assert.match(prompt, /limited placement to "Theoretical" and its subfolders/);
+  assert.match(prompt, /Never select a note or folder outside this scope/);
 });
 
 test("explicit note folders keep the complete selected path", async () => {
