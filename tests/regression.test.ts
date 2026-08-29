@@ -25,6 +25,8 @@ import { replaceCapturedSelection } from "../src/selection-editor";
 import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
 import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/destination-modes";
 import { DEFAULT_TEXT_MODEL, resolveTextModel } from "../src/model-defaults";
+import { organizeAtomicPlan } from "../src/atomic-organization-planner";
+import { normalizeGeneratedNoteMarkdown } from "../src/generated-markdown";
 
 test("Super is the default text model", () => {
   assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3-super-120b-a12b");
@@ -1036,6 +1038,95 @@ test("Atomic prompts request adaptive folders and concise source-grounded notes"
   const atomicDescription = DESTINATION_MODE_OPTIONS.find((option) => option.value === "multi_note")?.description || "";
   assert.match(atomicDescription, /right level/i);
   assert.match(atomicDescription, /durable topic/i);
+});
+
+test("Atomic organization reviews the complete note set before placement", async () => {
+  const plan = [
+    { action: "create_new_note" as const, title: "JOIN Syntax Fundamentals", reason: "JOIN syntax", content: "# JOIN Syntax" },
+    { action: "create_new_note" as const, title: "Types of SQL Joins", reason: "JOIN types", content: "# Join Types" },
+    { action: "create_new_note" as const, title: "LEFT JOIN", reason: "LEFT JOIN behavior", content: "# LEFT JOIN" },
+    { action: "create_new_note" as const, title: "CASE Expressions", reason: "Conditional SQL", content: "# CASE" },
+  ];
+  let request = "";
+
+  const organized = await organizeAtomicPlan(
+    plan,
+    { scopeFolder: "DB/SQL", existingFolders: [] },
+    async (_systemPrompt, userPrompt) => {
+      request = userPrompt;
+      return JSON.stringify([
+        { id: "note-1", placement: "new_subfolder", targetFolder: "DB/SQL/Joins", reason: "Joins is a durable SQL category." },
+        { id: "note-2", placement: "new_subfolder", targetFolder: "DB/SQL/Joins", reason: "Joins is a durable SQL category." },
+        { id: "note-3", placement: "new_subfolder", targetFolder: "DB/SQL/Joins", reason: "Joins is a durable SQL category." },
+        { id: "note-4", placement: "root", targetFolder: "DB/SQL", reason: "This narrow topic fits the selected folder." },
+      ]);
+    },
+  );
+
+  assert.match(request, /JOIN Syntax Fundamentals/);
+  assert.match(request, /Types of SQL Joins/);
+  assert.match(request, /LEFT JOIN/);
+  assert.match(request, /CASE Expressions/);
+  assert.deepEqual(
+    organized.map((item) => item.targetFolder),
+    ["DB/SQL/Joins", "DB/SQL/Joins", "DB/SQL/Joins", "DB/SQL"],
+  );
+  assert.deepEqual(
+    organized.map((item) => item.folderStrategy),
+    ["new_subfolder", "new_subfolder", "new_subfolder", "root"],
+  );
+});
+
+test("Atomic organization creates a folder when the model mislabels it as existing", async () => {
+  const [organized] = await organizeAtomicPlan(
+    [{
+      action: "create_new_note",
+      title: "LEFT JOIN",
+      reason: "LEFT JOIN behavior",
+      content: "# LEFT JOIN",
+    }],
+    { scopeFolder: "DB/SQL", existingFolders: [] },
+    async () => JSON.stringify([
+      {
+        id: "note-1",
+        placement: "existing_subfolder",
+        targetFolder: "DB/SQL/Joins",
+        reason: "Joins is a durable category.",
+      },
+    ]),
+  );
+
+  assert.equal(organized.folderStrategy, "new_subfolder");
+  assert.equal(organized.targetFolder, "DB/SQL/Joins");
+});
+
+test("generated notes unwrap fenced YAML frontmatter", () => {
+  const generated = `\`\`\`yaml
+---
+title: "LEFT JOIN"
+tags:
+  - notes/DB/SQL/Joins
+---
+\`\`\`
+
+# LEFT JOIN
+
+\`\`\`sql
+SELECT * FROM users;
+\`\`\``;
+
+  const normalized = normalizeGeneratedNoteMarkdown(generated);
+
+  assert.match(normalized, /^---\n/);
+  assert.doesNotMatch(normalized, /^\`\`\`yaml/);
+  assert.match(normalized, /\`\`\`sql\nSELECT \* FROM users;/);
+});
+
+test("frontmatter instructions forbid YAML code fences", () => {
+  const prompt = buildUserPrompt("LEFT JOIN", "new_file", "concise", undefined, [], undefined, true);
+  assert.match(prompt, /first line must be ---/i);
+  assert.match(prompt, /Never wrap.*YAML.*code fence/i);
+  assert.doesNotMatch(prompt, /\`\`\`ya?ml/);
 });
 
 test("nested note folders create every folder in the selected path", async () => {

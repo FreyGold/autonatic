@@ -1,6 +1,6 @@
 import { App, Modal, Notice, MarkdownView, normalizePath, TFile, TFolder, Menu } from "obsidian";
 import type NemotronPlugin from "./main";
-import { generateNemotronNote, sanitizeMermaidDiagrams } from "./api";
+import { generateNemotronNote, sanitizeMermaidDiagrams, streamChatCompletion } from "./api";
 import { buildUserPrompt } from "./prompts";
 import { CustomSelect, SelectOption } from "./custom-select";
 import { FolderNavigator } from "./folder-nav";
@@ -27,6 +27,8 @@ import {
   type DestinationMode,
 } from "./destination-modes";
 import type { VaultKnowledgeIndex } from "./vault-indexer";
+import { organizeAtomicPlan } from "./atomic-organization-planner";
+import { normalizeGeneratedNoteMarkdown } from "./generated-markdown";
 import { FileSnapshot, PromptHistoryItem, revertFileSnapshots } from "./history-manager";
 import {
   createMirroredExcalidrawDrawing,
@@ -725,8 +727,6 @@ export class NemotronModal extends Modal {
           this.abortController.signal
         );
 
-        statusDiv.setText("Placing notes...");
-
         const finishUsefulDiagrams = async () => {
           if (!this.enableExcalidrawInNoteTab) return;
           const summary = await this.createUsefulDiagramsAfterPlacement(
@@ -744,7 +744,28 @@ export class NemotronModal extends Modal {
         };
 
         if (mode === "multi_note" || mode === "multi_note_folder") {
-          const plan = extractAtomicDecompositionPlan(result.content);
+          let plan = extractAtomicDecompositionPlan(result.content);
+          if (mode === "multi_note") {
+            statusDiv.setText("Reviewing the complete note and folder plan...");
+            plan = await organizeAtomicPlan(
+              plan,
+              {
+                scopeFolder: placementScopeFolder,
+                existingFolders: existingVaultFolders,
+              },
+              async (systemPrompt, userPrompt) => {
+                const organizationResult = await streamChatCompletion(
+                  this.plugin.settings,
+                  systemPrompt,
+                  userPrompt,
+                  { onStatus: (status) => statusDiv.setText(status) },
+                  this.abortController?.signal,
+                );
+                return organizationResult.content;
+              },
+            );
+          }
+          statusDiv.setText("Placing notes...");
           const placementPlan = mode === "multi_note"
             ? resolveAtomicPlacementPlan(plan, placementScopeFolder, existingVaultFolders)
             : [];
@@ -1731,7 +1752,7 @@ export class NemotronModal extends Modal {
     folderDepthLimit: number | null = 2,
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     let title = requestedTitle;
-    let finalContent = sanitizeMermaidDiagrams(content);
+    let finalContent = sanitizeMermaidDiagrams(normalizeGeneratedNoteMarkdown(content));
     const snaps: FileSnapshot[] = [];
     const foldersCreated: string[] = [];
 

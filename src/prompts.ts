@@ -150,8 +150,9 @@ export function buildUserPrompt(
       : "Existing Vault Notes: None specified. Do not create unverified [[wikilinks]]; use **bold** instead.\n";
 
   const propertiesInstruction = enableProperties
-    ? `FRONTMATTER RULES: Include a YAML properties block at the top of new notes:
-\`\`\`yaml
+    ? `FRONTMATTER RULES: Include a YAML properties block at the top of new notes.
+The first line must be ---.
+Never wrap the YAML properties block in a code fence.
 ---
 title: "<Note Title>"
 aliases: []
@@ -160,7 +161,6 @@ tags:
 created: "${currentDate}"
 summary: "<1-sentence summary of this note>"
 ---
-\`\`\`
 `
     : "Do NOT include YAML frontmatter/properties block in the output.";
 
