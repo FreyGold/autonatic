@@ -12,6 +12,7 @@ import {
   isExcludedPath,
   isPathInFolder,
   parseExcludedFolders,
+  resolveAtomicPlacementPlan,
   resolveAtomicPlacementTarget,
   resolveFolderWithinScope,
   selectStrongRelatedNote,
@@ -228,9 +229,10 @@ test("Atomic placement anchors topic subfolders under the selected folder", () =
   );
 });
 
-test("Atomic topic metadata prevents new notes from staying in the selected folder root", () => {
+test("Atomic parser preserves the model's folder strategy", () => {
   const [item] = extractAtomicDecompositionPlan(`=== ATOMIC NOTE ===
 Action: create_new_note
+Placement: existing_subfolder
 Folder: DB/SQL
 Topic: Joins
 Title: JOIN Types.md
@@ -239,16 +241,71 @@ Join notes.
 === END NOTE ===`);
 
   assert.equal((item as { topicFolder?: string }).topicFolder, "Joins");
+  assert.equal((item as { folderStrategy?: string }).folderStrategy, "existing_subfolder");
+});
+
+test("Atomic organization adapts to the complete note plan", () => {
+  const note = (
+    title: string,
+    folderStrategy: "root" | "existing_subfolder" | "new_subfolder",
+    targetFolder: string,
+  ) => ({
+    action: "create_new_note" as const,
+    title,
+    reason: "Study note",
+    content: title,
+    folderStrategy,
+    targetFolder,
+  });
+
   assert.deepEqual(
-    resolveAtomicPlacementTarget(item, "DB/SQL"),
-    { action: "create_new_note", targetFolder: "DB/SQL/Joins" },
-  );
-  assert.deepEqual(
-    resolveAtomicPlacementTarget(
-      { action: "create_new_note", targetFolder: "DB/SQL" },
+    resolveAtomicPlacementPlan(
+      [note("CASE Expressions", "root", "DB/SQL/Expressions")],
       "DB/SQL",
+      ["DB/SQL/Exercises"],
     ),
-    { action: "create_new_note", targetFolder: "DB/SQL/Atomic Notes" },
+    [{ action: "create_new_note", targetFolder: "DB/SQL" }],
+  );
+
+  assert.deepEqual(
+    resolveAtomicPlacementPlan(
+      [note("Join Exercise", "existing_subfolder", "Joins")],
+      "DB/SQL",
+      ["DB/SQL/Joins"],
+    ),
+    [{ action: "create_new_note", targetFolder: "DB/SQL/Joins" }],
+  );
+
+  assert.deepEqual(
+    resolveAtomicPlacementPlan(
+      [
+        note("Inner Joins", "new_subfolder", "Joins"),
+        note("Outer Joins", "new_subfolder", "Joins"),
+        note("Transactions", "new_subfolder", "Transactions"),
+      ],
+      "DB/SQL",
+      [],
+    ),
+    [
+      { action: "create_new_note", targetFolder: "DB/SQL/Joins" },
+      { action: "create_new_note", targetFolder: "DB/SQL/Joins" },
+      { action: "create_new_note", targetFolder: "DB/SQL" },
+    ],
+  );
+
+  assert.deepEqual(
+    resolveAtomicPlacementPlan(
+      [
+        note("Keep Flat", "root", "Window Functions"),
+        note("One Window Note", "new_subfolder", "Window Functions"),
+      ],
+      "DB/SQL",
+      [],
+    ),
+    [
+      { action: "create_new_note", targetFolder: "DB/SQL" },
+      { action: "create_new_note", targetFolder: "DB/SQL" },
+    ],
   );
 });
 
@@ -950,7 +1007,7 @@ test("Atomic prompts state the selected folder scope", () => {
   assert.match(prompt, /Never append to a note outside this folder/);
 });
 
-test("Atomic prompts require topic subfolders and concise source-grounded notes", () => {
+test("Atomic prompts request adaptive folders and concise source-grounded notes", () => {
   const prompt = buildUserPrompt(
     "A study conversation about joins and transactions.",
     "multi_note",
@@ -960,17 +1017,22 @@ test("Atomic prompts require topic subfolders and concise source-grounded notes"
     undefined,
     true,
     "Database Exercises",
+    ["Database Exercises/Practice", "Database Exercises/Joins"],
   );
 
   assert.match(prompt, /major topic branch/i);
   assert.match(prompt, /Database Exercises\/Joins/);
-  assert.match(prompt, /Topic: <broad major topic branch/i);
+  assert.match(prompt, /EXISTING FOLDERS IN SCOPE/);
+  assert.match(prompt, /Database Exercises\/Practice/);
+  assert.match(prompt, /Placement: <root \| existing_subfolder \| new_subfolder>/);
+  assert.match(prompt, /Do not create a new subfolder for only one note/i);
   assert.match(prompt, /supported by the input/i);
   assert.match(prompt, /usually be 80-250 words/i);
   assert.match(prompt, /Do not add unrelated background/i);
 
   const atomicDescription = DESTINATION_MODE_OPTIONS.find((option) => option.value === "multi_note")?.description || "";
-  assert.match(atomicDescription, /topic subfolders/i);
+  assert.match(atomicDescription, /cohesive notes together/i);
+  assert.match(atomicDescription, /real multi-note topic/i);
 });
 
 test("nested note folders create every folder in the selected path", async () => {

@@ -11,7 +11,7 @@ export const DESTINATION_MODE_OPTIONS: ReadonlyArray<SelectOption & { value: Des
   {
     value: "multi_note",
     label: "Atomic Decomposition (Multi-Note)",
-    description: "Groups the conversation into topic subfolders, then creates concise atomic notes or appends to strong matches.",
+    description: "Keeps cohesive notes together, reuses relevant folders, and creates a new folder only for a real multi-note topic.",
   },
   {
     value: "multi_note_folder",

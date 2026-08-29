@@ -15,6 +15,7 @@ import {
 } from "./vault-indexer";
 import {
   isPathInFolder,
+  resolveAtomicPlacementPlan,
   resolveAtomicPlacementTarget,
   resolveFolderWithinScope,
   selectStrongRelatedNote,
@@ -642,6 +643,12 @@ export class NemotronModal extends Modal {
         .filter((file) => placementScopeFolder === undefined || isPathInFolder(file.path, placementScopeFolder))
         .map((f) => f.basename)
         .filter((b) => b && !b.startsWith("."));
+      const existingVaultFolders = this.app.vault
+        .getAllLoadedFiles()
+        .filter((entry): entry is TFolder => entry instanceof TFolder)
+        .map((folder) => folder.path)
+        .filter((path) => path && path !== placementScopeFolder)
+        .filter((path) => placementScopeFolder === undefined || isPathInFolder(path, placementScopeFolder));
 
       const promptText = rawText || "Extract, analyze, and synthesize all key concepts, instructions, and code from the attached image(s).";
       let vaultKnowledgeTreeText: string | undefined = undefined;
@@ -669,6 +676,7 @@ export class NemotronModal extends Modal {
         vaultKnowledgeTreeText,
         enableProperties,
         placementScopeFolder,
+        existingVaultFolders,
       );
 
       this.isGenerating = true;
@@ -737,11 +745,14 @@ export class NemotronModal extends Modal {
 
         if (mode === "multi_note" || mode === "multi_note_folder") {
           const plan = extractAtomicDecompositionPlan(result.content);
+          const placementPlan = mode === "multi_note"
+            ? resolveAtomicPlacementPlan(plan, placementScopeFolder, existingVaultFolders)
+            : [];
           let createdCount = 0;
           let appendedCount = 0;
           const fixedTargetFolder = mode === "multi_note_folder" ? currentSelectedFolder : undefined;
 
-          for (const item of plan) {
+          for (const [itemIndex, item] of plan.entries()) {
             try {
               if (fixedTargetFolder !== undefined) {
                 const { snaps, foldersCreated } = await this.createNewNoteFile(
@@ -755,7 +766,7 @@ export class NemotronModal extends Modal {
                 foldersCreatedList.push(...foldersCreated);
                 createdCount++;
               } else {
-                const target = resolveAtomicPlacementTarget(item, placementScopeFolder);
+                const target = placementPlan[itemIndex] || resolveAtomicPlacementTarget(item, placementScopeFolder);
                 const targetFile = target.action === "append_to_note"
                   ? this.app.vault.getAbstractFileByPath(normalizePath(target.targetNotePath))
                   : null;
@@ -1447,7 +1458,7 @@ export class NemotronModal extends Modal {
       const isMulti = this.selectedMode === "multi_note";
       textDiv.createSpan({
         text: isMulti
-          ? "Atomic Decomposition Active: Groups the conversation into topic subfolders, then creates concise atomic notes or appends to strong matches."
+          ? "Atomic Decomposition Active: Keeps cohesive notes together, reuses relevant folders, and creates a new folder only for a real multi-note topic."
           : "Smart Auto-Routing Active: AI analyzes your vault tree & topics to automatically place this note or append to the right note.",
       });
     }

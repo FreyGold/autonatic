@@ -135,6 +135,7 @@ export function buildUserPrompt(
   vaultKnowledgeTree?: string,
   enableProperties: boolean = true,
   placementScopeFolder?: string,
+  existingVaultFolders?: string[],
 ): string {
   const currentDate = new Date().toISOString().split("T")[0];
 
@@ -213,6 +214,11 @@ The user limited placement to "${placementScopeFolder || "Vault Root"}" and its 
     const folderExample = placementScopeFolder
       ? `${placementScopeFolder}/Joins`
       : "Databases/Joins";
+    const existingFoldersContext = existingVaultFolders && existingVaultFolders.length > 0
+      ? `### EXISTING FOLDERS IN SCOPE
+${existingVaultFolders.slice(0, 100).map((folder) => `- ${folder}`).join("\n")}
+`
+      : "### EXISTING FOLDERS IN SCOPE\nNo subfolders are available.\n";
 
     return `Current Date: ${currentDate}
 Mode: Atomic Decomposition (Multi-Note Synthesis)
@@ -221,15 +227,18 @@ ${propertiesInstruction}
 ${vaultNotesSection}
 ${treeContext}
 ${scopeContext}
+${existingFoldersContext}
 ${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
 
 ### ORGANIZATION RULES
 1. First identify the major topic branches in the full conversation. Examples include Joins, Transactions, Indexes, and Normalization.
 2. Do not create one note for each message. Merge repeated questions and answers about the same atomic concept.
-3. Put every new note in a descriptive topic subfolder. Reuse the same subfolder for notes from the same major topic branch.
-4. A folder is a broad topic container. A note is one focused concept inside that container. Do not use the same narrow phrase for both.
-5. Use no more than two new folder levels. When a placement limit exists, the two levels are relative to that folder.
-6. For each concept, append only when an existing note is a strong conceptual match. Otherwise, create a new note.
+3. Use root when the input is cohesive or a topic branch produces only one new note. Do not create a new subfolder for only one note.
+4. Prefer existing_subfolder when an existing folder is a clear semantic match. Use its exact path from the folder list.
+5. Use new_subfolder only when at least two new notes belong to the same reusable topic branch. All notes in that branch must use the same Folder value.
+6. A folder is a broad reusable topic container. A note is one focused concept. Do not use a narrow note title as a folder name.
+7. Use no more than two new folder levels. When a placement limit exists, the two levels are relative to that folder.
+8. For each concept, append only when an existing note is a strong conceptual match. Otherwise, create a new note.
 
 ### CONTENT BOUNDARIES
 - Include facts, explanations, examples, exercise solutions, and code only when they are supported by the input.
@@ -252,8 +261,9 @@ Reason: <1 sentence explaining why this belongs in this existing note>
 
 === ATOMIC NOTE ===
 Action: create_new_note
-Topic: <broad major topic branch, e.g. "Joins"; REQUIRED for every new note>
-Folder: <topic subfolder path, e.g. "${folderExample}">
+Placement: <root | existing_subfolder | new_subfolder>
+Topic: <broad major topic branch, e.g. "Joins">
+Folder: <selected root for root, exact listed folder for existing_subfolder, or shared path such as "${folderExample}" for new_subfolder>
 Title: <Descriptive Note Title>
 Reason: <1 sentence explaining why this new note is created here>
 --- CONTENT ---

@@ -43,6 +43,7 @@ export interface AtomicNoteItem {
   action: "create_new_note" | "append_to_note";
   targetFolder?: string;
   topicFolder?: string;
+  folderStrategy?: "root" | "existing_subfolder" | "new_subfolder";
   targetNotePath?: string;
   title: string;
   reason: string;
@@ -564,6 +565,7 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
     const targetPathMatch = blockBody.match(/(?:TargetNotePath|Target Note|Target):\s*([^\n\r]+)/i);
     const folderMatch = blockBody.match(/(?:TargetFolder|Folder):\s*([^\n\r]+)/i);
     const topicFolderMatch = blockBody.match(/(?:TopicFolder|Topic):\s*([^\n\r]+)/i);
+    const folderStrategyMatch = blockBody.match(/Placement:\s*(root|existing_subfolder|new_subfolder)/i);
     const titleMatch = blockBody.match(/Title:\s*([^\n\r]+)/i);
     const reasonMatch = blockBody.match(/Reason:\s*([^\n\r]+)/i);
 
@@ -583,6 +585,7 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
       action,
       targetFolder: normalizeFolderPath(targetFolder),
       topicFolder: normalizeFolderPath(topicFolderMatch?.[1]?.trim().replace(/^["']|["']$/g, "") || ""),
+      folderStrategy: folderStrategyMatch?.[1]?.toLowerCase() as AtomicNoteItem["folderStrategy"],
       targetNotePath,
       title: title || "Synthesized Note",
       reason: reasonMatch ? reasonMatch[1].trim() : "Decomposed topic piece",
@@ -609,6 +612,9 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
           action: it.action === "append_to_note" ? "append_to_note" : "create_new_note",
           targetFolder: normalizeFolderPath(it.targetFolder || ""),
           topicFolder: normalizeFolderPath(it.topicFolder || it.topic || ""),
+          folderStrategy: ["root", "existing_subfolder", "new_subfolder"].includes(it.folderStrategy || it.placement)
+            ? (it.folderStrategy || it.placement)
+            : undefined,
           targetNotePath: it.targetNotePath,
           title: it.title || "Synthesized Note",
           reason: it.reason || "",
@@ -625,6 +631,7 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
           const targetNoteMatch = fullObjStr.match(/"targetNotePath"\s*:\s*"([^"]+)"/);
           const targetFolderMatch = fullObjStr.match(/"targetFolder"\s*:\s*"([^"]+)"/);
           const topicFolderMatch = fullObjStr.match(/"(?:topicFolder|topic)"\s*:\s*"([^"]+)"/i);
+          const folderStrategyMatch = fullObjStr.match(/"(?:folderStrategy|placement)"\s*:\s*"(root|existing_subfolder|new_subfolder)"/i);
           const titleMatch = fullObjStr.match(/"title"\s*:\s*"([^"]+)"/);
           const reasonMatch = fullObjStr.match(/"reason"\s*:\s*"([^"]+)"/);
 
@@ -639,6 +646,7 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
             action,
             targetFolder: normalizeFolderPath(targetFolderMatch ? targetFolderMatch[1] : ""),
             topicFolder: normalizeFolderPath(topicFolderMatch ? topicFolderMatch[1] : ""),
+            folderStrategy: folderStrategyMatch?.[1]?.toLowerCase() as AtomicNoteItem["folderStrategy"],
             targetNotePath: targetNoteMatch ? targetNoteMatch[1] : undefined,
             title: titleMatch ? titleMatch[1] : "Synthesized Note",
             reason: reasonMatch ? reasonMatch[1] : "",
