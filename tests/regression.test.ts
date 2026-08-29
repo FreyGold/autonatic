@@ -1100,6 +1100,47 @@ test("Atomic organization creates a folder when the model mislabels it as existi
   assert.equal(organized.targetFolder, "DB/SQL/Joins");
 });
 
+test("Atomic organization audits a flat first decision before placement", async () => {
+  const plan = [
+    { action: "create_new_note" as const, title: "JOIN Basics and Common Mistakes", reason: "JOIN syntax", content: "# JOIN Basics" },
+    { action: "create_new_note" as const, title: "Joining Three Tables", reason: "Multi-table joins", content: "# Joining Three Tables" },
+    { action: "create_new_note" as const, title: "Self-Join and Subquery for Hierarchical Data", reason: "Self-joins", content: "# Self-Join" },
+    { action: "create_new_note" as const, title: "CASE Expressions for Conditional Labeling", reason: "Conditional SQL", content: "# CASE" },
+  ];
+  let calls = 0;
+
+  const organized = await organizeAtomicPlan(
+    plan,
+    { scopeFolder: "DB/SQL", existingFolders: [] },
+    async (_systemPrompt, userPrompt) => {
+      calls += 1;
+      if (calls === 1) {
+        return JSON.stringify(plan.map((_item, index) => ({
+          id: `note-${index + 1}`,
+          placement: "root",
+          targetFolder: "DB/SQL",
+          reason: "Keep SQL notes together.",
+        })));
+      }
+
+      assert.match(userPrompt, /audit/i);
+      assert.match(userPrompt, /JOIN Basics and Common Mistakes/);
+      return JSON.stringify([
+        { id: "note-1", placement: "new_subfolder", targetFolder: "DB/SQL/Joins", reason: "Joins is a durable category." },
+        { id: "note-2", placement: "new_subfolder", targetFolder: "DB/SQL/Joins", reason: "Joins is a durable category." },
+        { id: "note-3", placement: "new_subfolder", targetFolder: "DB/SQL/Joins", reason: "Joins is a durable category." },
+        { id: "note-4", placement: "root", targetFolder: "DB/SQL", reason: "This narrow topic fits SQL." },
+      ]);
+    },
+  );
+
+  assert.equal(calls, 2);
+  assert.deepEqual(
+    organized.map((item) => item.targetFolder),
+    ["DB/SQL/Joins", "DB/SQL/Joins", "DB/SQL/Joins", "DB/SQL"],
+  );
+});
+
 test("generated notes unwrap fenced YAML frontmatter", () => {
   const generated = `\`\`\`yaml
 ---

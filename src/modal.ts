@@ -755,7 +755,11 @@ export class NemotronModal extends Modal {
               },
               async (systemPrompt, userPrompt) => {
                 const organizationResult = await streamChatCompletion(
-                  this.plugin.settings,
+                  {
+                    ...this.plugin.settings,
+                    temperature: 0.2,
+                    topP: 0.9,
+                  },
                   systemPrompt,
                   userPrompt,
                   { onStatus: (status) => statusDiv.setText(status) },
