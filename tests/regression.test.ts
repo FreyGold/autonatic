@@ -1141,6 +1141,59 @@ test("Atomic organization audits a flat first decision before placement", async 
   );
 });
 
+test("Atomic organization gives one broad durable topic its own folder", async () => {
+  const [organized] = await organizeAtomicPlan(
+    [{
+      action: "create_new_note",
+      title: "SQL JOIN Types and Patterns",
+      topicFolder: "Joins",
+      reason: "Covers the reusable JOIN topic.",
+      content: "# SQL JOIN Types and Patterns",
+    }],
+    { scopeFolder: "DB/SQL", existingFolders: [] },
+    async () => JSON.stringify([
+      {
+        id: "note-1",
+        category: "Joins",
+        categoryKind: "durable_category",
+        futureTopics: ["Join algorithms", "Join performance"],
+        placement: "root",
+        targetFolder: "DB/SQL",
+        reason: "The selected SQL folder already covers this note.",
+      },
+    ]),
+  );
+
+  assert.equal(organized.folderStrategy, "new_subfolder");
+  assert.equal(organized.targetFolder, "DB/SQL/Joins");
+});
+
+test("Atomic organization reuses a durable category folder without case-sensitive duplicates", async () => {
+  const [organized] = await organizeAtomicPlan(
+    [{
+      action: "create_new_note",
+      title: "JOIN Performance",
+      reason: "JOIN performance guidance.",
+      content: "# JOIN Performance",
+    }],
+    { scopeFolder: "DB/SQL", existingFolders: ["DB/SQL/Joins"] },
+    async () => JSON.stringify([
+      {
+        id: "note-1",
+        category: "JOINs",
+        categoryKind: "durable_category",
+        futureTopics: ["Hash joins", "Merge joins"],
+        placement: "new_subfolder",
+        targetFolder: "DB/SQL/JOINs",
+        reason: "JOINs is a durable category.",
+      },
+    ]),
+  );
+
+  assert.equal(organized.folderStrategy, "existing_subfolder");
+  assert.equal(organized.targetFolder, "DB/SQL/Joins");
+});
+
 test("generated notes unwrap fenced YAML frontmatter", () => {
   const generated = `\`\`\`yaml
 ---

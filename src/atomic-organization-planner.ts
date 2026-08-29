@@ -14,6 +14,8 @@ type Placement = NonNullable<AtomicNoteItem["folderStrategy"]>;
 
 interface AtomicOrganizationDecision {
   id: string;
+  category?: string;
+  categoryKind?: "durable_category" | "narrow_topic";
   placement: Placement;
   targetFolder?: string;
   reason: string;
@@ -66,19 +68,25 @@ ${folders.length > 0 ? folders.map((folder) => `- ${folder}`).join("\n") : "- No
 Decide the final folder structure for all candidate notes together.
 
 Rules:
-1. Use "root" when the selected folder is the best long-term category.
-2. Use "existing_subfolder" when an existing subfolder is a clear semantic match.
-3. Use "new_subfolder" when a durable, broad topic deserves a category for current or future notes.
-4. A broad topic can deserve a new folder even when it has only one current note. Joins, Transactions, Indexes, and Normalization are examples.
-5. Do not make folders for narrow facts, single exercises, or note-title copies.
-6. Give related notes the same folder decision.
-7. Keep every target inside the selected folder. Use no more than two levels below it.
-8. Return one decision for every candidate ID.
+1. Decide category and categoryKind before placement.
+2. Use "durable_category" for a broad reusable subject that can reasonably receive future notes.
+3. Use "narrow_topic" for a fact, one exercise, or a subject too small to improve navigation.
+4. A durable category needs its own folder even when it has only one current note. Joins, Transactions, Indexes, and Normalization are examples, not a fixed list.
+5. Category must be the concise reusable folder name. It must be more specific than the selected folder.
+6. Use "root" only for narrow_topic.
+7. Use "existing_subfolder" when a listed folder matches a durable category.
+8. Use "new_subfolder" when a durable category has no matching listed folder.
+9. Give related notes the same category and folder decision.
+10. Keep every target inside the selected folder. Use no more than two levels below it.
+11. Return one decision for every candidate ID.
 
 Return this JSON array only:
 [
   {
     "id": "note-1",
+    "category": "concise reusable category name",
+    "categoryKind": "durable_category | narrow_topic",
+    "futureTopics": ["two likely future note titles for a durable category"],
     "placement": "root | existing_subfolder | new_subfolder",
     "targetFolder": "full folder path",
     "reason": "short semantic reason"
@@ -107,9 +115,12 @@ function parseDecisions(raw: string): AtomicOrganizationDecision[] {
     const id = typeof value.id === "string" ? value.id.trim() : "";
     const placement = value.placement;
     const reason = typeof value.reason === "string" ? value.reason.trim() : "";
+    const categoryKind = value.categoryKind;
     if (!id || !["root", "existing_subfolder", "new_subfolder"].includes(placement)) return [];
     return [{
       id,
+      category: typeof value.category === "string" ? normalizePath(value.category) : undefined,
+      categoryKind: ["durable_category", "narrow_topic"].includes(categoryKind) ? categoryKind : undefined,
       placement,
       targetFolder: typeof value.targetFolder === "string" ? normalizePath(value.targetFolder) : undefined,
       reason,
@@ -124,6 +135,9 @@ function applyDecisions(
 ): AtomicNoteItem[] {
   const decisionsById = new Map(decisions.map((decision) => [decision.id, decision]));
   const normalizedExistingFolders = new Set(context.existingFolders.map(normalizePath).filter(Boolean));
+  const existingFoldersByCaseFold = new Map(
+    [...normalizedExistingFolders].map((folder) => [folder.toLocaleLowerCase(), folder]),
+  );
 
   const missingIds = plan
     .map((item, index) => item.action === "create_new_note" ? `note-${index + 1}` : "")
@@ -136,6 +150,23 @@ function applyDecisions(
     if (item.action !== "create_new_note") return { ...item };
     const decision = decisionsById.get(`note-${index + 1}`)!;
     const scopeFolder = normalizePath(context.scopeFolder);
+    if (decision.categoryKind === "durable_category") {
+      const normalizedCategory = normalizePath(decision.category);
+      const categoryLeaf = normalizedCategory.split("/").filter(Boolean).pop() || "";
+      const scopeLeaf = scopeFolder.split("/").filter(Boolean).pop() || "";
+      if (!categoryLeaf || categoryLeaf.toLocaleLowerCase() === scopeLeaf.toLocaleLowerCase()) {
+        throw new Error(`The folder review did not give note-${index + 1} a specific durable category.`);
+      }
+
+      const requestedCategoryFolder = scopeFolder ? `${scopeFolder}/${categoryLeaf}` : categoryLeaf;
+      const existingCategoryFolder = existingFoldersByCaseFold.get(requestedCategoryFolder.toLocaleLowerCase());
+      return {
+        ...item,
+        folderStrategy: existingCategoryFolder ? "existing_subfolder" : "new_subfolder",
+        targetFolder: existingCategoryFolder || requestedCategoryFolder,
+      };
+    }
+
     if (decision.placement === "root") {
       return {
         ...item,
@@ -189,18 +220,22 @@ ${existingFolders.length > 0 ? existingFolders.map((folder) => `- ${folder}`).jo
 
 Audit method:
 1. First build a topic taxonomy for the complete candidate set. A taxonomy is a small set of durable subject categories.
-2. Check every root decision for under-organization.
-3. A broad reusable subject deserves a folder when it can reasonably receive future notes. It does not need two current notes.
-4. Joins, Transactions, Indexes, Normalization, Security, Testing, and Performance are examples of durable subjects. These are examples, not a fixed list.
-5. Keep narrow facts and isolated exercises at the selected folder when a subfolder adds no navigation value.
-6. Reuse a listed existing subfolder when it matches.
-7. Correct the proposed plan. Do not preserve it only because it already exists.
-8. Return one final decision for every candidate ID.
+2. Classify every note as "durable_category" or "narrow_topic" before you choose placement.
+3. Check every root decision for under-organization. Root is valid only for narrow_topic.
+4. A broad reusable subject deserves a folder when it can reasonably receive future notes. It does not need two current notes.
+5. Joins, Transactions, Indexes, Normalization, Security, Testing, and Performance are examples of durable subjects. These are examples, not a fixed list.
+6. Keep narrow facts and isolated exercises at the selected folder when a subfolder adds no navigation value.
+7. Reuse a listed existing subfolder when it matches.
+8. Correct the proposed plan. Do not preserve it only because it already exists.
+9. Return one final decision for every candidate ID.
 
 Return only this full replacement JSON array:
 [
   {
     "id": "note-1",
+    "category": "concise reusable category name",
+    "categoryKind": "durable_category | narrow_topic",
+    "futureTopics": ["two likely future note titles for a durable category"],
     "placement": "root | existing_subfolder | new_subfolder",
     "targetFolder": "full folder path",
     "reason": "short semantic reason"
