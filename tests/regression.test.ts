@@ -1194,6 +1194,40 @@ test("Atomic organization reuses a durable category folder without case-sensitiv
   assert.equal(organized.targetFolder, "DB/SQL/Joins");
 });
 
+test("Atomic placement honors a generated folder tag when reviews choose root", async () => {
+  const [organized] = await organizeAtomicPlan(
+    [{
+      action: "create_new_note",
+      title: "LEFT JOIN for Optional Relationships",
+      reason: "Explains optional relationships.",
+      content: `---
+title: "LEFT JOIN for Optional Data"
+tags:
+  - notes/DB/SQL/Joins
+  - status/seedling
+---
+# LEFT JOIN for Optional Relationships`,
+    }],
+    { scopeFolder: "DB/SQL", existingFolders: [] },
+    async () => JSON.stringify([
+      {
+        id: "note-1",
+        category: "LEFT JOIN",
+        categoryKind: "narrow_topic",
+        futureTopics: [],
+        placement: "root",
+        targetFolder: "DB/SQL",
+        reason: "Keep this note at the SQL root.",
+      },
+    ]),
+  );
+  const [target] = resolveAtomicPlacementPlan([organized], "DB/SQL", []);
+
+  assert.equal(organized.folderStrategy, "new_subfolder");
+  assert.equal(organized.targetFolder, "DB/SQL/Joins");
+  assert.deepEqual(target, { action: "create_new_note", targetFolder: "DB/SQL/Joins" });
+});
+
 test("generated notes unwrap fenced YAML frontmatter", () => {
   const generated = `\`\`\`yaml
 ---

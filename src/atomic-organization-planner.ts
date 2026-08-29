@@ -1,4 +1,5 @@
 import type { AtomicNoteItem } from "./vault-indexer";
+import { normalizeGeneratedNoteMarkdown } from "./generated-markdown";
 
 export interface AtomicOrganizationContext {
   scopeFolder?: string;
@@ -39,6 +40,58 @@ function normalizePath(value: string | undefined): string {
     else segments.push(segment);
   }
   return segments.join("/");
+}
+
+function readFrontmatterTags(markdown: string): string[] {
+  const normalized = normalizeGeneratedNoteMarkdown(markdown);
+  const frontmatterMatch = normalized.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!frontmatterMatch) return [];
+
+  const lines = frontmatterMatch[1].split(/\r?\n/);
+  const tags: string[] = [];
+  const tagLineIndex = lines.findIndex((line) => /^tags:\s*/i.test(line));
+  if (tagLineIndex < 0) return tags;
+
+  const inlineValue = lines[tagLineIndex].replace(/^tags:\s*/i, "").trim();
+  if (inlineValue) {
+    const values = inlineValue.startsWith("[") && inlineValue.endsWith("]")
+      ? inlineValue.slice(1, -1).split(",")
+      : [inlineValue];
+    tags.push(...values.map((value) => value.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean));
+  }
+
+  for (const line of lines.slice(tagLineIndex + 1)) {
+    const listItem = line.match(/^\s+-\s+(.+?)\s*$/);
+    if (listItem) {
+      tags.push(listItem[1].trim().replace(/^['"]|['"]$/g, ""));
+      continue;
+    }
+    if (/^\S/.test(line)) break;
+  }
+  return tags;
+}
+
+function inferFolderFromGeneratedTags(content: string, scopeFolder: string): string {
+  const scope = normalizePath(scopeFolder);
+  const scopeParts = scope.split("/").filter(Boolean);
+
+  for (const tag of readFrontmatterTags(content)) {
+    const tagPath = normalizePath(tag.replace(/^#?notes\//i, ""));
+    if (!tagPath || !/^#?notes\//i.test(tag)) continue;
+    const tagParts = tagPath.split("/").filter(Boolean);
+
+    if (scope) {
+      const isInsideScope = scopeParts.every(
+        (part, index) => tagParts[index]?.toLocaleLowerCase() === part.toLocaleLowerCase(),
+      );
+      if (!isInsideScope || tagParts.length <= scopeParts.length) continue;
+      const relativeParts = tagParts.slice(scopeParts.length, scopeParts.length + 2);
+      return `${scope}/${relativeParts.join("/")}`;
+    }
+
+    if (tagParts.length > 0) return tagParts.slice(0, 2).join("/");
+  }
+  return "";
 }
 
 function buildOrganizationPrompt(
@@ -150,6 +203,16 @@ function applyDecisions(
     if (item.action !== "create_new_note") return { ...item };
     const decision = decisionsById.get(`note-${index + 1}`)!;
     const scopeFolder = normalizePath(context.scopeFolder);
+    const taggedFolder = inferFolderFromGeneratedTags(item.content, scopeFolder);
+    if (taggedFolder) {
+      const existingTaggedFolder = existingFoldersByCaseFold.get(taggedFolder.toLocaleLowerCase());
+      return {
+        ...item,
+        folderStrategy: existingTaggedFolder ? "existing_subfolder" : "new_subfolder",
+        targetFolder: existingTaggedFolder || taggedFolder,
+      };
+    }
+
     if (decision.categoryKind === "durable_category") {
       const normalizedCategory = normalizePath(decision.category);
       const categoryLeaf = normalizedCategory.split("/").filter(Boolean).pop() || "";
