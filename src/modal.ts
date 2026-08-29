@@ -1458,7 +1458,7 @@ export class NemotronModal extends Modal {
       const isMulti = this.selectedMode === "multi_note";
       textDiv.createSpan({
         text: isMulti
-          ? "Atomic Decomposition Active: Keeps cohesive notes together, reuses relevant folders, and creates a new folder only for a real multi-note topic."
+          ? "Atomic Decomposition Active: Keeps notes at the right level, reuses relevant folders, and creates a folder when the AI identifies a durable topic."
           : "Smart Auto-Routing Active: AI analyzes your vault tree & topics to automatically place this note or append to the right note.",
       });
     }

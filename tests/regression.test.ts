@@ -289,7 +289,7 @@ test("Atomic organization adapts to the complete note plan", () => {
     [
       { action: "create_new_note", targetFolder: "DB/SQL/Joins" },
       { action: "create_new_note", targetFolder: "DB/SQL/Joins" },
-      { action: "create_new_note", targetFolder: "DB/SQL" },
+      { action: "create_new_note", targetFolder: "DB/SQL/Transactions" },
     ],
   );
 
@@ -304,7 +304,7 @@ test("Atomic organization adapts to the complete note plan", () => {
     ),
     [
       { action: "create_new_note", targetFolder: "DB/SQL" },
-      { action: "create_new_note", targetFolder: "DB/SQL" },
+      { action: "create_new_note", targetFolder: "DB/SQL/Window Functions" },
     ],
   );
 });
@@ -1025,14 +1025,17 @@ test("Atomic prompts request adaptive folders and concise source-grounded notes"
   assert.match(prompt, /EXISTING FOLDERS IN SCOPE/);
   assert.match(prompt, /Database Exercises\/Practice/);
   assert.match(prompt, /Placement: <root \| existing_subfolder \| new_subfolder>/);
-  assert.match(prompt, /Do not create a new subfolder for only one note/i);
+  assert.match(prompt, /FolderReason: <why this placement improves long-term organization>/);
+  assert.match(prompt, /FutureNotes: <2-4 likely future note topics/);
+  assert.match(prompt, /One note can justify a new folder/i);
+  assert.match(prompt, /folder decision.*not.*note count/i);
   assert.match(prompt, /supported by the input/i);
   assert.match(prompt, /usually be 80-250 words/i);
   assert.match(prompt, /Do not add unrelated background/i);
 
   const atomicDescription = DESTINATION_MODE_OPTIONS.find((option) => option.value === "multi_note")?.description || "";
-  assert.match(atomicDescription, /cohesive notes together/i);
-  assert.match(atomicDescription, /real multi-note topic/i);
+  assert.match(atomicDescription, /right level/i);
+  assert.match(atomicDescription, /durable topic/i);
 });
 
 test("nested note folders create every folder in the selected path", async () => {

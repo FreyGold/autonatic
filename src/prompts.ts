@@ -233,12 +233,13 @@ ${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
 ### ORGANIZATION RULES
 1. First identify the major topic branches in the full conversation. Examples include Joins, Transactions, Indexes, and Normalization.
 2. Do not create one note for each message. Merge repeated questions and answers about the same atomic concept.
-3. Use root when the input is cohesive or a topic branch produces only one new note. Do not create a new subfolder for only one note.
-4. Prefer existing_subfolder when an existing folder is a clear semantic match. Use its exact path from the folder list.
-5. Use new_subfolder only when at least two new notes belong to the same reusable topic branch. All notes in that branch must use the same Folder value.
-6. A folder is a broad reusable topic container. A note is one focused concept. Do not use a narrow note title as a folder name.
-7. Use no more than two new folder levels. When a placement limit exists, the two levels are relative to that folder.
-8. For each concept, append only when an existing note is a strong conceptual match. Otherwise, create a new note.
+3. Make each folder decision from topic breadth, likely future reuse, navigation value, and fit with the existing vault structure—not from note count.
+4. Use root when the selected folder is already the correct long-term category. Several notes can stay at root when another folder would add no useful meaning.
+5. Prefer existing_subfolder when an existing folder is a clear semantic match. Use its exact path from the folder list. An empty existing folder is valid.
+6. Use new_subfolder when the topic is a durable category that can reasonably contain future notes. One note can justify a new folder when the category is broad, such as Joins, Transactions, or Indexes.
+7. Do not create a folder for a temporary exercise, one conversation session, a narrow fact, or a folder name that merely repeats the note title. Several notes can still remain at root when they do not form a durable category.
+8. Use no more than two new folder levels. When a placement limit exists, the two levels are relative to that folder.
+9. For each concept, append only when an existing note is a strong conceptual match. Otherwise, create a new note.
 
 ### CONTENT BOUNDARIES
 - Include facts, explanations, examples, exercise solutions, and code only when they are supported by the input.
@@ -264,6 +265,8 @@ Action: create_new_note
 Placement: <root | existing_subfolder | new_subfolder>
 Topic: <broad major topic branch, e.g. "Joins">
 Folder: <selected root for root, exact listed folder for existing_subfolder, or shared path such as "${folderExample}" for new_subfolder>
+FolderReason: <why this placement improves long-term organization>
+FutureNotes: <2-4 likely future note topics if this is a new_subfolder, otherwise "none">
 Title: <Descriptive Note Title>
 Reason: <1 sentence explaining why this new note is created here>
 --- CONTENT ---

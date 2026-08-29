@@ -11,7 +11,7 @@ export const DESTINATION_MODE_OPTIONS: ReadonlyArray<SelectOption & { value: Des
   {
     value: "multi_note",
     label: "Atomic Decomposition (Multi-Note)",
-    description: "Keeps cohesive notes together, reuses relevant folders, and creates a new folder only for a real multi-note topic.",
+    description: "Keeps notes at the right level, reuses relevant folders, and creates a folder when the AI identifies a durable topic.",
   },
   {
     value: "multi_note_folder",

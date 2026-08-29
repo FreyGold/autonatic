@@ -109,14 +109,6 @@ export function resolveAtomicPlacementPlan(
       .filter((folder) => folderScope === undefined || isPathInFolder(folder, scopeRoot)),
   );
   const candidates = requests.map((request) => resolveAtomicPlacementTarget(request, folderScope));
-  const newFolderCounts = new Map<string, number>();
-
-  candidates.forEach((target, index) => {
-    const strategy = requests[index].folderStrategy;
-    if (strategy === "root" || strategy === "existing_subfolder") return;
-    if (target.action !== "create_new_note" || !target.targetFolder || existingFolderSet.has(target.targetFolder)) return;
-    newFolderCounts.set(target.targetFolder, (newFolderCounts.get(target.targetFolder) || 0) + 1);
-  });
 
   return candidates.map((target, index) => {
     if (target.action === "append_to_note") return target;
@@ -127,7 +119,7 @@ export function resolveAtomicPlacementPlan(
     if (strategy === "root" || !candidateFolder || candidateFolder === scopeRoot) return rootTarget;
     if (existingFolderSet.has(candidateFolder)) return target;
     if (strategy === "existing_subfolder") return rootTarget;
-    return (newFolderCounts.get(candidateFolder) || 0) >= 2 ? target : rootTarget;
+    return target;
   });
 }
 
