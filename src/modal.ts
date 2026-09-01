@@ -28,7 +28,7 @@ import {
 } from "./destination-modes";
 import type { VaultKnowledgeIndex } from "./vault-indexer";
 import { organizeAtomicPlan } from "./atomic-organization-planner";
-import { normalizeGeneratedNoteMarkdown } from "./generated-markdown";
+import { normalizeGeneratedNoteMarkdown, resolveGeneratedNoteFolder } from "./generated-markdown";
 import { FileSnapshot, PromptHistoryItem, revertFileSnapshots } from "./history-manager";
 import {
   createMirroredExcalidrawDrawing,
@@ -1753,7 +1753,7 @@ export class NemotronModal extends Modal {
     requestedTitle?: string,
     requestedFolder?: string,
     enableProperties: boolean = true,
-    folderDepthLimit: number | null = 2,
+    folderDepthLimit: number | null = null,
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     let title = requestedTitle;
     let finalContent = sanitizeMermaidDiagrams(normalizeGeneratedNoteMarkdown(content));
@@ -1792,20 +1792,37 @@ export class NemotronModal extends Modal {
     const selectedFolder = folderDepthLimit === null
       ? normalizePath(requestedFolder || "").replace(/^\/+|\/+$/g, "")
       : enforceMaxDepthFolder(requestedFolder, folderDepthLimit);
-    let folder = selectedFolder ? normalizePath(selectedFolder) : "";
+    const resolvedFolder = resolveGeneratedNoteFolder(finalContent, selectedFolder);
+    let folder = resolvedFolder ? normalizePath(resolvedFolder) : "";
     if (folder === "." || folder === "/") folder = "";
 
     if (folder) {
+      const existingFoldersByCaseFold = new Map(
+        this.app.vault
+          .getAllLoadedFiles()
+          .filter((entry): entry is TFolder => entry instanceof TFolder)
+          .map((entry) => [entry.path.toLocaleLowerCase(), entry.path]),
+      );
       const segments = folder.split("/");
       let currentPath = "";
       for (const segment of segments) {
-        currentPath = currentPath ? `${currentPath}/${segment}` : segment;
-        const exists = this.app.vault.getAbstractFileByPath(currentPath);
-        if (!exists) {
-          await this.app.vault.createFolder(currentPath);
-          foldersCreated.push(currentPath);
+        const requestedPath = currentPath ? `${currentPath}/${segment}` : segment;
+        const exactEntry = this.app.vault.getAbstractFileByPath(requestedPath);
+        const existingFolderPath = exactEntry instanceof TFolder
+          ? exactEntry.path
+          : existingFoldersByCaseFold.get(requestedPath.toLocaleLowerCase());
+        if (existingFolderPath) {
+          currentPath = existingFolderPath;
+          continue;
         }
+        if (exactEntry) throw new Error(`The target folder path is already used by a file: ${requestedPath}`);
+
+        await this.app.vault.createFolder(requestedPath);
+        foldersCreated.push(requestedPath);
+        currentPath = requestedPath;
+        existingFoldersByCaseFold.set(currentPath.toLocaleLowerCase(), currentPath);
       }
+      folder = currentPath;
     }
 
     let filePath = folder ? `${folder}/${safeTitle}.md` : `${safeTitle}.md`;

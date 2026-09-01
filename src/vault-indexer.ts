@@ -569,7 +569,9 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
     const titleMatch = blockBody.match(/Title:\s*([^\n\r]+)/i);
     const reasonMatch = blockBody.match(/Reason:\s*([^\n\r]+)/i);
 
-    const contentSplitMatch = blockBody.match(/(?:---\s*CONTENT\s*---|Content:\s*\r?\n)([\s\S]*)$/i);
+    const contentSplitMatch = blockBody.match(
+      /^(?:---+\s*CONTENT\b[^\r\n]*|Content:\s*)\r?\n([\s\S]*)$/im,
+    );
     const content = contentSplitMatch ? contentSplitMatch[1].trim() : blockBody;
 
     const action = actionMatch ? (actionMatch[1].toLowerCase() as "create_new_note" | "append_to_note") : (targetPathMatch ? "append_to_note" : "create_new_note");

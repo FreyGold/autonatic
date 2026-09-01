@@ -108,7 +108,21 @@ export function resolveAtomicPlacementPlan(
       .map(normalizeVaultPath)
       .filter((folder) => folderScope === undefined || isPathInFolder(folder, scopeRoot)),
   );
-  const candidates = requests.map((request) => resolveAtomicPlacementTarget(request, folderScope));
+  const candidates = requests.map((request) => {
+    const target = resolveAtomicPlacementTarget(request, folderScope);
+    if (target.action === "append_to_note" || folderScope !== undefined) return target;
+
+    const requestedFolder = normalizeVaultPath(request.targetFolder ?? "");
+    const deepestExistingAncestor = [...existingFolderSet]
+      .filter((folder) => folder && isPathInFolder(requestedFolder, folder))
+      .sort((left, right) => right.split("/").length - left.split("/").length)[0];
+    if (!deepestExistingAncestor) return target;
+
+    return {
+      action: "create_new_note" as const,
+      targetFolder: resolveFolderWithinScope(requestedFolder, deepestExistingAncestor),
+    };
+  });
 
   return candidates.map((target, index) => {
     if (target.action === "append_to_note") return target;

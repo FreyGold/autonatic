@@ -246,6 +246,38 @@ Join notes.
   assert.equal((item as { folderStrategy?: string }).folderStrategy, "existing_subfolder");
 });
 
+test("Atomic parser does not leak control fields after a malformed content marker", () => {
+  const [item] = extractAtomicDecompositionPlan(`=== ATOMIC NOTE ===
+Action: create_new_note
+Placement: root
+Topic: Latest Date Retrieval
+Folder: DB/SQL
+FolderReason: Finding the maximum date is a common aggregation task.
+FutureNotes: ["Latest date per group", "Earliest date retrieval"]
+Title: Getting the Latest Date
+Reason: Compare MAX aggregation with ORDER BY and LIMIT.
+--- CONTENT >
+---
+title: "Getting the Latest Date"
+aliases: []
+tags:
+  - notes/DB/SQL
+  - status/seedling
+created: "2026-08-30"
+summary: "Find the latest date with MAX or ORDER BY."
+---
+# Getting the Latest Date
+
+Use MAX for a scalar result.
+=== END NOTE ===`);
+
+  assert.equal(item.title, "Getting the Latest Date");
+  assert.equal(item.topicFolder, "Latest Date Retrieval");
+  assert.match(item.content, /^---\ntitle: "Getting the Latest Date"/);
+  assert.doesNotMatch(item.content, /Action: create_new_note/);
+  assert.doesNotMatch(item.content, /--- CONTENT >/);
+});
+
 test("Atomic organization adapts to the complete note plan", () => {
   const note = (
     title: string,
@@ -922,6 +954,13 @@ class FakeVault {
     return this.files.get(path)?.file ?? this.folders.get(path) ?? null;
   }
 
+  getAllLoadedFiles() {
+    return [
+      ...[...this.folders.values()],
+      ...[...this.files.values()].map(({ file }) => file),
+    ];
+  }
+
   async read(file: TFile) {
     return this.files.get(file.path)?.content ?? "";
   }
@@ -1228,6 +1267,114 @@ tags:
   assert.deepEqual(target, { action: "create_new_note", targetFolder: "DB/SQL/Joins" });
 });
 
+test("Atomic placement keeps a durable topic below a broad generated tag", async () => {
+  const [organized] = await organizeAtomicPlan(
+    [{
+      action: "create_new_note",
+      title: "SQL JOIN Types and Patterns",
+      reason: "Explains reusable SQL JOIN patterns.",
+      content: `---
+title: "SQL JOIN Types and Patterns"
+tags:
+  - notes/DB/SQL
+  - status/seedling
+---
+# SQL JOIN Types and Patterns`,
+    }],
+    { existingFolders: ["DB", "DB/SQL"] },
+    async () => JSON.stringify([
+      {
+        id: "note-1",
+        category: "Joins",
+        categoryKind: "durable_category",
+        futureTopics: ["Join performance", "Join algorithms"],
+        placement: "new_subfolder",
+        targetFolder: "DB/Joins",
+        reason: "Joins is a durable SQL category.",
+      },
+    ]),
+  );
+  const [target] = resolveAtomicPlacementPlan([organized], undefined, ["DB", "DB/SQL"]);
+
+  assert.equal(organized.folderStrategy, "new_subfolder");
+  assert.equal(organized.targetFolder, "DB/SQL/Joins");
+  assert.deepEqual(target, { action: "create_new_note", targetFolder: "DB/SQL/Joins" });
+
+  const vault = new FakeVault();
+  vault.addFolder("DB");
+  vault.addFolder("DB/SQL");
+  const plugin = {
+    settings: {
+      enableProperties: true,
+      enableExcalidrawMindMap: false,
+      autoOpenCreatedNote: false,
+    },
+  };
+  const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
+  const result = await (modal as never as {
+    createNewNoteFile(content: string, title: string, folder: string, properties: boolean): Promise<{
+      snaps: FileSnapshot[];
+      foldersCreated: string[];
+    }>;
+  }).createNewNoteFile(organized.content, organized.title, target.targetFolder, true);
+
+  assert.equal(result.snaps[0]?.path, "DB/SQL/Joins/SQL JOIN Types and Patterns.md");
+  assert.deepEqual(result.foldersCreated, ["DB/SQL/Joins"]);
+});
+
+test("Atomic placement creates the tagged branch and topic below a selected parent", async () => {
+  const [organized] = await organizeAtomicPlan(
+    [{
+      action: "create_new_note",
+      title: "SQL JOIN Types and Patterns",
+      reason: "Explains reusable SQL JOIN patterns.",
+      content: `---
+title: "SQL JOIN Types and Patterns"
+tags:
+  - notes/DB/SQL
+  - status/seedling
+---
+# SQL JOIN Types and Patterns`,
+    }],
+    { scopeFolder: "DB", existingFolders: [] },
+    async () => JSON.stringify([
+      {
+        id: "note-1",
+        category: "Joins",
+        categoryKind: "durable_category",
+        futureTopics: ["Join performance", "Join algorithms"],
+        placement: "new_subfolder",
+        targetFolder: "DB/Joins",
+        reason: "Joins is a durable SQL category.",
+      },
+    ]),
+  );
+  const [target] = resolveAtomicPlacementPlan([organized], "DB", []);
+
+  assert.equal(organized.targetFolder, "DB/SQL/Joins");
+  assert.deepEqual(target, { action: "create_new_note", targetFolder: "DB/SQL/Joins" });
+
+  const vault = new FakeVault();
+  vault.addFolder("DB");
+  const plugin = {
+    settings: {
+      enableProperties: true,
+      enableExcalidrawMindMap: false,
+      autoOpenCreatedNote: false,
+    },
+  };
+  const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
+  const result = await (modal as never as {
+    createNewNoteFile(content: string, title: string, folder: string, properties: boolean): Promise<{
+      snaps: FileSnapshot[];
+      foldersCreated: string[];
+    }>;
+  }).createNewNoteFile(organized.content, organized.title, target.targetFolder, true);
+
+  assert.equal(result.snaps[0]?.path, "DB/SQL/Joins/SQL JOIN Types and Patterns.md");
+  assert.deepEqual(result.foldersCreated, ["DB/SQL", "DB/SQL/Joins"]);
+});
+
 test("generated notes unwrap fenced YAML frontmatter", () => {
   const generated = `\`\`\`yaml
 ---
@@ -1276,6 +1423,70 @@ test("nested note folders create every folder in the selected path", async () =>
 
   assert.equal(result.snaps[0]?.path, "Areas/Engineering/HTTP/Buffer Growth.md");
   assert.deepEqual(result.foldersCreated, ["Areas", "Areas/Engineering", "Areas/Engineering/HTTP"]);
+});
+
+test("the final file writer creates the deeper folder from the generated note tag", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("DB");
+  vault.addFolder("DB/SQL");
+  const plugin = {
+    settings: {
+      enableProperties: true,
+      enableExcalidrawMindMap: false,
+      autoOpenCreatedNote: false,
+    },
+  };
+  const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
+  const content = `---
+title: "Correct JOIN Syntax and Alias Usage"
+aliases: []
+tags:
+  - notes/DB/SQL/Joins
+  - status/seedling
+created: "2026-08-30"
+summary: "Use JOIN conditions in the ON clause."
+---
+# Correct JOIN Syntax and Alias Usage`;
+  const result = await (modal as never as {
+    createNewNoteFile(content: string, title: string, folder: string, properties: boolean): Promise<{
+      snaps: FileSnapshot[];
+      foldersCreated: string[];
+    }>;
+  }).createNewNoteFile(content, "Correct JOIN Syntax and Alias Usage", "DB/SQL", true);
+
+  assert.equal(result.snaps[0]?.path, "DB/SQL/Joins/Correct JOIN Syntax and Alias Usage.md");
+  assert.deepEqual(result.foldersCreated, ["DB/SQL/Joins"]);
+});
+
+test("the final file writer reuses a tagged folder without a case-sensitive duplicate", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("DB");
+  vault.addFolder("DB/SQL");
+  vault.addFolder("DB/SQL/Joins");
+  const plugin = {
+    settings: {
+      enableProperties: true,
+      enableExcalidrawMindMap: false,
+      autoOpenCreatedNote: false,
+    },
+  };
+  const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
+  const content = `---
+title: "JOIN Performance"
+tags:
+  - notes/db/sql/joins
+  - status/seedling
+---
+# JOIN Performance`;
+  const result = await (modal as never as {
+    createNewNoteFile(content: string, title: string, folder: string, properties: boolean): Promise<{
+      snaps: FileSnapshot[];
+      foldersCreated: string[];
+    }>;
+  }).createNewNoteFile(content, "JOIN Performance", "DB/SQL", true);
+
+  assert.equal(result.snaps[0]?.path, "DB/SQL/Joins/JOIN Performance.md");
+  assert.deepEqual(result.foldersCreated, []);
 });
 
 test("smart placement parses the exact decision format requested by the prompt", () => {
