@@ -87,7 +87,7 @@ export class NemotronModal extends Modal {
 
     // Header Title
     const headerRow = contentEl.createDiv({ cls: "nemotron-modal-header-row" });
-    headerRow.createEl("h2", { text: "Nemotron Note Crafter", cls: "nemotron-modal-title" });
+    headerRow.createEl("h2", { text: "autonatic", cls: "nemotron-modal-title" });
 
     // History Toolbar Row (Undo / Redo up to 3 generations & Recent Prompts up to 5)
     this.historyRowEl = contentEl.createDiv({ cls: "nemotron-history-toolbar" });
@@ -953,7 +953,7 @@ export class NemotronModal extends Modal {
         if (err.name === "AbortError") {
           new Notice("Generation cancelled.");
         } else {
-          console.error("Nemotron Note Crafter Error:", err);
+          console.error("autonatic Error:", err);
           statusDiv.setText(`Error: ${err.message}`);
           new Notice(`Error generating note: ${err.message}`);
         }

@@ -238,7 +238,7 @@ export async function generateNemotronNote(
   signal?: AbortSignal
 ): Promise<StreamResult> {
   if (!settings.apiKey || !settings.apiKey.trim()) {
-    throw new Error("NVIDIA API key is missing. Please enter your API key in Obsidian Settings > Nemotron Note Crafter.");
+    throw new Error("NVIDIA API key is missing. Please enter your API key in Obsidian Settings > autonatic.");
   }
 
   let combinedPrompt = userPrompt;

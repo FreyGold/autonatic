@@ -75,7 +75,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Nemotron Note Crafter Settings" });
+    containerEl.createEl("h2", { text: "autonatic Settings" });
     containerEl.createEl("h3", { text: "Privacy and cost controls" });
     new Setting(containerEl).setName("Automatic index updates").setDesc("Update the local vault index after a file changes.").addToggle((c) => c.setValue(this.plugin.settings.enableAutomaticIndexing).onChange(async (v) => { this.plugin.settings.enableAutomaticIndexing = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Send note excerpts for indexing").setDesc("Consent: send short note excerpts to NVIDIA during index builds. Off uses local metadata only.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));

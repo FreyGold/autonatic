@@ -31,7 +31,7 @@ export default class NemotronPlugin extends Plugin {
       () => this.saveHistory()
     );
 
-    this.addRibbonIcon("wand", "Nemotron Note Crafter", () => {
+    this.addRibbonIcon("wand", "autonatic", () => {
       new NemotronModal(this.app, this).open();
     });
 
@@ -204,11 +204,11 @@ export default class NemotronPlugin extends Plugin {
       if (!captured) return;
 
       menu.addSeparator();
-      menu.addItem((item) => item.setTitle("Nemotron: Improve highlighted text").setIcon("sparkles")
+      menu.addItem((item) => item.setTitle("autonatic: Improve highlighted text").setIcon("sparkles")
         .onClick(() => { void this.editSelectionWithAi(editor, info.file, "improve", captured); }));
-      menu.addItem((item) => item.setTitle("Nemotron: Expand with details").setIcon("list-plus")
+      menu.addItem((item) => item.setTitle("autonatic: Expand with details").setIcon("list-plus")
         .onClick(() => { void this.editSelectionWithAi(editor, info.file, "expand", captured); }));
-      menu.addItem((item) => item.setTitle("Nemotron: Regenerate highlighted text").setIcon("refresh-cw")
+      menu.addItem((item) => item.setTitle("autonatic: Regenerate highlighted text").setIcon("refresh-cw")
         .onClick(() => { void this.editSelectionWithAi(editor, info.file, "regenerate", captured); }));
     }));
 
@@ -249,7 +249,7 @@ export default class NemotronPlugin extends Plugin {
     captured: CapturedSelection | null = this.captureSelection(editor),
   ): Promise<void> {
     if (!captured) {
-      new Notice("Highlight text before you use a Nemotron AI action.");
+      new Notice("Highlight text before you use an autonatic action.");
       return;
     }
     if (!this.settings.apiKey?.trim()) {
