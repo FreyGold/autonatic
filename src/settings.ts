@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type NemotronPlugin from "./main";
-import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT } from "./prompts";
+import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT, type NoteStyle } from "./prompts";
 import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
 import { DESTINATION_MODE_OPTIONS, type DestinationMode } from "./destination-modes";
 import { DEFAULT_TEXT_MODEL } from "./model-defaults";
@@ -11,7 +11,7 @@ export interface NemotronPluginSettings {
   model: string;
   visionModel: string;
   defaultDestinationMode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append";
-  defaultNoteStyle: "concise" | "detailed";
+  defaultNoteStyle: NoteStyle;
   enableProperties: boolean;
   enableAutoSplitLongNotes: boolean;
   maxNoteWordCount: number;
@@ -87,9 +87,9 @@ export class NemotronSettingTab extends PluginSettingTab {
     // NVIDIA NIM Quick Link & Helper Card
     const nimCard = containerEl.createDiv({ cls: "nemotron-nim-card" });
     const nimLeft = nimCard.createDiv({ cls: "nemotron-nim-left" });
-    nimLeft.createEl("strong", { text: "Need an NVIDIA API Key?" });
+    nimLeft.createEl("strong", { text: "AI Providers" });
     nimLeft.createEl("p", {
-      text: "NVIDIA NIM offers developer API access for models like Nemotron 3 Super and Llama 3.2 Vision.",
+      text: "Supported now: NVIDIA NIM. Coming soon: Groq and Gemini.",
       cls: "nemotron-nim-desc",
     });
     
@@ -104,7 +104,7 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // API Key Setting with Instant Paste
     const apiKeySetting = new Setting(containerEl)
-      .setName("NVIDIA API Key")
+      .setName("NVIDIA NIM API Key")
       .setDesc("Your personal API key (starts with nvapi-...). Stored locally on your device.");
 
     let apiKeyInputEl: HTMLInputElement;
@@ -294,14 +294,15 @@ export class NemotronSettingTab extends PluginSettingTab {
     // Default Note Style
     new Setting(containerEl)
       .setName("Default Note Style")
-      .setDesc("Choose default output length and structure (Concise vs Detailed).")
+      .setDesc("Choose the default output style. Bare is source-locked for pasted chat histories.")
       .addDropdown((dropdown) =>
         dropdown
           .addOption("concise", "Concise & Punchy (Smart Brevity)")
           .addOption("detailed", "Detailed & Comprehensive")
+          .addOption("bare", "Bare (Source Only)")
           .setValue(this.plugin.settings.defaultNoteStyle || "concise")
           .onChange(async (value) => {
-            this.plugin.settings.defaultNoteStyle = value as "concise" | "detailed";
+            this.plugin.settings.defaultNoteStyle = value as NoteStyle;
             await this.plugin.saveSettings();
           })
       );
@@ -309,7 +310,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     // Base URL
     new Setting(containerEl)
       .setName("API Base URL")
-      .setDesc("The OpenAI-compatible base URL for NVIDIA API.")
+      .setDesc("The OpenAI-compatible base URL for the currently supported NVIDIA NIM provider.")
       .addText((text) =>
         text
           .setPlaceholder("https://integrate.api.nvidia.com/v1")

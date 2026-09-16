@@ -19,7 +19,7 @@ import {
   selectVaultContext,
 } from "../src/privacy-controls";
 import { DiagramEngine } from "../src/diagram-engine";
-import { buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
+import { BARE_OBSIDIAN_SKILL_PROMPT, buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
 import { sanitizeMermaidDiagrams, streamChatCompletion } from "../src/api";
 import { replaceCapturedSelection } from "../src/selection-editor";
 import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
@@ -1012,6 +1012,20 @@ test("folder multi-note mode requests new notes only", () => {
   assert.match(prompt, /Action: create_new_note/);
   assert.match(prompt, /save every note in the directory selected by the user/);
   assert.doesNotMatch(prompt, /Action: append_to_note/);
+});
+
+test("Bare style is source-locked and disables generated metadata", () => {
+  const source = "User: What did we decide?\nAssistant: Keep the parser strict.";
+  const prompt = buildUserPrompt(source, "new_file", "bare", "Make it exhaustive", [], undefined, true);
+
+  assert.match(prompt, /STYLE: BARE \(SOURCE-LOCKED\)/);
+  assert.match(prompt, /Do not expand, infer, correct, enrich, summarize, or add new content/);
+  assert.match(prompt, /Do NOT include YAML frontmatter/);
+  assert.match(prompt, /Make it exhaustive/);
+  assert.match(prompt, /Keep the parser strict/);
+  assert.doesNotMatch(prompt, /title: "<Note Title>"/);
+  assert.match(BARE_OBSIDIAN_SKILL_PROMPT, /source boundary is absolute/i);
+  assert.match(BARE_OBSIDIAN_SKILL_PROMPT, /Do not add, infer, expand, correct/);
 });
 
 test("Smart prompts state the selected folder scope", () => {

@@ -1,10 +1,15 @@
 # autonatic - Obsidian Plugin
 
-Transform raw, dense, or unorganized text into concise, beautifully structured notes strictly formatted **"The Obsidian Way"**, powered by NVIDIA's `nvidia/nemotron-3-super-120b-a12b` model.
+Transform raw, dense, or unorganized text into concise, beautifully structured notes strictly formatted **"The Obsidian Way"** using AI.
+
+## AI providers
+
+- **Supported now:** NVIDIA NIM
+- **Coming soon:** Groq and Gemini
 
 ## Features
 
-- **NVIDIA Nemotron Integration**: Pre-configured with NVIDIA integrate API, streaming responses, and reasoning/thinking support.
+- **AI Integration**: NVIDIA NIM support with streaming responses and reasoning/thinking support.
 - **The Obsidian Way Skill Prompt**:
   - **YAML Properties / Frontmatter**: `title`, `aliases`, `tags`, `created`, `summary`, `status`.
   - **Callouts**: Strategic use of `> [!summary]`, `> [!info]`, `> [!tip]`, `> [!warning]`.
@@ -15,6 +20,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
   - **Create Multiple Notes in Folder**: Splits the input into new atomic notes and saves all notes in one selected directory.
   - **Append to Current Note**: Adds the formatted section directly to the end of your active note.
   - **In-Place Replace**: Transform selected text right inside the active editor.
+- **Bare source-only style**: Cleans pasted browser chat history into Markdown without expanding, inferring, summarizing, or adding new material.
 - **Interactive UI**:
   - Ribbon icon for one-click access.
   - Streaming live preview with collapsible reasoning thought process.
@@ -45,12 +51,12 @@ To edit part of an existing note, highlight the text and open the editor context
 
 ## Privacy and cost
 
-This is a desktop-only plugin. Generation sends your prompt and selected vault context to the configured NVIDIA service. Remote vault indexing is off by default. You must give consent before the indexer sends note excerpts. You can exclude folders, limit context notes, and limit automatic diagrams. The API provider can charge for each request.
+This is a desktop-only plugin. Generation currently sends your prompt and selected vault context to NVIDIA NIM. Remote vault indexing is off by default. You must give consent before the indexer sends note excerpts. You can exclude folders, limit context notes, and limit automatic diagrams. The API provider can charge for each request.
 
 Run `npm run check` before a release. A tag starts the release workflow. The release contains `main.js`, `manifest.json`, `styles.css`, and `versions.json`.
 
 Go to **Obsidian Settings > autonatic** to configure:
-- **API Key**: Pre-configured default NVIDIA API key.
+- **API Key**: NVIDIA NIM API key.
 - **Model**: `nvidia/nemotron-3-super-120b-a12b`.
 - **Enable Thinking**: Toggle deep reasoning tokens.
 - **Obsidian Skill System Prompt**: Customize the formatting instructions.

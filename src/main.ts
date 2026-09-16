@@ -62,7 +62,7 @@ export default class NemotronPlugin extends Plugin {
         }
 
         if (!this.settings.apiKey || !this.settings.apiKey.trim()) {
-          new Notice("Please enter your NVIDIA API Key in Settings first.");
+          new Notice("Please enter your NVIDIA NIM API key in Settings first.");
           return;
         }
 
@@ -253,7 +253,7 @@ export default class NemotronPlugin extends Plugin {
       return;
     }
     if (!this.settings.apiKey?.trim()) {
-      new Notice("Enter your NVIDIA API key in the plugin settings first.");
+      new Notice("Enter your NVIDIA NIM API key in the plugin settings first.");
       return;
     }
     if (this.selectionEditInProgress) {
@@ -297,7 +297,7 @@ export default class NemotronPlugin extends Plugin {
       new Notice("Highlighted text updated.");
       this.scheduleIndexUpdate();
     } catch (error: any) {
-      console.error("Nemotron highlighted-text edit error:", error);
+          console.error("AI highlighted-text edit error:", error);
       new Notice(error.message || "The highlighted text could not be updated.", 8000);
     } finally {
       this.selectionEditInProgress = false;

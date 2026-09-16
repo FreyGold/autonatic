@@ -2,6 +2,7 @@ import { requestUrl } from "obsidian";
 import { NemotronPluginSettings } from "./settings";
 import * as https from "https";
 import * as http from "http";
+import { BARE_OBSIDIAN_SKILL_PROMPT, type NoteStyle } from "./prompts";
 
 export interface StreamCallbacks {
   onReasoning?: (reasoningChunk: string) => void;
@@ -233,7 +234,7 @@ export async function generateNemotronNote(
   settings: NemotronPluginSettings,
   userPrompt: string,
   imageDataUrls?: string[],
-  noteStyle: "concise" | "detailed" = "concise",
+  noteStyle: NoteStyle = "concise",
   callbacks?: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<StreamResult> {
@@ -267,7 +268,9 @@ export async function generateNemotronNote(
 
   // Choose system prompt based on note style
   const systemPrompt =
-    noteStyle === "detailed"
+    noteStyle === "bare"
+      ? BARE_OBSIDIAN_SKILL_PROMPT
+      : noteStyle === "detailed"
       ? (settings.detailedPrompt || settings.systemPrompt)
       : settings.systemPrompt;
 

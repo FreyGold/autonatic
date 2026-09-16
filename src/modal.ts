@@ -1,7 +1,7 @@
 import { App, Modal, Notice, MarkdownView, normalizePath, TFile, TFolder, Menu } from "obsidian";
 import type NemotronPlugin from "./main";
 import { generateNemotronNote, sanitizeMermaidDiagrams, streamChatCompletion } from "./api";
-import { buildUserPrompt } from "./prompts";
+import { buildUserPrompt, type NoteStyle } from "./prompts";
 import { CustomSelect, SelectOption } from "./custom-select";
 import { FolderNavigator } from "./folder-nav";
 import {
@@ -54,7 +54,7 @@ export class NemotronModal extends Modal {
   excalAttachedImages: AttachedImage[] = [];
   pasteListener!: (e: ClipboardEvent) => void;
   selectedMode: DestinationMode = "smart";
-  selectedStyle: "concise" | "detailed" = "concise";
+  selectedStyle: NoteStyle = "concise";
   enableExcalidrawInNoteTab: boolean = true;
   historyRowEl!: HTMLElement;
   modeSelectComponent!: CustomSelect;
@@ -298,6 +298,11 @@ export class NemotronModal extends Modal {
         label: "Detailed & Comprehensive",
         description: "In-depth explanations, full architecture diagrams, trade-offs, and complete code walkthroughs.",
       },
+      {
+        value: "bare",
+        label: "Bare (Source Only)",
+        description: "Cleans pasted chat history without expanding, inferring, summarizing, or adding content.",
+      },
     ];
 
     const defaultStyle = this.plugin.settings.defaultNoteStyle || "concise";
@@ -308,7 +313,7 @@ export class NemotronModal extends Modal {
       styleOptions,
       defaultStyle,
       (val) => {
-        this.selectedStyle = val as "concise" | "detailed";
+        this.selectedStyle = val as NoteStyle;
       },
       { controlId: "nemotron-note-style", labelId: styleLabel.id },
     );
@@ -573,7 +578,7 @@ export class NemotronModal extends Modal {
     previewContainer.style.display = "none";
     
     const reasoningDetails = previewContainer.createEl("details", { cls: "nemotron-reasoning-box" });
-    reasoningDetails.createEl("summary", { text: "Thinking Process (Nemotron Reasoning)" });
+    reasoningDetails.createEl("summary", { text: "AI Reasoning" });
     const reasoningPre = reasoningDetails.createEl("pre", { cls: "nemotron-reasoning-content" });
 
     const contentPreviewBox = previewContainer.createEl("div", { cls: "nemotron-content-box" });
@@ -599,9 +604,9 @@ export class NemotronModal extends Modal {
 
     generateBtn.addEventListener("click", async () => {
       if (!this.plugin.settings.apiKey || !this.plugin.settings.apiKey.trim()) {
-        new Notice("Please enter your NVIDIA API Key first.");
+        new Notice("Please enter your NVIDIA NIM API key first.");
         statusDiv.style.display = "block";
-        statusDiv.setText("Error: NVIDIA API Key is required. Please set it above or in Settings.");
+        statusDiv.setText("Error: NVIDIA NIM API key is required. Please set it above or in Settings.");
         return;
       }
 
@@ -614,7 +619,7 @@ export class NemotronModal extends Modal {
       }
 
       const mode = this.selectedMode;
-      const enableProperties = this.plugin.settings.enableProperties ?? true;
+      const enableProperties = this.selectedStyle !== "bare" && (this.plugin.settings.enableProperties ?? true);
       const customInstruction = customInput.value.trim();
       const placementScopeFolder = supportsPlacementFolderScope(mode) && limitPlacementToFolder
         ? currentPlacementScopeFolder
@@ -728,7 +733,7 @@ export class NemotronModal extends Modal {
         );
 
         const finishUsefulDiagrams = async () => {
-          if (!this.enableExcalidrawInNoteTab) return;
+          if (!this.enableExcalidrawInNoteTab || this.selectedStyle === "bare") return;
           const summary = await this.createUsefulDiagramsAfterPlacement(
             fileSnapshots,
             foldersCreatedList,
@@ -919,7 +924,7 @@ export class NemotronModal extends Modal {
           this.renderHistoryToolbar();
           this.plugin.scheduleIndexUpdate();
         } else {
-          const { snaps, foldersCreated } = await this.appendToActiveNote(result.content, enableProperties, customInstruction || "Appended section via Nemotron");
+          const { snaps, foldersCreated } = await this.appendToActiveNote(result.content, enableProperties, customInstruction || "Appended section via AI");
           fileSnapshots.push(...snaps);
           foldersCreatedList.push(...foldersCreated);
 
@@ -971,7 +976,7 @@ export class NemotronModal extends Modal {
   private renderExcalidrawPane(paneEl: HTMLElement, activeView: MarkdownView | null, hasActiveNote: boolean) {
     const infoCard = paneEl.createDiv({ cls: "nemotron-info-card" });
     infoCard.setText(
-      "Generate high-effort AI architecture diagrams and systems maps using Nemotron's deep visual synthesizer. Creates multi-container subsystems, detailed component cards, and labeled data flows in /Excalidrawings."
+      "Generate high-effort AI architecture diagrams and systems maps. Creates multi-container subsystems, detailed component cards, and labeled data flows in /Excalidrawings."
     );
 
     // 1. Diagram Target Source
@@ -1106,7 +1111,7 @@ export class NemotronModal extends Modal {
     excalPreviewContainer.style.display = "none";
     
     const excalReasoningDetails = excalPreviewContainer.createEl("details", { cls: "nemotron-reasoning-box" });
-    excalReasoningDetails.createEl("summary", { text: "Thinking Process (Nemotron Reasoning)" });
+    excalReasoningDetails.createEl("summary", { text: "AI Reasoning" });
     const excalReasoningPre = excalReasoningDetails.createEl("pre", { cls: "nemotron-reasoning-content" });
 
     const excalContentPreviewBox = excalPreviewContainer.createEl("div", { cls: "nemotron-content-box" });
@@ -1142,7 +1147,7 @@ export class NemotronModal extends Modal {
       generateExcalBtn.disabled = true;
       generateExcalBtn.setText("Designing diagram...");
       excalStatusDiv.style.display = "block";
-      excalStatusDiv.setText("Extracting concepts and relationships with Nemotron...");
+      excalStatusDiv.setText("Extracting concepts and relationships with AI...");
 
       excalPreviewContainer.style.display = "block";
       excalReasoningPre.setText("");
@@ -1505,7 +1510,7 @@ export class NemotronModal extends Modal {
       const card = containerEl.createDiv({ cls: "nemotron-api-setup-card" });
       
       const header = card.createDiv({ cls: "nemotron-api-setup-header" });
-      header.createSpan({ text: "NVIDIA API Key Required", cls: "nemotron-api-setup-title" });
+      header.createSpan({ text: "NVIDIA NIM API Key Required", cls: "nemotron-api-setup-title" });
       
       const nimLink = header.createEl("a", {
         text: "Open NVIDIA NIM (build.nvidia.com)",
@@ -1567,13 +1572,13 @@ export class NemotronModal extends Modal {
         }
         this.plugin.settings.apiKey = val;
         await this.plugin.saveSettings();
-        new Notice("NVIDIA API key saved successfully!");
+        new Notice("NVIDIA NIM API key saved successfully!");
         this.renderApiKeySection(containerEl);
       });
     } else {
       const chipRow = containerEl.createDiv({ cls: "nemotron-api-chip-row" });
       const maskedKey = `${this.plugin.settings.apiKey.slice(0, 8)}...${this.plugin.settings.apiKey.slice(-4)}`;
-      chipRow.createSpan({ text: `NVIDIA Key: ${maskedKey}`, cls: "nemotron-api-chip-text" });
+      chipRow.createSpan({ text: `NVIDIA NIM: ${maskedKey}`, cls: "nemotron-api-chip-text" });
 
       const editBtn = chipRow.createEl("a", { text: "Change", cls: "nemotron-chip-link" });
       editBtn.addEventListener("click", (e) => {
@@ -1774,7 +1779,7 @@ export class NemotronModal extends Modal {
           title = headingMatch[1].trim();
         } else {
           const dateStr = new Date().toISOString().slice(0, 19).replace(/[:]/g, "-");
-          title = `Nemotron Note ${dateStr}`;
+          title = `AI Note ${dateStr}`;
         }
       }
     }
@@ -1783,7 +1788,7 @@ export class NemotronModal extends Modal {
     let safeTitle = title.replace(/[\\/:\*\?"<>\|]/g, "_").trim();
     if (!safeTitle) {
       const dateStr = new Date().toISOString().slice(0, 19).replace(/[:]/g, "-");
-      safeTitle = `Nemotron Note ${dateStr}`;
+      safeTitle = `AI Note ${dateStr}`;
     }
 
     if (requestedFolder?.split(/[\\/]+/).some((segment) => segment === "..")) {

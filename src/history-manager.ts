@@ -1,4 +1,5 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
+import type { NoteStyle } from "./prompts";
 
 export interface FileSnapshot {
   path: string;
@@ -22,7 +23,7 @@ export interface PromptHistoryItem {
   rawText: string;
   customInstruction: string;
   mode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append";
-  style: "concise" | "detailed";
+  style: NoteStyle;
   attachedImages?: { id: string; name: string; dataUrl: string }[];
   preview: string;
 }

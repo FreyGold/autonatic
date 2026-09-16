@@ -47,6 +47,7 @@ export const WIKILINK_GUIDELINES = `
 `;
 
 export type SelectionEditAction = "improve" | "expand" | "regenerate";
+export type NoteStyle = "concise" | "detailed" | "bare";
 
 export function buildSelectionEditPrompt(selection: string, action: SelectionEditAction): string {
   const instructions: Record<SelectionEditAction, string> = {
@@ -126,10 +127,23 @@ ${MERMAID_SYNTAX_GUIDELINES}
    - Do NOT wrap the entire response in outer markdown code fences.
 `;
 
+export const BARE_OBSIDIAN_SKILL_PROMPT = `You convert pasted browser chat history into clean Markdown using only the supplied source.
+
+### BARE MODE — SOURCE-LOCKED RULES
+1. Do not add, infer, expand, correct, fact-check, or explain anything beyond the supplied chat history.
+2. Do not introduce examples, conclusions, summaries, titles, labels, transitions, caveats, recommendations, or background that are absent from the source.
+3. Preserve the source's factual claims, uncertainty, qualifications, code, links, and meaningful question-and-answer content.
+4. Remove only browser chrome, copy/share controls, timestamps, reaction controls, duplicated UI text, and empty conversational filler.
+5. You may apply minimal Markdown structure only when it directly reflects structure already present in the source. Do not create callouts, tables, diagrams, frontmatter, tags, aliases, or wikilinks.
+6. Do not silently resolve contradictions or merge distinct statements into a new claim.
+7. Output only the cleaned source-derived Markdown required by the requested placement format. Never wrap the complete response in an outer code fence.
+
+The source boundary is absolute. A user instruction may request selection or omission of source material, but it may not authorize new content in Bare mode.`;
+
 export function buildUserPrompt(
   rawText: string,
   mode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append",
-  noteStyle: "concise" | "detailed" = "concise",
+  noteStyle: NoteStyle = "concise",
   customInstruction?: string,
   existingVaultNotes?: string[],
   vaultKnowledgeTree?: string,
@@ -140,7 +154,13 @@ export function buildUserPrompt(
   const currentDate = new Date().toISOString().split("T")[0];
 
   const styleInstruction =
-    noteStyle === "concise"
+    noteStyle === "bare"
+      ? `STYLE: BARE (SOURCE-LOCKED).
+- Use only information explicitly present in the input content.
+- Do not expand, infer, correct, enrich, summarize, or add new content.
+- Do not add frontmatter, callouts, tables, Mermaid diagrams, wikilinks, or metadata.
+- Remove only browser/chat interface noise and empty filler; otherwise preserve the conversation's meaning and detail.`
+      : noteStyle === "concise"
       ? "STYLE: CONCISE & PUNCHY (Smart Brevity, standard ## Headings, clean bullet points with bold leads, standalone tables, valid Mermaid diagrams, high information density)."
       : "STYLE: DETAILED & COMPREHENSIVE (In-depth explanations, standard ## Headings, complete examples, structured sections, valid Mermaid diagrams, and thorough analysis).";
 
@@ -149,7 +169,7 @@ export function buildUserPrompt(
       ? `Existing Vault Notes (ONLY create [[wikilinks]] to notes in this list, NEVER invent non-existent note links):\n${existingVaultNotes.slice(0, 100).join(", ")}\n`
       : "Existing Vault Notes: None specified. Do not create unverified [[wikilinks]]; use **bold** instead.\n";
 
-  const propertiesInstruction = enableProperties
+  const propertiesInstruction = enableProperties && noteStyle !== "bare"
     ? `FRONTMATTER RULES: Include a YAML properties block at the top of new notes.
 The first line must be ---.
 Never wrap the YAML properties block in a code fence.
@@ -162,7 +182,9 @@ created: "${currentDate}"
 summary: "<1-sentence summary of this note>"
 ---
 `
-    : "Do NOT include YAML frontmatter/properties block in the output.";
+    : noteStyle === "bare"
+      ? "BARE METADATA RULE: Do NOT include YAML frontmatter or any other generated metadata."
+      : "Do NOT include YAML frontmatter/properties block in the output.";
 
   if (mode === "multi_note_folder") {
     return `Current Date: ${currentDate}
