@@ -28,6 +28,20 @@ import { DEFAULT_TEXT_MODEL, resolveTextModel } from "../src/model-defaults";
 import { organizeAtomicPlan } from "../src/atomic-organization-planner";
 import { normalizeGeneratedNoteMarkdown } from "../src/generated-markdown";
 
+test("automatic Excalidraw diagrams are disabled by default", () => {
+  const modal = new NemotronModal({} as never, { settings: {} } as never);
+  assert.equal(modal.enableExcalidrawInNoteTab, false);
+});
+
+test("generated YAML properties are opt-in", () => {
+  const defaultPrompt = buildUserPrompt("Source text", "new_file");
+  const optedInPrompt = buildUserPrompt("Source text", "new_file", "concise", undefined, undefined, undefined, true);
+
+  assert.match(defaultPrompt, /Do NOT include YAML frontmatter\/properties block/);
+  assert.doesNotMatch(defaultPrompt, /FRONTMATTER RULES/);
+  assert.match(optedInPrompt, /FRONTMATTER RULES/);
+});
+
 test("Super is the default text model", () => {
   assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3-super-120b-a12b");
   assert.equal(resolveTextModel(), DEFAULT_TEXT_MODEL);

@@ -147,7 +147,7 @@ export function buildUserPrompt(
   customInstruction?: string,
   existingVaultNotes?: string[],
   vaultKnowledgeTree?: string,
-  enableProperties: boolean = true,
+  enableProperties: boolean = false,
   placementScopeFolder?: string,
   existingVaultFolders?: string[],
 ): string {

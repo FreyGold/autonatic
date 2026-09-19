@@ -55,7 +55,7 @@ export class NemotronModal extends Modal {
   pasteListener!: (e: ClipboardEvent) => void;
   selectedMode: DestinationMode = "smart";
   selectedStyle: NoteStyle = "concise";
-  enableExcalidrawInNoteTab: boolean = true;
+  enableExcalidrawInNoteTab: boolean = false;
   historyRowEl!: HTMLElement;
   modeSelectComponent!: CustomSelect;
   styleSelectComponent!: CustomSelect;
@@ -73,7 +73,7 @@ export class NemotronModal extends Modal {
     this.plugin = plugin;
     this.initialText = initialText;
     this.activeTab = defaultTab;
-    this.enableExcalidrawInNoteTab = plugin.settings.enableExcalidrawMindMap ?? true;
+    this.enableExcalidrawInNoteTab = plugin.settings.enableExcalidrawMindMap ?? false;
   }
 
   async onOpen() {
@@ -619,7 +619,7 @@ export class NemotronModal extends Modal {
       }
 
       const mode = this.selectedMode;
-      const enableProperties = this.selectedStyle !== "bare" && (this.plugin.settings.enableProperties ?? true);
+      const enableProperties = this.selectedStyle !== "bare" && (this.plugin.settings.enableProperties ?? false);
       const customInstruction = customInput.value.trim();
       const placementScopeFolder = supportsPlacementFolderScope(mode) && limitPlacementToFolder
         ? currentPlacementScopeFolder
@@ -1757,7 +1757,7 @@ export class NemotronModal extends Modal {
     content: string,
     requestedTitle?: string,
     requestedFolder?: string,
-    enableProperties: boolean = true,
+    enableProperties: boolean = false,
     folderDepthLimit: number | null = null,
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     let title = requestedTitle;
@@ -1868,7 +1868,7 @@ export class NemotronModal extends Modal {
   private async appendToFile(
     file: TFile,
     content: string,
-    enableProperties: boolean = true,
+    enableProperties: boolean = false,
     reason?: string
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     const existingContent = await this.app.vault.read(file);
@@ -2019,7 +2019,7 @@ summary: "Note covering ${file.basename}"
 
   private async appendToActiveNote(
     content: string,
-    enableProperties: boolean = true,
+    enableProperties: boolean = false,
     reason?: string
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);

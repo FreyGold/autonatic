@@ -11,7 +11,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 
 - **AI Integration**: NVIDIA NIM support with streaming responses and reasoning/thinking support.
 - **The Obsidian Way Skill Prompt**:
-  - **YAML Properties / Frontmatter**: `title`, `aliases`, `tags`, `created`, `summary`, `status`.
+  - **Optional YAML Properties / Frontmatter**: Opt in to generated `title`, `aliases`, `tags`, `created`, `summary`, and `status` metadata.
   - **Callouts**: Strategic use of `> [!summary]`, `> [!info]`, `> [!tip]`, `> [!warning]`.
   - **Wikilinks**: Auto-links related concepts `[[Topic]]` for Obsidian Graph View connectivity.
   - **Structure**: Clear headings, bold lead-in bullet points, tables, and mermaid diagrams.

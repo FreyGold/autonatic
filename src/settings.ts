@@ -13,6 +13,7 @@ export interface NemotronPluginSettings {
   defaultDestinationMode: "smart" | "multi_note" | "multi_note_folder" | "new_file" | "append";
   defaultNoteStyle: NoteStyle;
   enableProperties: boolean;
+  propertiesOptInVersion: number;
   enableAutoSplitLongNotes: boolean;
   maxNoteWordCount: number;
   splitNamingFormat: "part_suffix" | "parenthesis" | "continued";
@@ -41,11 +42,12 @@ export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   visionModel: "meta/llama-3.2-11b-vision-instruct",
   defaultDestinationMode: "smart",
   defaultNoteStyle: "concise",
-  enableProperties: true,
+  enableProperties: false,
+  propertiesOptInVersion: 1,
   enableAutoSplitLongNotes: true,
   maxNoteWordCount: 600,
   splitNamingFormat: "part_suffix",
-  enableExcalidrawMindMap: true,
+  enableExcalidrawMindMap: false,
   excalidrawFolder: "Excalidrawings",
   temperature: 1.0,
   topP: 0.95,
@@ -214,7 +216,7 @@ export class NemotronSettingTab extends PluginSettingTab {
       .setDesc("Check completed note changes. Create or update a drawing only when it improves understanding. Other notes are skipped.")
       .addToggle((toggle) =>
         toggle
-          .setValue(this.plugin.settings.enableExcalidrawMindMap ?? true)
+          .setValue(this.plugin.settings.enableExcalidrawMindMap ?? false)
           .onChange(async (value) => {
             this.plugin.settings.enableExcalidrawMindMap = value;
             await this.plugin.saveSettings();
@@ -281,10 +283,10 @@ export class NemotronSettingTab extends PluginSettingTab {
     // YAML Properties Generation Toggle
     new Setting(containerEl)
       .setName("Generate YAML Properties / Frontmatter")
-      .setDesc("Generate YAML properties (title, tags, aliases, created, summary) at the top of notes. Turn off to generate plain notes without frontmatter.")
+      .setDesc("Opt in to generated YAML properties (title, tags, aliases, created, summary) at the top of notes. Off creates plain notes without frontmatter.")
       .addToggle((toggle) =>
         toggle
-          .setValue(this.plugin.settings.enableProperties ?? true)
+          .setValue(this.plugin.settings.enableProperties ?? false)
           .onChange(async (value) => {
             this.plugin.settings.enableProperties = value;
             await this.plugin.saveSettings();

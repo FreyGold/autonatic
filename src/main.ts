@@ -337,8 +337,13 @@ export default class NemotronPlugin extends Plugin {
   async loadSettings() {
     const savedSettings = (await this.loadData()) || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
-
     this.settings.model = resolveTextModel(savedSettings.model);
+
+    if (savedSettings.propertiesOptInVersion !== DEFAULT_SETTINGS.propertiesOptInVersion) {
+      this.settings.enableProperties = false;
+      this.settings.propertiesOptInVersion = DEFAULT_SETTINGS.propertiesOptInVersion;
+      await this.saveSettings();
+    }
   }
 
   async saveSettings() {
