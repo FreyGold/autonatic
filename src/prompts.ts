@@ -41,7 +41,7 @@ flowchart LR
 export const WIKILINK_GUIDELINES = `
 ### CRITICAL WIKILINK & GRAPH RULES (NO GHOST / NON-EXISTENT LINKS):
 1. **NO Hallucinated Note Links**: DO NOT invent or assume notes exist in the vault.
-2. **Only Link to Existing Vault Notes**: ONLY use \`[[Note Name]]\` syntax if the exact note name is present in the "Existing Vault Notes" list provided in the prompt.
+2. **Only Link to Existing Vault Notes**: ONLY use \`[[Note Name]]\` or \`[[folder/Note Name]]\` syntax if that exact name or path is present in the "Existing Vault Notes" list provided in the prompt.
 3. **New Concepts**: For concepts, terms, technologies, or keywords that do NOT exist in the vault list, use **bold** (e.g. **Error Wrapping**, **Idempotency**) or \`code\`, NEVER \`[[Non-Existent Link]]\`.
 4. **NO "Related Concepts / Related Notes" lists of fake notes**: Do NOT generate lists of non-existent notes at the bottom of the page. Keep the note focused, atomic, and actionable.
 `;
@@ -196,6 +196,7 @@ ${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
 
 Analyze the following input. Decompose it into distinct, highly focused atomic concepts.
 Create one complete standalone note for each concept. Do not append to existing notes. Do not choose a destination folder. The application will save every note in the directory selected by the user.
+Give each note a specific, unique subject title. Merge overlapping material instead of making numbered parts or repeated titles.
 
 Format your ENTIRE response as a sequence of atomic note blocks using this EXACT syntax:
 
@@ -217,10 +218,11 @@ ${rawText}
 
   if (mode === "multi_note") {
     const treeContext = vaultKnowledgeTree
-      ? `### HIERARCHICAL VAULT KNOWLEDGE TREE (FOLDERS AND THEIR CONTAINED NOTES):
+      ? `### RELEVANT VAULT NOTE CANDIDATES (EXACT PATH AND SUMMARY):
 \`\`\`
 ${vaultKnowledgeTree}
 \`\`\`
+These are selected candidates, not the entire vault. Append only to a listed exact path.
 `
       : "";
     const scopeContext = placementScopeFolder !== undefined
@@ -238,7 +240,7 @@ The user limited placement to "${placementScopeFolder || "Vault Root"}" and its 
       : "Databases/Joins";
     const existingFoldersContext = existingVaultFolders && existingVaultFolders.length > 0
       ? `### EXISTING FOLDERS IN SCOPE
-${existingVaultFolders.slice(0, 100).map((folder) => `- ${folder}`).join("\n")}
+${existingVaultFolders.map((folder) => `- ${folder}`).join("\n")}
 `
       : "### EXISTING FOLDERS IN SCOPE\nNo subfolders are available.\n";
 
@@ -262,6 +264,8 @@ ${customInstruction ? `Special User Instruction: ${customInstruction}\n` : ""}
 7. Do not create a folder for a temporary exercise, one conversation session, a narrow fact, or a folder name that merely repeats the note title. Several notes can still remain at root when they do not form a durable category.
 8. Use no more than two new folder levels. When a placement limit exists, the two levels are relative to that folder.
 9. For each concept, append only when an existing note is a strong conceptual match. Otherwise, create a new note.
+10. Give every new note a specific, unique subject title. Merge repeated material; never create numbered Part or Continued notes because of length alone.
+11. Plan and review the folder structure for the complete candidate set during this generation, before emitting note blocks. Give related notes consistent category paths, check root placements for missing useful categories, and remove redundant folders. The Folder and Placement fields are the final decisions; the application validates them locally and saves the notes without another folder-planning request.
 
 ### CONTENT BOUNDARIES
 - Include facts, explanations, examples, exercise solutions, and code only when they are supported by the input.
@@ -303,10 +307,11 @@ ${rawText}
 ---`;
   } else if (mode === "smart") {
     const treeContext = vaultKnowledgeTree
-      ? `### HIERARCHICAL VAULT KNOWLEDGE TREE (FOLDERS AND THEIR CONTAINED NOTES):
+      ? `### RELEVANT VAULT NOTE CANDIDATES (EXACT PATH AND SUMMARY):
 \`\`\`
 ${vaultKnowledgeTree}
 \`\`\`
+These are selected candidates, not the entire vault. Append only to a listed exact path.
 `
       : "";
     const scopeContext = placementScopeFolder !== undefined

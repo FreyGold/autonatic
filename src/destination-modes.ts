@@ -5,28 +5,28 @@ export type DestinationMode = "smart" | "multi_note" | "multi_note_folder" | "ne
 export const DESTINATION_MODE_OPTIONS: ReadonlyArray<SelectOption & { value: DestinationMode }> = [
   {
     value: "smart",
-    label: "Smart Placement (Create or Append)",
-    description: "AI analyzes your vault hierarchy and places the generated note in the best folder or existing note.",
+    label: "One note — autonatic chooses location",
+    description: "Create one note and let autonatic find a matching note or suitable location.",
   },
   {
     value: "multi_note",
-    label: "Atomic Decomposition (Multi-Note)",
-    description: "Keeps notes at the right level, reuses relevant folders, and creates a folder when the AI identifies a durable topic.",
+    label: "Several focused notes — autonatic chooses locations",
+    description: "Split the source into focused notes and let autonatic organize or update them.",
   },
   {
     value: "multi_note_folder",
-    label: "Create Multiple Notes in Folder",
-    description: "Splits the input into separate new notes and saves every note in one selected folder.",
+    label: "Several notes — selected folder",
+    description: "Split the source into new notes in one exact folder.",
   },
   {
     value: "new_file",
-    label: "Create New Note File",
-    description: "Lets you select a destination folder and title for a new note file.",
+    label: "One note — selected folder",
+    description: "Create one new note in an exact folder.",
   },
   {
     value: "append",
-    label: "Append to Active Note",
-    description: "Adds the generated content to the active note.",
+    label: "Add to active note",
+    description: "Add generated content to the note currently open in Obsidian.",
   },
 ];
 

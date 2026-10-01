@@ -20,6 +20,7 @@ await esbuild.build({
   alias: {
     obsidian: path.resolve("tests/obsidian-mock.ts"),
   },
+  external: ["electron"],
 });
 
 const result = spawnSync(process.execPath, [outputFile], {

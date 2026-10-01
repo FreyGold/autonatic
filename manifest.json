@@ -1,9 +1,9 @@
 {
   "id": "nemotron-note-crafter",
   "name": "autonatic",
-  "version": "1.3.1",
+  "version": "1.6.0",
   "minAppVersion": "1.13.1",
-  "description": "Transform raw text into structured Obsidian notes using AI. Supports NVIDIA NIM, with Groq and Gemini coming soon.",
+  "description": "Turn text and shared Gemini conversations into structured Obsidian notes using NVIDIA NIM.",
   "author": "Ahmed Tawfik",
   "isDesktopOnly": true
 }

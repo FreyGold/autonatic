@@ -16,7 +16,7 @@ export class TFile {
   name: string;
   basename: string;
   parent: TFolder | null;
-  stat = { mtime: 1 };
+  stat = { mtime: 1, size: 0 };
 
   constructor(path: string, parent: TFolder | null = null) {
     this.path = path;
@@ -24,6 +24,10 @@ export class TFile {
     this.basename = this.name.replace(/\.md$/, "");
     this.parent = parent;
   }
+}
+
+export class FileSystemAdapter {
+  getBasePath(): string { return "test-vault"; }
 }
 
 export class Modal {
@@ -40,6 +44,17 @@ export class Modal {
 export class Notice {
   constructor(_message: string, _timeout?: number) {}
 }
+
+export class Component {
+  load() {}
+  unload() {}
+}
+
+export class MarkdownRenderer {
+  static async render() {}
+}
+
+export function setIcon() {}
 
 export class MarkdownView {}
 export class Menu {}

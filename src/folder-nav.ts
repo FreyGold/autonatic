@@ -89,10 +89,12 @@ export class FolderNavigator {
     this.breadcrumbContainer.empty();
 
     // Root chip
-    const rootChip = this.breadcrumbContainer.createSpan({
+    const rootChip = this.breadcrumbContainer.createEl("button", {
       text: "Root",
       cls: `nemotron-breadcrumb-chip ${this.currentPath === "" ? "is-active" : ""}`,
     });
+    rootChip.type = "button";
+    rootChip.setAttribute("aria-label", "Go to vault root");
     rootChip.addEventListener("click", () => this.navigateTo(""));
 
     if (this.currentPath) {
@@ -106,11 +108,13 @@ export class FolderNavigator {
         this.breadcrumbContainer.createSpan({ text: "/", cls: "nemotron-breadcrumb-sep" });
 
         const isLast = index === parts.length - 1;
-        const chip = this.breadcrumbContainer.createSpan({
+        const chip = this.breadcrumbContainer.createEl("button", {
           text: part,
           cls: `nemotron-breadcrumb-chip ${isLast ? "is-active" : ""}`,
         });
 
+        chip.type = "button";
+        if (isLast) chip.setAttribute("aria-current", "location");
         chip.addEventListener("click", () => this.navigateTo(targetPath));
       });
     }

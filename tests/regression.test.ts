@@ -17,7 +17,12 @@ import {
   resolveFolderWithinScope,
   selectStrongRelatedNote,
   selectVaultContext,
+  selectVaultContextByTopic,
+  sourceRetrievalQueries,
 } from "../src/privacy-controls";
+import { existingNoteContext, reviewAppendDraft } from "../src/append-review";
+import { planVaultArrangement, resolveArrangementFolder, validateArrangementMoves } from "../src/arrangement-planner";
+import { VaultArrangementManager } from "../src/arrangement-manager";
 import { DiagramEngine } from "../src/diagram-engine";
 import { BARE_OBSIDIAN_SKILL_PROMPT, buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
 import { sanitizeMermaidDiagrams, streamChatCompletion } from "../src/api";
@@ -27,6 +32,81 @@ import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/d
 import { DEFAULT_TEXT_MODEL, resolveTextModel } from "../src/model-defaults";
 import { organizeAtomicPlan } from "../src/atomic-organization-planner";
 import { normalizeGeneratedNoteMarkdown } from "../src/generated-markdown";
+import { AskNotesSearch, chunkMarkdown, isAskNoteEligible, rankSearchChunks } from "../src/ask-notes-search";
+import { formatGeminiConversation, parseGeminiShareUrl } from "../src/gemini-import";
+
+test("Gemini import accepts public conversation links and rejects other URLs", () => {
+  assert.equal(parseGeminiShareUrl("https://g.co/gemini/share/435756f6ded5"),
+    "https://gemini.google.com/share/435756f6ded5");
+  assert.equal(parseGeminiShareUrl("https://gemini.google.com/share/435756f6ded5?utm_source=copy"),
+    "https://gemini.google.com/share/435756f6ded5");
+  assert.equal(parseGeminiShareUrl("https://share.gemini.google/04Aznj8IQ8VJ"),
+    "https://share.gemini.google/04Aznj8IQ8VJ");
+  assert.throws(() => parseGeminiShareUrl("https://gemini.google.com/app/example"), /Share conversation/);
+  assert.throws(() => parseGeminiShareUrl("https://gemini.google.com.evil.test/share/435756f6ded5"), /public/);
+  assert.throws(() => parseGeminiShareUrl("http://g.co/gemini/share/435756f6ded5"), /public/);
+});
+
+test("Gemini import preserves turn order, source URL, and attachment references", () => {
+  const transcript = formatGeminiConversation({
+    title: "Study chat",
+    url: "https://gemini.google.com/share/435756f6ded5",
+    turns: [
+      { user: "Explain joins", gemini: "An inner join keeps matching rows.", attachments: 0 },
+      { user: "And a diagram?", gemini: "See the shared page.", attachments: 1 },
+    ],
+  });
+  assert.match(transcript, /^# Study chat\n\nSource: https:\/\/gemini.google.com\/share\/435756f6ded5/);
+  assert.ok(transcript.indexOf("Explain joins") < transcript.indexOf("An inner join"));
+  assert.ok(transcript.indexOf("An inner join") < transcript.indexOf("And a diagram?"));
+  assert.match(transcript, /\[1 attachment in the shared conversation/);
+});
+
+test("Ask Notes requires consent before opening storage or contacting NVIDIA", async () => {
+  const search = new AskNotesSearch({} as never, () => ({ askNotesEnabled: false, askNotesFolders: [], apiKey: "" }) as never);
+  await assert.rejects(() => search.ask("What is the launch date?"), /enable Ask Notes/);
+});
+
+test("Ask Notes searches only selected Markdown folders and honors exclusions", () => {
+  const selected = ["Projects/Research"];
+  const excluded = ["Projects/Research/Private"];
+  assert.equal(isAskNoteEligible("Projects/Research/Findings.md", selected, excluded), true);
+  assert.equal(isAskNoteEligible("Projects/Research/Private/Keys.md", selected, excluded), false);
+  assert.equal(isAskNoteEligible("Projects/Other/Findings.md", selected, excluded), false);
+  assert.equal(isAskNoteEligible("Projects/Research/image.png", selected, excluded), false);
+  assert.equal(isAskNoteEligible("Projects/Research/.hidden.md", selected, excluded), false);
+});
+
+test("Ask Notes keeps headings and bounded overlapping passages", () => {
+  const chunks = chunkMarkdown("Research.md", `# Findings\n${"Evidence about the release date. ".repeat(130)}`);
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.every((chunk) => chunk.heading === "Findings" && chunk.text.length <= 1500));
+  assert.match(chunks[0].text.slice(-220), /Evidence about the release date/);
+  assert.match(chunks[1].text.slice(0, 220), /Evidence about the release date/);
+});
+
+test("Ask Notes ranks relevant passages and limits one note to two sources", () => {
+  const make = (id: string, path: string, text: string, vector: number[]) => ({ id, path, heading: "", text, vector });
+  const results = rankSearchChunks([
+    make("a0", "A.md", "launch date September", [1, 0]),
+    make("a1", "A.md", "launch timeline", [1, 0]),
+    make("a2", "A.md", "launch planning", [1, 0]),
+    make("b0", "B.md", "other work", [0.8, 0.2]),
+  ], "launch date", [1, 0], 3);
+  assert.equal(results[0].id, "a0");
+  assert.equal(results.filter((result) => result.path === "A.md").length, 2);
+  assert.equal(results.length, 3);
+});
+
+test("Ask Notes retrieves a matching note title even when its embedding ranks poorly", () => {
+  const results = rankSearchChunks([
+    { id: "other", path: "Notes/Unrelated.md", heading: "", text: "General programming", vector: [1, 0] },
+    { id: "decoding", path: "Notes/HTTP Client/Decoding.md", heading: "", text: "json.NewDecoder().Decode() reads JSON from a response body", vector: [0, 1] },
+    { id: "requests", path: "Notes/HTTP Client/Requests.md", heading: "Go HTTP GET Request", text: "Decode response with json.NewDecoder", vector: [0, 1] },
+  ], "decoding requests in go", [1, 0], 2);
+  assert.deepEqual(results.map((result) => result.id), ["requests", "decoding"]);
+});
+
 
 test("automatic Excalidraw diagrams are disabled by default", () => {
   const modal = new NemotronModal({} as never, { settings: {} } as never);
@@ -42,10 +122,11 @@ test("generated YAML properties are opt-in", () => {
   assert.match(optedInPrompt, /FRONTMATTER RULES/);
 });
 
-test("Super is the default text model", () => {
-  assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3-super-120b-a12b");
+test("Ultra is the default text model", () => {
+  assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3-ultra-550b-a55b");
   assert.equal(resolveTextModel(), DEFAULT_TEXT_MODEL);
   assert.equal(resolveTextModel("nvidia/nemotron-3-ultra-550b-a55b"), DEFAULT_TEXT_MODEL);
+  assert.equal(resolveTextModel("nvidia/nemotron-3-super-120b-a12b"), DEFAULT_TEXT_MODEL);
   assert.equal(resolveTextModel("nvidia/nemotron-3.5-lightning-30b-a3b"), DEFAULT_TEXT_MODEL);
   assert.equal(resolveTextModel("custom/model"), "custom/model");
 });
@@ -201,14 +282,14 @@ test("the configured model is not substituted after a route 404", async () => {
   }
 });
 
-test("Smart and Atomic placement expose the same folder limit", () => {
+test("automatic single and multi-note placement expose the same folder limit", () => {
   assert.equal(supportsPlacementFolderScope("smart"), true);
   assert.equal(supportsPlacementFolderScope("multi_note"), true);
   assert.equal(supportsPlacementFolderScope("multi_note_folder"), false);
 
   const smartLabel = DESTINATION_MODE_OPTIONS.find((option) => option.value === "smart")?.label || "";
-  assert.match(smartLabel, /Smart Placement/);
-  assert.doesNotMatch(smartLabel, /Single Note/i);
+  assert.match(smartLabel, /One note/i);
+  assert.match(smartLabel, /chooses location/i);
 });
 
 test("Atomic placement rejects targets outside its selected folder", () => {
@@ -872,6 +953,67 @@ test("vault context is relevant and bounded", () => {
   assert.equal(estimateRemoteRequests(2, 5, 3), 6);
 });
 
+test("automatic placement retrieves candidates from separate conversation topics", () => {
+  const note = (title: string, about: string) => ({ title, path: `${title}.md`, about, mtime: 1, tags: [] });
+  const index = { tree: { name: "Vault", path: "", about: "", topics: [], notes: [
+    note("HTTP Requests", "GET headers response"),
+    note("HTTP Responses", "status code headers"),
+    note("SQL Joins", "database INNER JOIN syntax"),
+  ], subfolders: [] } } as never;
+  const conversation = [
+    ...Array.from({ length: 8 }, (_, i) => `## ${i + 1}. You\n\nExplain HTTP GET headers.\n\n## ${i + 1}. Gemini\n\nHTTP response headers are sent with a GET request.`),
+    "## 9. You\n\nExplain SQL joins.\n\n## 9. Gemini\n\nDatabase INNER JOIN syntax combines rows.",
+  ].join("\n\n");
+
+  assert.equal(sourceRetrievalQueries(conversation).length, 9);
+  assert.deepEqual(selectVaultContextByTopic(index, conversation, 2).map((item) => item.title),
+    ["HTTP Requests", "SQL Joins"]);
+});
+
+test("automatic placement keeps folder scope and avoids unrelated recency fallbacks", () => {
+  const note = (path: string, about: string) => ({ title: path.split("/").pop()?.replace(".md", "") || "", path, about, mtime: 1, tags: [] });
+  const index = { tree: { name: "Vault", path: "", about: "", topics: [], notes: [
+    note("Private/SQL Joins.md", "database joins"),
+    note("Work/SQL Joins.md", "database joins"),
+  ], subfolders: [] } } as never;
+  assert.deepEqual(selectVaultContextByTopic(index, "SQL joins", 2, "Work").map((item) => item.path), ["Work/SQL Joins.md"]);
+  assert.deepEqual(selectVaultContextByTopic(index, "quantum entanglement", 2, "Work"), []);
+});
+
+test("automatic placement matches non-English note titles", () => {
+  const index = { tree: { name: "Vault", path: "", about: "", topics: [], notes: [
+    { title: "الشبكات", path: "Notes/الشبكات.md", about: "شرح الشبكات", mtime: 1, tags: [] },
+  ], subfolders: [] } } as never;
+  assert.deepEqual(selectVaultContextByTopic(index, "كيف تعمل الشبكات؟", 2).map((item) => item.path), ["Notes/الشبكات.md"]);
+});
+
+test("append review reads the current target and only keeps new material", async () => {
+  const existing = "# HTTP Requests\n\nA GET request sends headers to the server.";
+  const proposed = "## GET requests\n\nA GET request sends headers to the server.\n\nThe response body can be decoded as JSON.";
+  let called = false;
+  const result = await reviewAppendDraft("Notes/HTTP Requests.md", existing, proposed, async (system, user) => {
+    called = true;
+    assert.match(system, /existing note only to identify repetition/);
+    assert.match(user, /A GET request sends headers to the server/);
+    assert.match(user, /response body can be decoded as JSON/);
+    return "## Decoding the response\n\nThe response body can be decoded as JSON.";
+  });
+  assert.equal(called, true);
+  assert.equal(result, "## Decoding the response\n\nThe response body can be decoded as JSON.");
+
+  const duplicate = await reviewAppendDraft("Notes/HTTP Requests.md", `${existing}\n\n${proposed}`, proposed,
+    async () => { throw new Error("An exact duplicate should not use the API"); });
+  assert.equal(duplicate, null);
+  assert.equal(await reviewAppendDraft("Notes/HTTP Requests.md", existing, proposed, async () => "NO_NEW_CONTENT"), null);
+});
+
+test("append review includes relevant sections near the end of a long note", () => {
+  const existing = `${"Unrelated introductory text. ".repeat(600)}\n\n## JSON decoding\n\nUse json.NewDecoder on an HTTP response body.`;
+  const context = existingNoteContext(existing, "Use json.NewDecoder to decode a response body.", 4200);
+  assert.ok(context.length < existing.length);
+  assert.match(context, /json\.NewDecoder on an HTTP response body/);
+});
+
 test("Smart folder scope excludes notes outside the selected folder", () => {
   const note = (title: string, path: string, about: string) => ({ title, path, about, mtime: 1, tags: [] });
   const index = {
@@ -948,19 +1090,31 @@ test("smart placement does not force an unrelated append", () => {
 });
 
 class FakeVault {
+  constructor(readonly configDir = ".obsidian") {}
   readonly files = new Map<string, { file: TFile; content: string }>();
   readonly folders = new Map<string, TFolder>();
+  readonly storage = new Map<string, string>();
+  readonly adapter = {
+    exists: async (path: string) => this.storage.has(path),
+    read: async (path: string) => this.storage.get(path) ?? "",
+    write: async (path: string, content: string) => { this.storage.set(path, content); },
+  };
   failCreates = false;
 
   add(path: string, content: string): TFile {
-    const file = new TFile(path);
+    const parent = this.folders.get(path.split("/").slice(0, -1).join("/")) ?? null;
+    const file = new TFile(path, parent);
+    file.stat.size = content.length;
     this.files.set(path, { file, content });
+    parent?.children.push(file);
     return file;
   }
 
   addFolder(path: string): TFolder {
-    const folder = new TFolder(path);
+    const parent = this.folders.get(path.split("/").slice(0, -1).join("/")) ?? null;
+    const folder = new TFolder(path, parent);
     this.folders.set(path, folder);
+    parent?.children.push(folder);
     return folder;
   }
 
@@ -975,6 +1129,10 @@ class FakeVault {
     ];
   }
 
+  getMarkdownFiles() {
+    return [...this.files.values()].map(({ file }) => file).filter((file) => file.path.endsWith(".md"));
+  }
+
   async read(file: TFile) {
     return this.files.get(file.path)?.content ?? "";
   }
@@ -983,12 +1141,14 @@ class FakeVault {
     const stored = this.files.get(file.path);
     if (!stored) throw new Error(`Missing file: ${file.path}`);
     stored.content = content;
+    file.stat.size = content.length;
   }
 
   async process(file: TFile, change: (content: string) => string) {
     const stored = this.files.get(file.path);
     if (!stored) throw new Error(`Missing file: ${file.path}`);
     stored.content = change(stored.content);
+    file.stat.size = stored.content.length;
   }
 
   async create(path: string, content: string) {
@@ -996,12 +1156,31 @@ class FakeVault {
     return this.add(path, content);
   }
 
-  async delete(file: TFile) {
-    this.files.delete(file.path);
+  async delete(entry: TFile | TFolder) {
+    if (entry instanceof TFile) this.files.delete(entry.path);
+    else {
+      if (entry.children.length) throw new Error("Folder is not empty");
+      this.folders.delete(entry.path);
+    }
+    if (entry.parent) entry.parent.children = entry.parent.children.filter((child) => child !== entry);
   }
 
   async createFolder(path: string) {
     return this.addFolder(path);
+  }
+
+  async rename(file: TFile, target: string) {
+    const stored = this.files.get(file.path);
+    if (!stored) throw new Error(`Missing file: ${file.path}`);
+    if (this.getAbstractFileByPath(target)) throw new Error(`Target exists: ${target}`);
+    if (file.parent) file.parent.children = file.parent.children.filter((child) => child !== file);
+    this.files.delete(file.path);
+    file.path = target;
+    file.name = target.split("/").pop() || target;
+    file.basename = file.name.replace(/\.md$/, "");
+    file.parent = this.folders.get(target.split("/").slice(0, -1).join("/")) ?? null;
+    file.parent?.children.push(file);
+    this.files.set(target, stored);
   }
 }
 
@@ -1009,6 +1188,7 @@ function fakeApp(vault: FakeVault) {
   return {
     vault,
     fileManager: {
+      renameFile: async (file: TFile, target: string) => vault.rename(file, target),
       trashFile: async (file: TFile) => {
         vault.files.delete(file.path);
       },
@@ -1020,12 +1200,212 @@ function fakeApp(vault: FakeVault) {
   };
 }
 
+test("vault organizer follows primary and secondary instructions without moving notes during planning", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("Notes");
+  vault.add("Notes/Go HTTP.md", "HTTP server notes");
+  vault.add("Notes/Rust Security.md", "Rust security notes");
+  const app = fakeApp(vault);
+  const index = { tree: { name: "Vault", path: "", about: "", topics: [], notes: [
+    { path: "Notes/Go HTTP.md", title: "Go HTTP", about: "Go HTTP servers", tags: ["go"], mtime: 1 },
+    { path: "Notes/Rust Security.md", title: "Rust Security", about: "Rust security", tags: ["rust"], mtime: 1 },
+  ], subfolders: [] } } as never;
+  let calls = 0;
+  const plan = await planVaultArrangement(
+    app as never,
+    { apiKey: "test", excludedFolders: "Private" } as never,
+    "Group by programming language, then subject",
+    "Notes",
+    undefined,
+    undefined,
+    async (_system, user) => {
+      calls++;
+      assert.match(user, /Group by programming language, then subject/);
+      return calls === 1
+        ? JSON.stringify({ principle: "Language then subject", folders: [
+          { path: "Go/HTTP", purpose: "Go network notes" },
+          { path: "Rust/Security", purpose: "Rust security notes" },
+        ] })
+        : JSON.stringify({ placements: [
+          { path: "Notes/Go HTTP.md", folder: "Go/HTTP", reason: "Go HTTP" },
+          { path: "Notes/Rust Security.md", folder: "Rust/Security", reason: "Rust security" },
+        ] });
+    },
+    async () => index,
+  );
+  assert.equal(calls, 2);
+  assert.deepEqual(plan.moves.map((move) => move.to), ["Notes/Go/HTTP/Go HTTP.md", "Notes/Rust/Security/Rust Security.md"]);
+  assert.deepEqual(plan.conflicts, []);
+  assert.ok(vault.getAbstractFileByPath("Notes/Go HTTP.md"));
+  assert.equal(vault.getAbstractFileByPath("Notes/Go/HTTP/Go HTTP.md"), null);
+});
+
+test("vault organizer rejects unsafe folders and detects duplicate destinations", () => {
+  assert.throws(() => resolveArrangementFolder("../Private", "Notes"), /unsafe folder/);
+  assert.throws(() => resolveArrangementFolder(".obsidian/plugins", ""), /unsafe folder/);
+  assert.throws(() => resolveArrangementFolder("Private", "", ["Private"]), /excluded/);
+  const vault = new FakeVault();
+  vault.add("A/Intro.md", "A");
+  vault.add("B/Intro.md", "B");
+  const moves = [
+    { from: "A/Intro.md", to: "Programming/Intro.md", reason: "", mtime: 1, size: 1 },
+    { from: "B/Intro.md", to: "Programming/Intro.md", reason: "", mtime: 1, size: 1 },
+  ];
+  assert.match(validateArrangementMoves(fakeApp(vault) as never, moves).join(" "), /both target/);
+});
+
+test("arrangement snapshot restores a cycle after reload and keeps note contents", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("A");
+  vault.addFolder("B");
+  vault.add("A/Requests.md", "A content");
+  vault.add("B/Requests.md", "B content");
+  const app = fakeApp(vault);
+  const manager = new VaultArrangementManager(app as never, "test-plugin");
+  const plan = {
+    instruction: "Swap the subject folders", scope: "", totalNotes: 2, conflicts: [], moves: [
+      { from: "A/Requests.md", to: "B/Requests.md", reason: "", mtime: 1, size: 9 },
+      { from: "B/Requests.md", to: "A/Requests.md", reason: "", mtime: 1, size: 9 },
+    ],
+  };
+  const snapshot = await manager.apply(plan);
+  assert.equal(await vault.read(vault.getAbstractFileByPath("A/Requests.md") as TFile), "B content");
+  assert.equal(await vault.read(vault.getAbstractFileByPath("B/Requests.md") as TFile), "A content");
+  assert.ok(vault.storage.has(".obsidian/plugins/test-plugin/arrangement-snapshots.json"));
+  assert.ok(![...vault.folders.keys()].some((path) => path.startsWith("__autonatic_arranging_")));
+
+  const reloaded = new VaultArrangementManager(app as never, "test-plugin");
+  await reloaded.load();
+  assert.equal(await reloaded.restore(snapshot.id), 2);
+  assert.equal(await vault.read(vault.getAbstractFileByPath("A/Requests.md") as TFile), "A content");
+  assert.equal(await vault.read(vault.getAbstractFileByPath("B/Requests.md") as TFile), "B content");
+  assert.deepEqual(reloaded.list()[0].entries.map((entry) => entry.currentPath), ["A/Requests.md", "B/Requests.md"]);
+});
+
+test("arrangement saves a snapshot in the configured Obsidian directory before moving", async () => {
+  const vault = new FakeVault(".obsidian-test");
+  vault.addFolder("Notes");
+  vault.add("Notes/HTTP.md", "HTTP");
+  const app = fakeApp(vault);
+  const rename = app.fileManager.renameFile;
+  app.fileManager.renameFile = async (file: TFile, target: string) => {
+    const saved = vault.storage.get(".obsidian-test/plugins/test-plugin/arrangement-snapshots.json");
+    assert.ok(saved);
+    assert.match(saved, /Notes\/HTTP\.md/);
+    await rename(file, target);
+  };
+  const manager = new VaultArrangementManager(app as never, "test-plugin");
+  await manager.apply({
+    instruction: "Group by subject", scope: "Notes", totalNotes: 1, conflicts: [], moves: [
+      { from: "Notes/HTTP.md", to: "Notes/Networking/HTTP.md", reason: "", mtime: 1, size: 4 },
+    ],
+  });
+});
+
+test("arrangement rejects a stale preview before moving any note", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("Notes");
+  const file = vault.add("Notes/HTTP.md", "old");
+  const app = fakeApp(vault);
+  const manager = new VaultArrangementManager(app as never, "test-plugin");
+  await vault.modify(file, "edited after preview");
+  await assert.rejects(() => manager.apply({
+    instruction: "Group by subject", scope: "Notes", totalNotes: 1, conflicts: [], moves: [
+      { from: "Notes/HTTP.md", to: "Notes/Networking/HTTP.md", reason: "", mtime: 1, size: 3 },
+    ],
+  }), /changed after the preview/);
+  assert.equal(vault.getAbstractFileByPath("Notes/HTTP.md"), file);
+  assert.equal(manager.list().length, 0);
+});
+
+test("a later manual rename is tracked and snapshot restore keeps edited content", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("Notes");
+  const file = vault.add("Notes/HTTP.md", "original content");
+  const app = fakeApp(vault);
+  const manager = new VaultArrangementManager(app as never, "test-plugin");
+  const snapshot = await manager.apply({
+    instruction: "Group by subject", scope: "Notes", totalNotes: 1, conflicts: [], moves: [
+      { from: "Notes/HTTP.md", to: "Notes/Networking/HTTP.md", reason: "", mtime: 1, size: 16 },
+    ],
+  });
+  await vault.modify(file, "edited later");
+  vault.addFolder("Archive");
+  await vault.rename(file, "Archive/HTTP.md");
+  await manager.noteRenamed("Notes/Networking/HTTP.md", "Archive/HTTP.md");
+  assert.equal(await manager.restore(snapshot.id), 1);
+  assert.equal(await vault.read(file), "edited later");
+  assert.equal(file.path, "Notes/HTTP.md");
+  assert.equal(vault.getAbstractFileByPath("Notes/Networking"), null);
+});
+
+test("restore refuses an occupied original path before moving anything", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("Notes");
+  vault.add("Notes/HTTP.md", "original");
+  const app = fakeApp(vault);
+  const manager = new VaultArrangementManager(app as never, "test-plugin");
+  const snapshot = await manager.apply({
+    instruction: "Group by subject", scope: "Notes", totalNotes: 1, conflicts: [], moves: [
+      { from: "Notes/HTTP.md", to: "Notes/Networking/HTTP.md", reason: "", mtime: 1, size: 8 },
+    ],
+  });
+  vault.add("Notes/HTTP.md", "new note");
+  await assert.rejects(() => manager.restore(snapshot.id), /already occupied/);
+  assert.ok(vault.getAbstractFileByPath("Notes/Networking/HTTP.md"));
+  assert.equal(await vault.read(vault.getAbstractFileByPath("Notes/HTTP.md") as TFile), "new note");
+});
+
+test("arrangement removes empty old folders and restores them from the snapshot", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("Old");
+  vault.add("Old/HTTP.md", "HTTP");
+  const manager = new VaultArrangementManager(fakeApp(vault) as never, "test-plugin");
+  const snapshot = await manager.apply({
+    instruction: "Group by topic", scope: "", totalNotes: 1, conflicts: [], moves: [
+      { from: "Old/HTTP.md", to: "Networking/HTTP.md", reason: "", mtime: 1, size: 4 },
+    ],
+  });
+  assert.equal(vault.getAbstractFileByPath("Old"), null);
+  assert.ok(vault.getAbstractFileByPath("Networking/HTTP.md"));
+  await manager.restore(snapshot.id);
+  assert.ok(vault.getAbstractFileByPath("Old/HTTP.md"));
+  assert.equal(vault.getAbstractFileByPath("Networking"), null);
+});
+
+test("arrangement rolls back completed moves when a later rename fails", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("Notes");
+  vault.add("Notes/HTTP.md", "HTTP");
+  vault.add("Notes/OS.md", "OS");
+  const app = fakeApp(vault);
+  let attempts = 0;
+  const rename = app.fileManager.renameFile;
+  app.fileManager.renameFile = async (file: TFile, target: string) => {
+    attempts++;
+    if (attempts === 2) throw new Error("Simulated rename failure");
+    await rename(file, target);
+  };
+  const manager = new VaultArrangementManager(app as never, "test-plugin");
+  await assert.rejects(() => manager.apply({
+    instruction: "Group by subject", scope: "Notes", totalNotes: 2, conflicts: [], moves: [
+      { from: "Notes/HTTP.md", to: "Notes/Networking/HTTP.md", reason: "", mtime: 1, size: 4 },
+      { from: "Notes/OS.md", to: "Notes/Systems/OS.md", reason: "", mtime: 1, size: 2 },
+    ],
+  }), /Simulated rename failure/);
+  assert.ok(vault.getAbstractFileByPath("Notes/HTTP.md"));
+  assert.ok(vault.getAbstractFileByPath("Notes/OS.md"));
+  assert.equal(manager.list().length, 0);
+});
+
 test("folder multi-note mode requests new notes only", () => {
   const prompt = buildUserPrompt("HTTP parsing and buffer growth", "multi_note_folder", "concise", undefined, []);
   assert.match(prompt, /Mode: Create Multiple Notes in One Folder/);
   assert.match(prompt, /Action: create_new_note/);
   assert.match(prompt, /save every note in the directory selected by the user/);
   assert.doesNotMatch(prompt, /Action: append_to_note/);
+  assert.match(prompt, /specific, unique subject title/);
+  assert.match(prompt, /instead of making numbered parts or repeated titles/);
 });
 
 test("Bare style is source-locked and disables generated metadata", () => {
@@ -1101,10 +1481,11 @@ test("Atomic prompts request adaptive folders and concise source-grounded notes"
   assert.match(prompt, /supported by the input/i);
   assert.match(prompt, /usually be 80-250 words/i);
   assert.match(prompt, /Do not add unrelated background/i);
+  assert.match(prompt, /never create numbered Part or Continued notes/i);
 
   const atomicDescription = DESTINATION_MODE_OPTIONS.find((option) => option.value === "multi_note")?.description || "";
-  assert.match(atomicDescription, /right level/i);
-  assert.match(atomicDescription, /durable topic/i);
+  assert.match(atomicDescription, /focused notes/i);
+  assert.match(atomicDescription, /organize or update/i);
 });
 
 test("Atomic organization reviews the complete note set before placement", async () => {
@@ -1486,6 +1867,35 @@ summary: "Use JOIN conditions in the ON clause."
   assert.deepEqual(result.foldersCreated, ["DB/SQL/Joins"]);
 });
 
+test("an exact folder destination ignores generated folder tags", async () => {
+  const vault = new FakeVault();
+  vault.addFolder("Projects");
+  vault.addFolder("Projects/Research");
+  const plugin = {
+    settings: {
+      enableProperties: true,
+      enableExcalidrawMindMap: false,
+      autoOpenCreatedNote: false,
+    },
+  };
+  const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
+  const content = `---
+title: "Research Notes"
+tags:
+  - notes/Projects/Research/Generated
+---
+# Research Notes`;
+  const result = await (modal as never as {
+    createNewNoteFile(content: string, title: string, folder: string, properties: boolean, depth: null, allowGeneratedFolder: boolean): Promise<{
+      snaps: FileSnapshot[];
+      foldersCreated: string[];
+    }>;
+  }).createNewNoteFile(content, "Research Notes", "Projects/Research", true, null, false);
+
+  assert.equal(result.snaps[0]?.path, "Projects/Research/Research Notes.md");
+  assert.deepEqual(result.foldersCreated, []);
+});
+
 test("the final file writer reuses a tagged folder without a case-sensitive duplicate", async () => {
   const vault = new FakeVault();
   vault.addFolder("DB");
@@ -1628,30 +2038,31 @@ test("an updated Excalidraw file records and restores its previous content", asy
   assert.equal(await vault.read(drawing), "user drawing");
 });
 
-test("failed auto-split restores the first note", async () => {
+test("long appends stay in the selected note without numbered continuations", async () => {
   const vault = new FakeVault();
   const original = Array.from({ length: 200 }, () => "word").join(" ");
-  const file = vault.add("Long note.md", original);
-  vault.failCreates = true;
+  const file = vault.add("Requests.md", original);
 
   const plugin = {
     settings: {
-      enableAutoSplitLongNotes: true,
-      maxNoteWordCount: 200,
-      splitNamingFormat: "part_suffix",
       enableExcalidrawMindMap: false,
       autoOpenCreatedNote: false,
       excalidrawFolder: "Excalidrawings",
     },
   };
   const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
+  const append = (content: string, expectedContent?: string) =>
+    (modal as never as {
+      appendToFile(file: TFile, content: string, enableProperties: boolean, reason?: string, expectedContent?: string): Promise<unknown>;
+    }).appendToFile(file, content, false, undefined, expectedContent);
 
-  await assert.rejects(
-    () => (modal as never as { appendToFile(file: TFile, content: string, enableProperties: boolean): Promise<unknown> })
-      .appendToFile(file, "one more word", false),
-    /Create failed/
-  );
-  assert.equal(await vault.read(file), original);
+  await append("## Decoding\n\nDecode the JSON response body.");
+  await append("## Status\n\nCheck the HTTP response status.");
+  assert.deepEqual([...vault.files.keys()], ["Requests.md"]);
+  assert.match(await vault.read(file), /Decode the JSON response body/);
+  assert.match(await vault.read(file), /Check the HTTP response status/);
+  assert.doesNotMatch(await vault.read(file), /Continued in|Part 2/);
+  await assert.rejects(() => append("Stale addition", original), /changed while its append was being reviewed/);
 });
 
 test("a failed multi-file operation restores every completed change", async () => {
@@ -1682,4 +2093,303 @@ test("a failed multi-file operation restores every completed change", async () =
 
   assert.equal(await vault.read(existing), "original");
   assert.equal(vault.getAbstractFileByPath("new.md"), null);
+});
+
+// A completed SSE response must not depend on the provider closing its socket.
+function mockStreamingRequest(
+  respond: (response: EventEmitter, request: EventEmitter) => void,
+  inspectBody?: (body: Record<string, any>) => void,
+  responseStatus?: () => number,
+): () => void {
+  const original = http.request;
+  (http as any).request = (_url: URL, _options: unknown, onResponse: (response: EventEmitter) => void) => {
+    const request = new EventEmitter() as any;
+    let body = "";
+    request.write = (chunk: string) => { body += chunk; };
+    request.destroy = () => {};
+    request.end = () => queueMicrotask(() => {
+      inspectBody?.(JSON.parse(body));
+      const response = Object.assign(new EventEmitter(), { statusCode: responseStatus?.() ?? 200 });
+      onResponse(response);
+      respond(response, request);
+    });
+    return request;
+  };
+  return () => { (http as any).request = original; };
+}
+
+const streamTestSettings = {
+  apiKey: "test-key", baseUrl: "http://nvidia.test/v1", model: DEFAULT_TEXT_MODEL,
+  temperature: 0.2, topP: 0.9, maxTokens: 100, enableThinking: false,
+} as never;
+
+for (const completion of ['data: [DONE]\n\n', 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n']) {
+  test(`stream resolves without HTTP end after ${completion.trim()}`, { timeout: 1000 }, async () => {
+    const restore = mockStreamingRequest((response) => {
+      response.emit("data", Buffer.from('data: {"choices":[{"delta":{"content":"Complete note"}}]}\n\n'));
+      response.emit("data", Buffer.from(completion));
+    });
+    try {
+      const result = await streamChatCompletion(streamTestSettings, "system", "user");
+      assert.equal(result.content, "Complete note");
+    } finally { restore(); }
+  });
+}
+
+test("stream preserves split UTF-8 and a final unterminated event", async () => {
+  const restore = mockStreamingRequest((response) => {
+    const payload = Buffer.from('data:{"choices":[{"delta":{"content":"ملاحظات"}}]}');
+    const split = payload.indexOf(Buffer.from("م")) + 1;
+    response.emit("data", payload.subarray(0, split));
+    response.emit("data", payload.subarray(split));
+    response.emit("end");
+  });
+  try {
+    assert.equal((await streamChatCompletion(streamTestSettings, "system", "user")).content, "ملاحظات");
+  } finally { restore(); }
+});
+
+test("stream rejects truncated output instead of saving incomplete notes", async () => {
+  const restore = mockStreamingRequest((response) => {
+    response.emit("data", Buffer.from('data: {"choices":[{"delta":{"content":"Partial"},"finish_reason":"length"}]}\n\n'));
+  });
+  try {
+    await assert.rejects(streamChatCompletion(streamTestSettings, "system", "user"), /token limit/);
+  } finally { restore(); }
+});
+
+test("stream explicitly disables provider reasoning when requested", async () => {
+  let body: Record<string, any> = {};
+  const restore = mockStreamingRequest((response) => response.emit("end"), (value) => { body = value; });
+  try {
+    await streamChatCompletion(streamTestSettings, "system", "user");
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
+  } finally { restore(); }
+});
+
+test("stream times out after partial output without retrying or duplicating it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let requests = 0;
+  const restore = mockStreamingRequest((response) => {
+    requests++;
+    response.emit("data", Buffer.from('data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n'));
+  });
+  try {
+    const result = streamChatCompletion(streamTestSettings, "system", "user");
+    const rejected = assert.rejects(result, /stopped responding/);
+    await Promise.resolve();
+    t.mock.timers.tick(180_000);
+    await rejected;
+    assert.equal(requests, 1);
+  } finally { restore(); t.mock.timers.reset(); }
+});
+
+test("an already cancelled stream sends no request", async () => {
+  let requests = 0;
+  const restore = mockStreamingRequest(() => { requests++; });
+  const controller = new AbortController();
+  controller.abort();
+  try {
+    await assert.rejects(streamChatCompletion(streamTestSettings, "system", "user", undefined, controller.signal), { name: "AbortError" });
+    assert.equal(requests, 0);
+  } finally { restore(); }
+});
+
+for (const transport of ["http", "sse"]) {
+  test(`temporary ${transport} overload retries the request without changing models`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let attempts = 0;
+    const models: string[] = [];
+    const restore = mockStreamingRequest((response) => {
+      if (++attempts === 1) {
+        if (transport === "http") {
+          response.emit("data", Buffer.from('{"error":{"message":"Service temporarily overloaded"}}'));
+          response.emit("end");
+        } else {
+          response.emit("data", Buffer.from('data: {"error":{"message":"Service temporarily overloaded"}}\n\n'));
+        }
+      } else {
+        response.emit("data", Buffer.from('data: {"choices":[{"delta":{"content":"Folder plan"},"finish_reason":"stop"}]}\n\n'));
+      }
+    }, body => { models.push(body.model); }, () => transport === "http" && attempts === 0 ? 503 : 200);
+    try {
+      const result = streamChatCompletion(streamTestSettings, "system", "user");
+      await Promise.resolve(); await Promise.resolve();
+      assert.equal(attempts, 1);
+      t.mock.timers.tick(2000);
+      assert.equal((await result).content, "Folder plan");
+      assert.deepEqual(models, [DEFAULT_TEXT_MODEL, DEFAULT_TEXT_MODEL]);
+    } finally { restore(); t.mock.timers.reset(); }
+  });
+}
+
+test("overload retries stop after three attempts", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let attempts = 0;
+  const restore = mockStreamingRequest((response) => {
+    attempts++;
+    response.emit("data", Buffer.from('data: {"error":{"code":503,"message":"Service temporarily overloaded"}}\n\n'));
+  });
+  try {
+    const result = streamChatCompletion(streamTestSettings, "system", "user");
+    const rejection = assert.rejects(result, /temporarily overloaded/);
+    await Promise.resolve(); await Promise.resolve();
+    t.mock.timers.tick(2000);
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    t.mock.timers.tick(4000);
+    await rejection;
+    assert.equal(attempts, 3);
+  } finally { restore(); t.mock.timers.reset(); }
+});
+
+test("cancelling during overload backoff sends no additional request", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let attempts = 0;
+  const restore = mockStreamingRequest((response) => {
+    attempts++;
+    response.emit("data", Buffer.from('data: {"error":{"code":503,"message":"Service temporarily overloaded"}}\n\n'));
+  });
+  const controller = new AbortController();
+  try {
+    const result = streamChatCompletion(streamTestSettings, "system", "user", undefined, controller.signal);
+    const rejection = assert.rejects(result, { name: "AbortError" });
+    await Promise.resolve(); await Promise.resolve();
+    controller.abort();
+    t.mock.timers.tick(4000);
+    await rejection;
+    assert.equal(attempts, 1);
+  } finally { restore(); t.mock.timers.reset(); }
+});
+
+test("overload after streamed content does not duplicate the preview through retry", async () => {
+  let attempts = 0;
+  const restore = mockStreamingRequest((response) => {
+    attempts++;
+    response.emit("data", Buffer.from('data: {"choices":[{"delta":{"content":"Partial note"}}]}\n\n'));
+    response.emit("data", Buffer.from('data: {"error":{"code":503,"message":"Service temporarily overloaded"}}\n\n'));
+  });
+  try {
+    await assert.rejects(streamChatCompletion(streamTestSettings, "system", "user"), /temporarily overloaded/);
+    assert.equal(attempts, 1);
+  } finally { restore(); }
+});
+
+test("Ask Notes returns exact source passages locally without an embedding or answer request", async () => {
+  const text = "Use `json.Unmarshal(data, &value)`.\n\n```go\nerr := json.Unmarshal(data, &result)\n```";
+  const file = new TFile("Go/JSON.md");
+  const chunk = { id: "json-0", path: file.path, heading: "Unmarshal", text, vector: [1, 0] };
+  const settings = { askNotesEnabled: true, askNotesFolders: ["Go"], excludedFolders: "", apiKey: "test-key" };
+  const search = new AskNotesSearch({ vault: { getAbstractFileByPath: () => file } } as never, () => settings as never);
+  const request = (result: unknown) => {
+    const value: any = { result };
+    queueMicrotask(() => value.onsuccess?.());
+    return value;
+  };
+  (search as any).db = async () => ({ transaction: (store: string) => ({ objectStore: () => ({ getAll: () => request(
+    store === "chunks" ? [chunk] : [{ path: file.path, mtime: file.stat.mtime, size: file.stat.size }],
+  ) }) }) });
+  (search as any).embed = async () => { throw new Error("Exact search must not contact NVIDIA"); };
+  const previews: unknown[] = [];
+  const result = await search.ask("Unmarshal", undefined, undefined, (sources) => previews.push(sources));
+  assert.equal(result.sources[0].text, text);
+  assert.equal(result.sources[0].path, file.path);
+  assert.equal(previews.length, 1);
+  assert.ok(!("text" in result), "There is no synthesized answer");
+});
+
+test("local passage search does not fill results with unrelated notes", () => {
+  const make = (id: string, text: string) => ({ id, path: `${id}.md`, heading: "", text, vector: [1, 0] });
+  const chunks = [make("json", "json.Unmarshal reads JSON"), make("tcp", "TCP connections")];
+  assert.deepEqual(rankSearchChunks(chunks, "Unmarshal", []).map((chunk) => chunk.id), ["json"]);
+  assert.deepEqual(rankSearchChunks(chunks, "photosynthesis", []), []);
+});
+
+test("local passage search fills every result slot with matches", () => {
+  const chunks = Array.from({ length: 8 }, (_, i) => ({ id: String(i), path: `${i}.md`, heading: "JSON", text: "Unmarshal examples", vector: [] }));
+  assert.equal(rankSearchChunks(chunks, "Unmarshal", []).length, 6);
+});
+
+test("Ask Notes uses query embeddings for natural-language searches and returns unchanged chunks", async () => {
+  const file = new TFile("Go/JSON.md");
+  const chunk = { id: "json-0", path: file.path, heading: "JSON", text: "json.Unmarshal(data, &result)", vector: [1, 0] };
+  const settings = { askNotesEnabled: true, askNotesFolders: ["Go"], excludedFolders: "", apiKey: "test-key" };
+  const search = new AskNotesSearch({ vault: { getAbstractFileByPath: () => file } } as never, () => settings as never);
+  const request = (result: unknown) => {
+    const value: any = { result };
+    queueMicrotask(() => value.onsuccess?.());
+    return value;
+  };
+  (search as any).db = async () => ({ transaction: (store: string) => ({ objectStore: () => ({ getAll: () => request(
+    store === "chunks" ? [chunk] : [{ path: file.path, mtime: file.stat.mtime, size: file.stat.size }],
+  ) }) }) });
+  let localMatchesShown = false;
+  let embeddings = 0;
+  (search as any).embed = async () => { assert.equal(localMatchesShown, true); embeddings++; return [[1, 0]]; };
+  const result = await search.ask("decode response bytes", undefined, undefined, () => { localMatchesShown = true; });
+  assert.equal(embeddings, 1);
+  assert.equal(result.sources[0].text, chunk.text);
+});
+
+test("REPL lookup does not match replacement, replay, or replication", () => {
+  const make = (id: string, text: string) => ({ id, path: `${id}.md`, heading: "", text, vector: [] });
+  const results = rankSearchChunks([
+    make("http", "Replace a resource and replay the HTTP request."),
+    make("planning", "Make a replication plan for the service."),
+    make("cli", "Invoke from REPL: split input and dispatch the command callback."),
+  ], "how to make a repl", []);
+  assert.deepEqual(results.map((result) => result.id), ["cli"]);
+});
+
+test("search preserves complete identifiers and supports camelCase and plural words", () => {
+  const chunk = { id: "reader", path: "Reading.md", heading: "", text: "RequestFromReader reads map keys.", vector: [] };
+  assert.equal(rankSearchChunks([chunk], "RequestFromReader", []).length, 1);
+  assert.equal(rankSearchChunks([chunk], "reader", []).length, 1);
+  assert.equal(rankSearchChunks([chunk], "key", []).length, 1);
+  assert.equal(rankSearchChunks([chunk], "read", []).length, 1);
+  assert.equal(rankSearchChunks([chunk], "quest", []).length, 0);
+});
+
+test("rare subject terms outweigh common programming words", () => {
+  const chunks = Array.from({ length: 15 }, (_, i) => ({
+    id: `common-${i}`, path: `Common-${i}.md`, heading: "", text: "make a buffer", vector: [],
+  }));
+  chunks.push({ id: "cli", path: "Commands.md", heading: "", text: "REPL command dispatch", vector: [] });
+  assert.equal(rankSearchChunks(chunks, "make repl", [])[0].id, "cli");
+});
+
+test("hybrid search promotes combined evidence above a keyword-only title", () => {
+  const results = rankSearchChunks([
+    { id: "title", path: "Map.md", heading: "", text: "Basic declarations", vector: [-1, 0] },
+    { id: "answer", path: "Presence.md", heading: "", text: "Check a map with the comma-ok idiom", vector: [1, 0] },
+  ], "map", [1, 0]);
+  assert.equal(results[0].id, "answer");
+});
+
+test("semantic retrieval rejects weak, invalid, and mismatched vectors", () => {
+  const make = (id: string, vector: number[]) => ({ id, path: `${id}.md`, heading: "", text: "HTTP parsing", vector });
+  const chunks = [make("weak", [0.2, 0.98]), make("negative", [-1, 0]), make("zero", [0, 0]),
+    make("invalid", [NaN, 0]), make("wrong-dimensions", [1]), make("empty", [])];
+  assert.deepEqual(rankSearchChunks(chunks, "photosynthesis", [1, 0]), []);
+  assert.deepEqual(rankSearchChunks(chunks, "photosynthesis", [NaN, 0]), []);
+});
+
+test("natural-language questions use semantic search even with complete keyword overlap", async () => {
+  const file = new TFile("Go/Maps.md");
+  const chunk = { id: "map", path: file.path, heading: "", text: "Check whether a map key exists.", vector: [1, 0] };
+  const settings = { askNotesEnabled: true, askNotesFolders: ["Go"], excludedFolders: "", apiKey: "test-key" };
+  const search = new AskNotesSearch({ vault: { getAbstractFileByPath: () => file } } as never, () => settings as never);
+  const request = (result: unknown) => {
+    const value: any = { result };
+    queueMicrotask(() => value.onsuccess?.());
+    return value;
+  };
+  (search as any).db = async () => ({ transaction: (store: string) => ({ objectStore: () => ({ getAll: () => request(
+    store === "chunks" ? [chunk] : [{ path: file.path, mtime: file.stat.mtime, size: file.stat.size }],
+  ) }) }) });
+  let requests = 0;
+  let preview = false;
+  (search as any).embed = async () => { assert.equal(preview, true); requests++; return [[1, 0]]; };
+  const result = await search.ask("How do I check whether a map key exists?", undefined, undefined, () => { preview = true; });
+  assert.equal(requests, 1);
+  assert.equal(result.sources[0].text, chunk.text);
 });

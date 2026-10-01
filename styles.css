@@ -40,8 +40,8 @@
   color: var(--text-muted);
   font-size: 0.72em;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .nemotron-current-model-value {
@@ -200,7 +200,7 @@
   cursor: pointer;
   box-sizing: border-box;
   text-align: start;
-  transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 150ms ease, background-color 150ms ease;
   user-select: none;
 }
 
@@ -214,8 +214,9 @@
 .nemotron-custom-select-trigger.is-open,
 .nemotron-custom-select-trigger:focus-visible {
   border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
-  outline: none;
+  box-shadow: none;
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
 }
 
 .nemotron-select-left {
@@ -249,7 +250,7 @@
   flex: 0 0 auto;
   font-size: 1em;
   color: var(--text-muted);
-  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color 150ms ease;
   margin-left: 8px;
 }
 
@@ -267,7 +268,7 @@
   background-color: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
-  box-shadow: var(--shadow-s, 0 8px 24px rgba(0, 0, 0, 0.25));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   max-height: min(320px, 45vh);
   overflow-x: hidden;
   overflow-y: auto;
@@ -279,12 +280,18 @@
   display: none;
 }
 
+/* Keep writing styles above the trigger and clear of the action bar. */
+#nemotron-note-style-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
 .nemotron-select-option {
   padding: 10px 12px;
   border-radius: 6px;
   cursor: pointer;
   outline: none;
-  transition: background-color 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 120ms ease;
   margin-bottom: 2px;
   box-sizing: border-box;
 }
@@ -349,11 +356,11 @@
 }
 
 .nemotron-option-desc {
-  font-size: 0.82em;
+  font-size: var(--font-ui-small);
   color: var(--text-muted);
   margin-top: 4px;
-  padding-left: 26px;
-  line-height: 1.35;
+  padding-left: 0;
+  line-height: 1.5;
 }
 
 /* Image Header & Dropzone */
@@ -371,20 +378,20 @@
 .nemotron-image-badge {
   font-size: 0.78em;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background-color: var(--interactive-accent);
-  color: var(--text-on-accent, #ffffff);
+  padding: 0;
+  border-radius: 0;
+  background-color: transparent;
+  color: var(--text-muted);
 }
 
 .nemotron-image-dropzone {
-  border: 2px dashed var(--background-modifier-border);
+  border: 1px dashed var(--background-modifier-border);
   border-radius: 8px;
   padding: 12px;
-  text-align: center;
+  text-align: left;
   background-color: var(--background-secondary);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  cursor: default;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
   margin-bottom: 10px;
 }
 
@@ -400,9 +407,9 @@
   line-height: 1.5;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .nemotron-browse-link {
@@ -413,7 +420,7 @@
 }
 
 .nemotron-dropzone-sep {
-  color: var(--text-faint);
+  display: none;
 }
 
 .nemotron-paste-clipboard-btn {
@@ -510,7 +517,7 @@
   font-size: 0.72em;
   font-weight: 700;
   color: var(--text-accent);
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .nemotron-card-name {
@@ -531,7 +538,7 @@
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
-  transition: all 0.12s ease;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
 .nemotron-card-remove:hover {
@@ -590,7 +597,7 @@
   color: var(--text-muted);
   cursor: pointer;
   font-weight: 500;
-  transition: all 0.12s ease;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
 .nemotron-breadcrumb-chip:hover {
@@ -659,8 +666,9 @@
 .nemotron-input:focus,
 .nemotron-textarea:focus {
   border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
-  outline: none;
+  box-shadow: none;
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
 }
 
 .nemotron-textarea {
@@ -676,6 +684,116 @@
   resize: vertical;
   min-height: 100px;
   box-sizing: border-box;
+}
+
+.nemotron-generation-workflow {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary-alt);
+}
+
+.nemotron-workflow-heading {
+  margin: 0;
+  font-size: 1.05em;
+  line-height: 1.35;
+}
+
+.nemotron-workflow-intro {
+  margin: 4px 0 14px;
+  color: var(--text-muted);
+  font-size: 0.86em;
+  line-height: 1.45;
+}
+
+.nemotron-workflow-section + .nemotron-workflow-section {
+  margin-top: 14px;
+}
+
+.nemotron-workflow-question {
+  margin-bottom: 7px;
+  color: var(--text-normal);
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.nemotron-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nemotron-placement-choice-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.nemotron-choice {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  cursor: pointer;
+}
+
+.nemotron-choice:has(.nemotron-choice-input:checked) {
+  border-color: var(--interactive-accent);
+  background: var(--background-secondary);
+}
+
+.nemotron-choice:has(.nemotron-choice-input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.nemotron-choice-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.nemotron-choice:has(.nemotron-choice-input:focus-visible) {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.nemotron-choice-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nemotron-choice-title {
+  color: var(--text-normal);
+  font-size: 0.86em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.nemotron-choice-description {
+  color: var(--text-muted);
+  font-size: 0.77em;
+  line-height: 1.4;
+}
+
+.nemotron-generation-summary {
+  margin-top: 14px;
+  padding: 9px 11px;
+  border-left: 3px solid var(--interactive-accent);
+  color: var(--text-muted);
+  font-size: 0.84em;
+  line-height: 1.45;
+}
+
+@media (max-width: 520px) {
+  .nemotron-choice-grid,
+  .nemotron-placement-choice-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .nemotron-new-note-options {
@@ -733,13 +851,17 @@
   margin-bottom: 14px;
 }
 
+.autonatic-action-bar [hidden] {
+  display: none !important;
+}
+
 .nemotron-reasoning-box {
-  background-color: var(--background-secondary-alt);
+  background-color: transparent;
   border-radius: 6px;
   padding: 8px 12px;
   margin-bottom: 12px;
-  border: 1px dashed var(--text-faint);
-  font-size: 0.85em;
+  border: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
 }
 
 .nemotron-reasoning-box summary {
@@ -757,9 +879,9 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-muted);
-  font-family: var(--font-monospace);
-  font-size: 0.85em;
-  line-height: 1.4;
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  line-height: 1.6;
 }
 
 .nemotron-content-box {
@@ -822,7 +944,7 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
 .nemotron-reindex-btn:hover {
@@ -846,8 +968,8 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .nemotron-history-btn {
@@ -857,7 +979,7 @@
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
 .nemotron-history-btn:hover:not(:disabled) {
@@ -976,10 +1098,10 @@
 .nemotron-checkbox-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: 0;
   border-radius: 6px;
   margin-bottom: 12px;
 }
@@ -992,7 +1114,7 @@
 }
 
 .nemotron-checkbox-label {
-  font-size: 12px;
+  font-size: var(--font-ui-small);
   color: var(--text-normal);
   cursor: pointer;
   user-select: none;
@@ -1003,7 +1125,7 @@
 }
 
 .nemotron-checkbox-desc {
-  font-size: 11px;
+  font-size: var(--font-ui-small);
   color: var(--text-muted);
 }
 
@@ -1026,7 +1148,7 @@
   border-bottom: 2px solid transparent;
   cursor: pointer;
   border-radius: 4px 4px 0 0;
-  transition: all 0.15s ease;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
 .nemotron-tab-btn:hover {
@@ -1085,6 +1207,1218 @@
   font-weight: 600;
 }
 
+/* Compact creation and question flows */
+.autonatic-crafter-shell {
+  width: min(660px, 94vw);
+}
+
+.autonatic-crafter-shell .nemotron-modal-container {
+  padding: 4px 10px 10px;
+}
+
+.autonatic-crafter-shell .nemotron-modal-header-row {
+  margin-bottom: 6px;
+}
+
+.autonatic-crafter-shell .nemotron-modal-title {
+  color: var(--text-normal);
+  font-size: 1.2rem;
+  margin-right: auto;
+}
+
+.autonatic-header-action {
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.autonatic-crafter-shell .nemotron-modal-header-row {
+  gap: 10px;
+}
+
+.autonatic-arrange-shell {
+  width: min(820px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.autonatic-arrange-modal {
+  padding: 12px 18px 18px;
+}
+
+.autonatic-arrange-modal h2 {
+  margin: 0 36px 4px 0;
+  font-size: 1.25rem;
+}
+
+.autonatic-arrange-intro,
+.autonatic-arrange-hint {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.autonatic-arrange-intro {
+  margin: 0 0 20px;
+}
+
+.autonatic-arrange-modal label {
+  display: block;
+  margin: 14px 0 6px;
+  font-weight: 600;
+}
+
+.autonatic-arrange-input,
+.autonatic-arrange-scope {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font: inherit;
+}
+
+.autonatic-arrange-input {
+  min-height: 94px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.autonatic-arrange-scope {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+.autonatic-arrange-input:focus-visible,
+.autonatic-arrange-scope:focus-visible,
+.autonatic-arrange-modal button:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.autonatic-arrange-hint {
+  margin: 8px 0 0;
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-arrange-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.autonatic-arrange-modal button {
+  border-radius: 7px;
+}
+
+.autonatic-arrange-status {
+  min-height: 24px;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-arrange-progress {
+  width: 100%;
+  height: 5px;
+  margin: 0 0 6px;
+}
+
+.autonatic-arrange-preview,
+.autonatic-arrange-snapshots {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-arrange-preview:empty {
+  display: none;
+}
+
+.autonatic-arrange-preview h3,
+.autonatic-arrange-snapshots h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.autonatic-arrange-moves {
+  max-height: min(42vh, 360px);
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+}
+
+.autonatic-arrange-move {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-arrange-move:last-child {
+  border-bottom: 0;
+}
+
+.autonatic-arrange-move > span {
+  overflow-wrap: anywhere;
+}
+
+.autonatic-arrange-move > small {
+  grid-column: 3;
+  color: var(--text-muted);
+  font-size: inherit;
+}
+
+.autonatic-arrange-arrow {
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.autonatic-arrange-apply {
+  margin-top: 12px;
+}
+
+.autonatic-arrange-conflicts {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-error);
+  border-radius: 7px;
+  color: var(--text-error);
+}
+
+.autonatic-arrange-conflicts p {
+  margin: 6px 0 0;
+}
+
+.autonatic-arrange-snapshot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-arrange-snapshot-label {
+  display: block;
+  max-width: 65ch;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-arrange-restore-confirm {
+  flex-basis: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-secondary);
+}
+
+.autonatic-arrange-restore-confirm p {
+  margin: 0 0 8px;
+}
+
+.autonatic-arrange-restore-paths {
+  margin: 8px 0 12px;
+}
+
+.autonatic-arrange-restore-paths ul {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-crafter-shell .nemotron-modal-nav-tabs {
+  margin-bottom: 10px;
+}
+
+.autonatic-crafter-shell .nemotron-tab-pane {
+  gap: 6px;
+}
+
+.autonatic-crafter-shell .nemotron-tab-pane > .nemotron-form-row:first-child {
+  margin-bottom: 0;
+}
+
+.autonatic-crafter-shell .nemotron-textarea {
+  min-height: 150px;
+  background: var(--background-primary);
+}
+
+.autonatic-conversation-import {
+  padding-top: 14px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-conversation-import-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.autonatic-conversation-import-controls .nemotron-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--background-primary);
+}
+
+.autonatic-conversation-import-button {
+  flex: none;
+  min-height: 40px;
+}
+
+.autonatic-conversation-import-status,
+.autonatic-conversation-import-help {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+}
+
+.autonatic-conversation-import-status:empty {
+  display: none;
+}
+
+.autonatic-workflow-progress {
+  margin: 10px 0 8px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-workflow-progress[hidden] {
+  display: none;
+}
+
+.autonatic-workflow-progress-heading {
+  margin-bottom: 6px;
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+.autonatic-workflow-progress-bar {
+  display: block;
+  width: 100%;
+  height: 5px;
+  margin: 0 0 8px;
+  border: 0;
+  accent-color: var(--interactive-accent);
+}
+
+.autonatic-workflow-progress-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.autonatic-workflow-progress-steps li.is-complete {
+  color: var(--text-faint);
+}
+
+.autonatic-workflow-progress-steps li.is-current {
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+.autonatic-workflow-progress.has-error .autonatic-workflow-progress-heading {
+  color: var(--text-error);
+}
+
+.autonatic-crafter-shell .autonatic-generation-detail {
+  margin: 0 0 12px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: normal;
+}
+
+.autonatic-crafter-shell .nemotron-generation-summary {
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-crafter-shell .nemotron-button-row {
+  margin: 4px 0 14px;
+}
+
+.autonatic-advanced-options,
+.autonatic-history-details {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-advanced-options > summary,
+.autonatic-history-details > summary {
+  padding: 10px 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+}
+
+.autonatic-advanced-options[open] > summary,
+.autonatic-history-details[open] > summary {
+  color: var(--text-normal);
+}
+
+.autonatic-advanced-options .nemotron-generation-workflow {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.autonatic-advanced-options .nemotron-workflow-heading,
+.autonatic-advanced-options .nemotron-workflow-intro {
+  display: none;
+}
+
+.autonatic-advanced-options .nemotron-choice {
+  min-height: 74px;
+  background: var(--background-secondary);
+}
+
+.autonatic-advanced-options .nemotron-smart-scope-options,
+.autonatic-advanced-options .nemotron-new-note-options {
+  background: var(--background-secondary);
+}
+
+.autonatic-crafter-shell .nemotron-info-card {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.autonatic-ask-shell {
+  width: min(700px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.autonatic-ask-modal {
+  min-width: 0;
+  padding: 8px 14px 16px;
+}
+
+.autonatic-ask-header {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 34px 8px 2px;
+}
+
+.autonatic-ask-header h2 {
+  margin: 0;
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.autonatic-ask-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+}
+
+.autonatic-ask-form:focus-within {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.autonatic-ask-search-icon {
+  display: flex;
+  flex: none;
+  color: var(--text-muted);
+}
+
+.autonatic-ask-search-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.autonatic-ask-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.autonatic-ask-form input.autonatic-ask-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-normal);
+  background: transparent;
+  font-size: var(--font-ui-medium);
+}
+
+.autonatic-ask-form input.autonatic-ask-input:focus,
+.autonatic-ask-form input.autonatic-ask-input:focus-visible {
+  border: 0;
+  box-shadow: none;
+  outline: 0;
+}
+
+.autonatic-ask-button {
+  display: flex;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  box-shadow: none;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+}
+
+.autonatic-ask-button:not(:disabled):hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+}
+
+.autonatic-ask-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.autonatic-ask-input:focus-visible,
+.autonatic-ask-source:focus-visible,
+.autonatic-advanced-options > summary:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.autonatic-ask-status {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  text-align: right;
+}
+
+.autonatic-ask-status:empty {
+  display: none;
+}
+
+.autonatic-ask-results {
+  max-height: min(540px, calc(100vh - 220px));
+  margin-top: 16px;
+  padding: 0 6px 2px 0;
+  overflow: hidden auto;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-ask-results[hidden] {
+  display: none;
+}
+
+.autonatic-ask-answer {
+  max-width: 68ch;
+  padding: 16px 2px 0;
+  color: var(--text-normal);
+  font-size: var(--font-text-size);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ask-answer:empty {
+  display: none;
+}
+
+.autonatic-ask-answer p {
+  margin: 0 0 0.85em;
+}
+
+.autonatic-ask-answer > :last-child,
+.autonatic-ask-answer > :last-child > :last-child {
+  margin-bottom: 0;
+}
+
+.autonatic-ask-sources h3 {
+  margin: 22px 0 8px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+}
+
+.autonatic-ask-source {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 11px 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  background: transparent;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.autonatic-ask-source:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  text-decoration: none;
+}
+
+.autonatic-ask-source-number {
+  color: var(--text-accent);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}
+
+.autonatic-ask-source-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.autonatic-ask-source-title {
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ask-source-path {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.autonatic-settings h3 {
+  margin: 28px 0 6px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: 1.05rem;
+}
+
+.autonatic-settings-advanced {
+  margin-top: 28px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-settings-advanced > summary {
+  padding: 12px 0;
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.autonatic-settings-help {
+  max-width: 65ch;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.autonatic-settings-muted {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-included-folder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-included-folder button,
+.autonatic-folder-picker > button {
+  flex-shrink: 0;
+}
+
+.autonatic-folder-picker {
+  margin: 12px 0;
+}
+
+.autonatic-folder-picker > label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.autonatic-folder-picker > button {
+  margin-top: 8px;
+}
+
+@media (max-width: 520px) {
+  .autonatic-crafter-shell .nemotron-choice-grid {
+    grid-template-columns: 1fr;
+  }
+  .autonatic-ask-modal {
+    padding: 8px 4px 12px;
+  }
+  .autonatic-ask-header {
+    margin-right: 32px;
+  }
+  .autonatic-arrange-modal {
+    padding: 8px 4px 12px;
+  }
+  .autonatic-arrange-move {
+    grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
+    gap: 5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .autonatic-crafter-shell *,
+  .autonatic-ask-shell *,
+  .autonatic-arrange-shell * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .nemotron-diagram-controls .nemotron-form-row {
   margin: 0;
+}
+
+/* Creation workspace: inherit the vault's typography, surfaces, and accent. */
+.autonatic-crafter-shell {
+  width: min(1040px, calc(100vw - 40px));
+  max-width: 1040px;
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+}
+
+.autonatic-crafter-shell .nemotron-modal-container {
+  margin: 0;
+  padding: 24px 24px 0;
+  overflow-y: auto;
+  font-size: var(--font-ui-medium);
+}
+
+.autonatic-crafter-shell .nemotron-modal-header-row {
+  margin: 0 24px 16px 0;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.autonatic-crafter-shell .nemotron-modal-title {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.autonatic-header-action {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  box-shadow: none;
+  color: var(--text-muted);
+}
+
+.autonatic-header-action:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.autonatic-crafter-shell .nemotron-modal-nav-tabs {
+  margin: 0 0 24px;
+  gap: 20px;
+  padding: 0;
+}
+
+.autonatic-crafter-shell .nemotron-tab-btn {
+  padding: 10px 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--font-ui-medium);
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.autonatic-crafter-shell .nemotron-tab-pane {
+  gap: 0;
+}
+
+.autonatic-create-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+
+.autonatic-source-column,
+.autonatic-output-column {
+  min-width: 0;
+}
+
+.autonatic-output-column {
+  padding-left: 24px;
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-source-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.autonatic-source-count {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.autonatic-crafter-shell .nemotron-label,
+.autonatic-crafter-shell .nemotron-workflow-question {
+  margin-bottom: 8px;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+}
+
+.autonatic-crafter-shell .nemotron-textarea {
+  min-height: 280px;
+  padding: 12px 16px;
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-medium);
+  line-height: 1.65;
+  background: var(--background-primary);
+  border-radius: 8px;
+}
+
+.autonatic-crafter-shell .nemotron-form-row {
+  margin-bottom: 16px;
+}
+
+.autonatic-crafter-shell .nemotron-input,
+.autonatic-crafter-shell .nemotron-custom-select-trigger {
+  background: var(--background-primary);
+  font-size: var(--font-ui-small);
+  min-height: 38px;
+}
+
+.autonatic-crafter-shell .nemotron-generation-workflow {
+  margin: 0 0 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.autonatic-output-column .nemotron-workflow-heading {
+  margin: 0 0 16px;
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+}
+
+.autonatic-output-column .nemotron-workflow-section + .nemotron-workflow-section {
+  margin-top: 24px;
+}
+
+.autonatic-output-column .nemotron-choice-grid {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.autonatic-output-column .nemotron-choice {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  padding: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.autonatic-output-column .nemotron-choice-input {
+  position: static;
+  opacity: 1;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 3px 0 0;
+  accent-color: var(--interactive-accent);
+}
+
+.autonatic-output-column .nemotron-choice:has(input:checked) {
+  background: var(--background-secondary);
+  border-color: transparent;
+}
+
+.autonatic-output-column .nemotron-choice-title {
+  font-size: var(--font-ui-medium);
+  overflow-wrap: anywhere;
+}
+
+.autonatic-output-column .nemotron-choice-description {
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+}
+
+.autonatic-output-column .nemotron-new-note-options,
+.autonatic-output-column .nemotron-smart-scope-options {
+  padding: 0;
+  margin-bottom: 20px;
+  border: 0;
+  background: transparent;
+}
+
+.autonatic-source-tools {
+  margin: 0 0 16px;
+}
+
+.autonatic-source-tools > summary,
+.autonatic-advanced-options > summary,
+.autonatic-history-details > summary {
+  padding: 10px 0;
+  font-size: var(--font-ui-small);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.autonatic-source-tools[open] > summary {
+  color: var(--text-normal);
+}
+
+.autonatic-source-tools .autonatic-conversation-import {
+  border: 0;
+  margin: 0;
+  padding: 8px 0 0;
+}
+
+.autonatic-crafter-shell .nemotron-image-dropzone {
+  padding: 12px;
+  background: transparent;
+  border-radius: 8px;
+}
+
+.autonatic-crafter-shell .nemotron-dropzone-prompt {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.autonatic-crafter-shell .nemotron-browse-link,
+.autonatic-crafter-shell .nemotron-image-dropzone .nemotron-paste-clipboard-btn {
+  padding: 4px 8px;
+  min-height: 32px;
+  height: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: none;
+  font-size: var(--font-ui-small);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.autonatic-crafter-shell .nemotron-checkbox-row {
+  align-items: flex-start;
+}
+
+.autonatic-crafter-shell .nemotron-checkbox-desc {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.autonatic-crafter-shell .nemotron-diagram-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0;
+  margin: 20px 0;
+  border: 0;
+}
+
+.autonatic-crafter-shell .nemotron-diagram-controls legend {
+  padding: 0 0 12px;
+  font-size: var(--font-ui-small);
+}
+
+.autonatic-crafter-shell .nemotron-diagram-controls .nemotron-form-row {
+  margin: 0;
+}
+
+.autonatic-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 0;
+  margin-top: 20px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.autonatic-action-bar .nemotron-generation-summary {
+  max-width: 60ch;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.autonatic-action-bar .nemotron-button-row {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+.autonatic-action-bar .nemotron-button-row button {
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: var(--font-ui-small);
+  max-width: 260px;
+  height: auto;
+  white-space: normal;
+}
+
+.autonatic-activity:has(.nemotron-preview-container[style*="block"]) {
+  margin-top: 24px;
+}
+
+.autonatic-crafter-shell :is(button, summary, a, textarea, input):focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 3px;
+}
+
+.autonatic-crafter-shell .nemotron-history-label,
+.autonatic-crafter-shell .nemotron-card-num {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+@media (max-width: 800px) {
+  .autonatic-create-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .autonatic-output-column {
+    padding: 20px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--background-modifier-border);
+  }
+
+  .autonatic-output-column .nemotron-choice-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .autonatic-output-column .nemotron-placement-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .autonatic-crafter-shell .nemotron-textarea {
+    min-height: 200px;
+  }
+}
+
+@media (max-width: 520px) {
+  .autonatic-crafter-shell {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .autonatic-crafter-shell .nemotron-modal-container {
+    padding: 16px 16px 0;
+  }
+
+  .autonatic-crafter-shell .nemotron-modal-title {
+    flex-basis: 100%;
+  }
+
+  .autonatic-output-column .nemotron-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .autonatic-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 0;
+  }
+
+  .autonatic-action-bar .nemotron-button-row {
+    justify-content: flex-end;
+  }
+
+  .autonatic-action-bar .nemotron-button-row button {
+    flex: 1;
+    max-width: none;
+  }
+
+  .nemotron-api-input-row {
+    flex-wrap: wrap;
+  }
+
+  .nemotron-api-input-row .nemotron-api-input {
+    flex-basis: 100%;
+  }
+}
+
+.autonatic-ask-modal {
+  padding: 16px 20px 20px;
+}
+
+.autonatic-ask-header h2 {
+  font-size: 20px;
+}
+
+.autonatic-ask-intro {
+  margin: 8px 0 20px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.autonatic-ask-status {
+  margin: 0 0 12px;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.autonatic-ask-empty {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.6;
+  max-width: 65ch;
+}
+
+.autonatic-ask-empty p {
+  margin: 0 0 8px;
+}
+
+.autonatic-ask-form [hidden] {
+  display: none;
+}
+
+.autonatic-ask-stop {
+  flex: none;
+}
+
+.nemotron-folder-breadcrumbs button.nemotron-breadcrumb-chip {
+  height: auto;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 4px;
+  box-shadow: none;
+  font: inherit;
+}
+
+.autonatic-output-column > summary {
+  cursor: pointer;
+}
+
+.autonatic-output-column:not([open]) > summary {
+  margin-bottom: 0;
+}
+
+.autonatic-destination-summary {
+  min-width: 0;
+}
+
+.autonatic-edit-output {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 0;
+  height: auto;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-accent);
+  font-size: var(--font-ui-small);
+  text-decoration: underline;
+}
+
+.autonatic-crafter-shell .nemotron-textarea:focus-visible {
+  box-shadow: none;
+  outline-offset: 2px;
+}
+
+.autonatic-source-column .nemotron-info-card {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 800px) {
+  .autonatic-crafter-shell .nemotron-textarea {
+    height: 220px;
+  }
+}
+
+/* Search results are original passages, with one source link per excerpt. */
+.autonatic-ask-passage {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.autonatic-ask-passage:last-child {
+  border-bottom: 0;
+}
+
+.autonatic-ask-passage .autonatic-ask-source {
+  display: block;
+  padding: 0 0 8px;
+  border: 0;
+}
+
+.autonatic-ask-excerpt {
+  font-size: var(--font-ui-medium);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ask-excerpt > :first-child {
+  margin-top: 0;
+}
+
+.autonatic-ask-excerpt > :last-child {
+  margin-bottom: 0;
+}
+
+.autonatic-ask-excerpt pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.autonatic-ask-plain-excerpt {
+  white-space: pre-wrap;
+  font-family: var(--font-text);
 }

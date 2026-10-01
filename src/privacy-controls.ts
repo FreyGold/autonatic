@@ -8,7 +8,7 @@ const SEARCH_STOP_WORDS = new Set([
 
 function searchTerms(value: string): Set<string> {
   return new Set(
-    (value.toLowerCase().match(/[a-z0-9][a-z0-9_.+-]{2,}/g) ?? [])
+    (value.toLocaleLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_.+-]{2,}/gu) ?? [])
       .filter((term) => !SEARCH_STOP_WORDS.has(term))
       .map((term) => term.replace(/(?:ing|ed|es|s)$/i, ""))
       .filter((term) => term.length >= 3 && !SEARCH_STOP_WORDS.has(term)),
@@ -202,4 +202,71 @@ export function selectVaultContext(
   folderScope?: string,
 ): NoteItem[] {
   return rankVaultContext(index, query, folderScope).slice(0, Math.max(0, limit)).map(({ note }) => note);
+}
+
+/**
+ * Search long sources in bounded pieces so repeated early subjects cannot crowd
+ * every other subject out of the context sent for automatic placement.
+ */
+export function sourceRetrievalQueries(source: string, maxQueries = 64): string[] {
+  const paragraphs = source.replace(/\r\n?/g, "\n").split(/\n\s*\n/g).map((part) => part.trim()).filter(Boolean);
+  const queries: string[] = [];
+  let current = "";
+  const flush = () => {
+    if (current.trim()) queries.push(current.trim());
+    current = "";
+  };
+
+  for (const paragraph of paragraphs) {
+    // Gemini transcripts mark each turn with a numbered You heading. Keep its
+    // question and answer together, while giving the next turn its own query.
+    if (/^##\s+\d+\.\s+You\s*$/i.test(paragraph)
+      || /^(?:user|you|human):/i.test(paragraph)
+      || (/^#{1,3}\s+\S/.test(paragraph) && !/^##\s+\d+\.\s+Gemini\s*$/i.test(paragraph))) flush();
+    if (paragraph.length > 1500) {
+      flush();
+      for (let start = 0; start < paragraph.length; start += 1400) {
+        queries.push(paragraph.slice(start, start + 1500));
+      }
+      continue;
+    }
+    if (current.length + paragraph.length + 2 > 1500) flush();
+    current += `${current ? "\n\n" : ""}${paragraph}`;
+  }
+  flush();
+
+  const count = Math.max(1, Math.floor(maxQueries));
+  if (queries.length <= count) return queries;
+  if (count === 1) return [queries[Math.floor((queries.length - 1) / 2)]];
+  return Array.from({ length: count }, (_, index) =>
+    queries[Math.round(index * (queries.length - 1) / (count - 1))]);
+}
+
+export function selectVaultContextByTopic(
+  index: VaultKnowledgeIndex,
+  source: string,
+  limit: number,
+  folderScope?: string,
+): NoteItem[] {
+  const maxNotes = Math.max(0, Math.floor(limit));
+  if (!maxNotes) return [];
+  const queries = sourceRetrievalQueries(source);
+  if (!queries.length) return [];
+
+  const ranked = queries.map((query) =>
+    rankVaultContext(index, query, folderScope).filter(({ score }) => score > 0).slice(0, 4));
+  const selected: NoteItem[] = [];
+  const seen = new Set<string>();
+  // One candidate per source piece first; only then add alternatives. This
+  // preserves coverage when a long conversation returns to one topic often.
+  for (let rank = 0; rank < 4 && selected.length < maxNotes; rank++) {
+    for (const candidates of ranked) {
+      const candidate = candidates[rank]?.note;
+      if (!candidate || seen.has(candidate.path)) continue;
+      selected.push(candidate);
+      seen.add(candidate.path);
+      if (selected.length >= maxNotes) break;
+    }
+  }
+  return selected;
 }

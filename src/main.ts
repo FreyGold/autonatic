@@ -1,4 +1,4 @@
-import { Plugin, MarkdownView, Editor, Notice, TFile } from "obsidian";
+import { Plugin, MarkdownView, Editor, Notice, TFile, TFolder } from "obsidian";
 import {
   NemotronPluginSettings,
   DEFAULT_SETTINGS,
@@ -12,15 +12,30 @@ import { buildOrUpdateVaultIndex, VAULT_INDEX_FILENAME } from "./vault-indexer";
 import { FileSnapshot, HistoryManager, revertFileSnapshots } from "./history-manager";
 import { createMirroredExcalidrawDrawing } from "./excalidraw-generator";
 import { CapturedSelection, captureEditorSelection, replaceCapturedSelection } from "./selection-editor";
+import { AskNotesSearch } from "./ask-notes-search";
+import { AskNotesModal } from "./ask-notes-modal";
+import { VaultArrangementManager } from "./arrangement-manager";
+import { VaultArrangementModal } from "./arrangement-modal";
 
 export default class NemotronPlugin extends Plugin {
   declare settings: NemotronPluginSettings;
   historyManager!: HistoryManager;
+  askNotesSearch!: AskNotesSearch;
+  arrangementManager!: VaultArrangementManager;
+  arrangementError: string | null = null;
   private updateDebounceTimer: any = null;
+  private askNotesDebounceTimer: any = null;
   private selectionEditInProgress = false;
 
   async onload() {
     await this.loadSettings();
+    this.askNotesSearch = new AskNotesSearch(this.app, () => this.settings);
+    this.arrangementManager = new VaultArrangementManager(this.app, this.manifest.id);
+    try { await this.arrangementManager.load(); }
+    catch (error) {
+      this.arrangementError = error instanceof Error ? error.message : "Could not read arrangement snapshots.";
+      console.error("Could not load arrangement snapshots:", error);
+    }
 
     const storedHistory = (await this.loadData())?.history || { undo: [], redo: [], prompts: [] };
     this.historyManager = new HistoryManager(
@@ -49,6 +64,19 @@ export default class NemotronPlugin extends Plugin {
       callback: () => {
         new NemotronModal(this.app, this, "", "excalidraw").open();
       },
+    });
+
+    this.addCommand({
+      id: "ask-notes",
+      name: "Ask Notes",
+      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "h" }],
+      callback: () => new AskNotesModal(this.app, this).open(),
+    });
+
+    this.addCommand({
+      id: "organize-vault-notes",
+      name: "Organize Notes and Manage Arrangement Snapshots",
+      callback: () => new VaultArrangementModal(this.app, this).open(),
     });
 
     this.addCommand({
@@ -222,18 +250,28 @@ export default class NemotronPlugin extends Plugin {
       },
     });
 
-    this.registerEvent(this.app.vault.on("create", () => this.scheduleIndexUpdate()));
+    this.registerEvent(this.app.vault.on("create", () => { void this.scheduleIndexUpdate(); this.scheduleAskNotesUpdate(); }));
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (file.name !== VAULT_INDEX_FILENAME) {
-        this.scheduleIndexUpdate();
+        void this.scheduleIndexUpdate();
+        this.scheduleAskNotesUpdate();
       }
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       if (file.name !== VAULT_INDEX_FILENAME) {
-        this.scheduleIndexUpdate();
+        void this.scheduleIndexUpdate();
+        this.scheduleAskNotesUpdate();
       }
     }));
-    this.registerEvent(this.app.vault.on("rename", () => this.scheduleIndexUpdate()));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      void this.arrangementManager.noteRenamed(oldPath, file.path, file instanceof TFolder).catch((error) => {
+        console.error("Could not update arrangement snapshots after a rename:", error);
+      });
+      void this.scheduleIndexUpdate();
+      this.scheduleAskNotesUpdate();
+    }));
+
+    this.app.workspace.onLayoutReady(() => this.scheduleAskNotesUpdate());
 
     this.addSettingTab(new NemotronSettingTab(this.app, this));
   }
@@ -322,6 +360,16 @@ export default class NemotronPlugin extends Plugin {
     } catch {}
   }
 
+  public scheduleAskNotesUpdate() {
+    if (!this.settings.askNotesEnabled || this.settings.askNotesPaused) return;
+    if (this.askNotesDebounceTimer) clearTimeout(this.askNotesDebounceTimer);
+    this.askNotesDebounceTimer = setTimeout(() => {
+      void this.askNotesSearch.sync().catch((error) => {
+        console.warn("Ask Notes index update failed:", error);
+      });
+    }, 1500);
+  }
+
   private async saveHistory() {
     const currentData = (await this.loadData()) || {};
     currentData.history = this.historyManager.serialize();
@@ -332,6 +380,8 @@ export default class NemotronPlugin extends Plugin {
     if (this.updateDebounceTimer) {
       clearTimeout(this.updateDebounceTimer);
     }
+    if (this.askNotesDebounceTimer) clearTimeout(this.askNotesDebounceTimer);
+    this.askNotesSearch?.dispose();
   }
 
   async loadSettings() {
@@ -339,11 +389,13 @@ export default class NemotronPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
     this.settings.model = resolveTextModel(savedSettings.model);
 
+    let settingsChanged = savedSettings.model !== this.settings.model;
     if (savedSettings.propertiesOptInVersion !== DEFAULT_SETTINGS.propertiesOptInVersion) {
       this.settings.enableProperties = false;
       this.settings.propertiesOptInVersion = DEFAULT_SETTINGS.propertiesOptInVersion;
-      await this.saveSettings();
+      settingsChanged = true;
     }
+    if (settingsChanged) await this.saveSettings();
   }
 
   async saveSettings() {

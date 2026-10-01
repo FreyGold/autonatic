@@ -1,9 +1,10 @@
-import { App, PluginSettingTab, Setting, Notice } from "obsidian";
+import { App, PluginSettingTab, Setting, Notice, TFolder } from "obsidian";
 import type NemotronPlugin from "./main";
 import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT, type NoteStyle } from "./prompts";
 import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
 import { DESTINATION_MODE_OPTIONS, type DestinationMode } from "./destination-modes";
 import { DEFAULT_TEXT_MODEL } from "./model-defaults";
+import { FolderNavigator } from "./folder-nav";
 
 export interface NemotronPluginSettings {
   apiKey: string;
@@ -14,9 +15,6 @@ export interface NemotronPluginSettings {
   defaultNoteStyle: NoteStyle;
   enableProperties: boolean;
   propertiesOptInVersion: number;
-  enableAutoSplitLongNotes: boolean;
-  maxNoteWordCount: number;
-  splitNamingFormat: "part_suffix" | "parenthesis" | "continued";
   enableExcalidrawMindMap: boolean;
   excalidrawFolder: string;
   temperature: number;
@@ -33,6 +31,9 @@ export interface NemotronPluginSettings {
   maxVaultContextNotes: number;
   confirmMultiFileChanges: boolean;
   maxAutomaticDiagrams: number;
+  askNotesEnabled: boolean;
+  askNotesPaused: boolean;
+  askNotesFolders: string[];
 }
 
 export const DEFAULT_SETTINGS: NemotronPluginSettings = {
@@ -44,9 +45,6 @@ export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   defaultNoteStyle: "concise",
   enableProperties: false,
   propertiesOptInVersion: 1,
-  enableAutoSplitLongNotes: true,
-  maxNoteWordCount: 600,
-  splitNamingFormat: "part_suffix",
   enableExcalidrawMindMap: false,
   excalidrawFolder: "Excalidrawings",
   temperature: 1.0,
@@ -63,10 +61,15 @@ export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   maxVaultContextNotes: 40,
   confirmMultiFileChanges: true,
   maxAutomaticDiagrams: 3,
+  askNotesEnabled: false,
+  askNotesPaused: false,
+  askNotesFolders: [],
 };
 
 export class NemotronSettingTab extends PluginSettingTab {
   plugin: NemotronPlugin;
+  private askFolderNavigator?: FolderNavigator;
+  private unsubscribeAskStatus?: () => void;
 
   constructor(app: App, plugin: NemotronPlugin) {
     super(app, plugin);
@@ -75,39 +78,24 @@ export class NemotronSettingTab extends PluginSettingTab {
 
   async display(): Promise<void> {
     const { containerEl } = this;
+    this.askFolderNavigator?.destroy();
+    this.unsubscribeAskStatus?.();
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "autonatic Settings" });
-    containerEl.createEl("h3", { text: "Privacy and cost controls" });
+    containerEl.addClass("autonatic-settings");
+    containerEl.createEl("h2", { text: "autonatic" });
+    containerEl.createEl("h3", { text: "Privacy and cost" });
     new Setting(containerEl).setName("Automatic index updates").setDesc("Update the local vault index after a file changes.").addToggle((c) => c.setValue(this.plugin.settings.enableAutomaticIndexing).onChange(async (v) => { this.plugin.settings.enableAutomaticIndexing = v; await this.plugin.saveSettings(); }));
-    new Setting(containerEl).setName("Send note excerpts for indexing").setDesc("Consent: send short note excerpts to NVIDIA during index builds. Off uses local metadata only.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
-    new Setting(containerEl).setName("Excluded folders").setDesc("Comma-separated folder paths that indexing must ignore.").addText((c) => c.setValue(this.plugin.settings.excludedFolders).onChange(async (v) => { this.plugin.settings.excludedFolders = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("AI summaries for placement index").setDesc("Send short excerpts to NVIDIA to summarize the local index. Automatic appends separately send the target note, or excerpts from a long target, for duplicate review. Ask Notes has separate consent below.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Excluded folders").setDesc("Comma-separated folder paths that indexing must ignore.").addText((c) => c.setValue(this.plugin.settings.excludedFolders).onChange(async (v) => { this.plugin.settings.excludedFolders = v; await this.plugin.saveSettings(); this.plugin.scheduleAskNotesUpdate(); }));
     new Setting(containerEl).setName("Maximum context notes").setDesc("Limit the note summaries sent with one generation request.").addSlider((c) => c.setLimits(5, 100, 5).setValue(this.plugin.settings.maxVaultContextNotes).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxVaultContextNotes = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Confirm multi-file changes").setDesc("Show the planned file count before a multi-note write.").addToggle((c) => c.setValue(this.plugin.settings.confirmMultiFileChanges).onChange(async (v) => { this.plugin.settings.confirmMultiFileChanges = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Maximum automatic diagrams").setDesc("Limit useful diagrams created or updated after one note operation. Zero disables automatic diagrams.").addSlider((c) => c.setLimits(0, 10, 1).setValue(this.plugin.settings.maxAutomaticDiagrams).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxAutomaticDiagrams = v; await this.plugin.saveSettings(); }));
 
-    // NVIDIA NIM Quick Link & Helper Card
-    const nimCard = containerEl.createDiv({ cls: "nemotron-nim-card" });
-    const nimLeft = nimCard.createDiv({ cls: "nemotron-nim-left" });
-    nimLeft.createEl("strong", { text: "AI Providers" });
-    nimLeft.createEl("p", {
-      text: "Supported now: NVIDIA NIM. Coming soon: Groq and Gemini.",
-      cls: "nemotron-nim-desc",
-    });
-    
-    const nimBtn = nimCard.createEl("button", {
-      text: "Open NVIDIA NIM (build.nvidia.com)",
-      cls: "mod-cta nemotron-nim-btn",
-    });
-    nimBtn.setAttribute("type", "button");
-    nimBtn.addEventListener("click", () => {
-      window.open("https://build.nvidia.com", "_blank");
-    });
-
-    // API Key Setting with Instant Paste
+    containerEl.createEl("h3", { text: "NVIDIA NIM" });
     const apiKeySetting = new Setting(containerEl)
       .setName("NVIDIA NIM API Key")
-      .setDesc("Your personal API key (starts with nvapi-...). Stored locally on your device.");
+      .setDesc("Your personal API key (starts with nvapi-...). Saved in this plugin's Obsidian settings.");
 
     let apiKeyInputEl: HTMLInputElement;
 
@@ -132,6 +120,116 @@ export class NemotronSettingTab extends PluginSettingTab {
         }
       });
     });
+    apiKeySetting.addButton((btn) => btn.setButtonText("Get key").onClick(() => {
+      window.open("https://build.nvidia.com", "_blank");
+    }));
+
+    containerEl.createEl("h3", { text: "Ask Notes" });
+    containerEl.createEl("p", {
+      text: "Choose folders before enabling search. Indexing sends their Markdown text to NVIDIA for embeddings. Matching passages are shown unchanged. Exact term lookups can use the local index; natural-language questions also send your query to NVIDIA for semantic matching. API usage may incur charges. Vectors and excerpts stay in local device storage, outside the vault.",
+      cls: "autonatic-settings-help",
+    });
+    const includedList = containerEl.createDiv({ cls: "autonatic-included-folders" });
+    const renderIncluded = () => {
+      includedList.empty();
+      if (!this.plugin.settings.askNotesFolders.length) {
+        includedList.createSpan({ text: "No folders selected", cls: "autonatic-settings-muted" });
+      }
+      for (const folder of this.plugin.settings.askNotesFolders) {
+        const row = includedList.createDiv({ cls: "autonatic-included-folder" });
+        row.createSpan({ text: folder || "Vault root (all folders)" });
+        const remove = row.createEl("button", { text: "Remove" });
+        remove.type = "button";
+        remove.addEventListener("click", async () => {
+          this.plugin.settings.askNotesFolders = this.plugin.settings.askNotesFolders.filter((path) => path !== folder);
+          if (!this.plugin.settings.askNotesFolders.length) this.plugin.settings.askNotesEnabled = false;
+          await this.plugin.saveSettings();
+          if (!this.plugin.settings.askNotesEnabled) {
+            try { await this.plugin.askNotesSearch.clear(); }
+            catch (error) { new Notice(error instanceof Error ? error.message : "Could not clear local search data."); }
+          }
+          else this.plugin.scheduleAskNotesUpdate();
+          renderIncluded();
+        });
+      }
+    };
+    renderIncluded();
+    const folderPicker = containerEl.createDiv({ cls: "autonatic-folder-picker" });
+    folderPicker.createEl("label", { text: "Add a folder and its subfolders" });
+    let selectedFolder = "";
+    this.askFolderNavigator = new FolderNavigator(this.app, folderPicker, "", (path) => { selectedFolder = path; });
+    const addFolder = folderPicker.createEl("button", { text: "Include folder" });
+    addFolder.type = "button";
+    addFolder.addEventListener("click", async () => {
+      if (selectedFolder && !(this.app.vault.getAbstractFileByPath(selectedFolder) instanceof TFolder)) {
+        new Notice("Choose an existing folder.");
+        return;
+      }
+      if (!this.plugin.settings.askNotesFolders.includes(selectedFolder)) {
+        this.plugin.settings.askNotesFolders.push(selectedFolder);
+        await this.plugin.saveSettings();
+        this.plugin.scheduleAskNotesUpdate();
+        renderIncluded();
+      }
+    });
+    const askIndexStatus = containerEl.createDiv({ cls: "autonatic-settings-muted" });
+    this.unsubscribeAskStatus = this.plugin.askNotesSearch.subscribe((message) => {
+      askIndexStatus.setText(message);
+      if (message.startsWith("Ready:")) void this.plugin.askNotesSearch.status().then((status) => {
+        askIndexStatus.setText(`On this device: ${status.notes} notes, ${status.chunks} passages.`);
+      });
+    });
+    void this.plugin.askNotesSearch.status().then((status) => {
+      askIndexStatus.setText(`On this device: ${status.notes} notes, ${status.chunks} passages. ${status.message}`);
+    }).catch((error: Error) => askIndexStatus.setText(error.message));
+    new Setting(containerEl)
+      .setName("Enable Ask Notes")
+      .setDesc("Enable passage search. Selected notes are sent for indexing embeddings; semantic search sends only the query. No answer is generated.")
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.askNotesEnabled).onChange(async (enabled) => {
+        if (enabled && (!this.plugin.settings.askNotesFolders.length || !this.plugin.settings.apiKey.trim())) {
+          new Notice("Choose a folder and add your NVIDIA NIM API key first.");
+          toggle.setValue(false);
+          return;
+        }
+        this.plugin.settings.askNotesEnabled = enabled;
+        await this.plugin.saveSettings();
+        if (enabled) this.plugin.scheduleAskNotesUpdate();
+        else {
+          try { await this.plugin.askNotesSearch.clear(); }
+          catch (error) { new Notice(error instanceof Error ? error.message : "Could not clear local search data."); }
+        }
+        await this.display();
+      }));
+    new Setting(containerEl)
+      .setName("Pause background indexing")
+      .setDesc("Keep the current local index but stop automatic updates.")
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.askNotesPaused).onChange(async (paused) => {
+        this.plugin.settings.askNotesPaused = paused;
+        await this.plugin.saveSettings();
+        if (!paused) this.plugin.scheduleAskNotesUpdate();
+      }));
+    new Setting(containerEl)
+      .setName("Local search index")
+      .setDesc("Rebuild after a model or indexing problem, or clear all stored passages and vectors.")
+      .addButton((button) => button.setButtonText("Rebuild").onClick(async () => {
+        if (!this.plugin.settings.askNotesEnabled) { new Notice("Enable Ask Notes first."); return; }
+        if (this.plugin.settings.askNotesPaused) { new Notice("Resume background indexing before rebuilding."); return; }
+        button.setDisabled(true);
+        try {
+          await this.plugin.askNotesSearch.rebuild((message) => askIndexStatus.setText(message));
+          await this.display();
+        } catch (error) {
+          new Notice(error instanceof Error ? error.message : "Indexing failed.", 7000);
+          button.setDisabled(false);
+        }
+      }))
+      .addButton((button) => button.setButtonText("Clear").onClick(async () => {
+        this.plugin.settings.askNotesEnabled = false;
+        await this.plugin.saveSettings();
+        try { await this.plugin.askNotesSearch.clear(); }
+        catch (error) { new Notice(error instanceof Error ? error.message : "Could not clear local search data."); }
+        await this.display();
+      }));
 
     // 1-Click Paste Button
     apiKeySetting.addButton((btn) => {
@@ -162,10 +260,11 @@ export class NemotronSettingTab extends PluginSettingTab {
       });
     });
 
+    containerEl.createEl("h3", { text: "Note creation" });
     // Default Destination Mode
     new Setting(containerEl)
-      .setName("Default Destination Mode")
-      .setDesc("Choose default placement behavior when opening the Note Crafter modal.")
+      .setName("Default note creation")
+      .setDesc("Choose the starting creation and placement behavior when opening the Note Crafter.")
       .addDropdown((dropdown) => {
         for (const option of DESTINATION_MODE_OPTIONS) {
           dropdown.addOption(option.value, option.label);
@@ -186,7 +285,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Hierarchical Vault Knowledge Tree")
       .setDesc(
-        `Maintains a nested JSON tree (.nemotron-vault-index.json) of folders, subfolders, and notes with topics and 'about' summaries. Status: ${
+        `Used for placing generated notes. Separate from Ask Notes search. Status: ${
           indexData ? `Indexed ${noteCount} notes across ${folderCount} folders.` : "Not yet generated."
         }`
       )
@@ -236,50 +335,6 @@ export class NemotronSettingTab extends PluginSettingTab {
           })
       );
 
-    // Auto-Split Long Notes & Atomic Sizing Section
-    containerEl.createEl("h3", { text: "Atomic Note Sizing & Auto-Splitting" });
-
-    new Setting(containerEl)
-      .setName("Auto-Split Long Notes (Part 2 Sequence)")
-      .setDesc("When appending to a note that exceeds the optimal word count, automatically creates a sequential Part 2 note with two-way breadcrumb links.")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.enableAutoSplitLongNotes ?? true)
-          .onChange(async (value) => {
-            this.plugin.settings.enableAutoSplitLongNotes = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Max Note Word Count (Optimal Atomic Length)")
-      .setDesc("The target maximum length for a concise note before auto-splitting into a new part (Recommended: 400 - 800 words).")
-      .addSlider((slider) =>
-        slider
-          .setLimits(200, 1500, 50)
-          .setValue(this.plugin.settings.maxNoteWordCount || 600)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.maxNoteWordCount = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Split Note Naming Convention")
-      .setDesc("How subsequent continuation notes are named.")
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("part_suffix", "Title - Part 2 (Recommended)")
-          .addOption("parenthesis", "Title (Part 2)")
-          .addOption("continued", "Title - Continued")
-          .setValue(this.plugin.settings.splitNamingFormat || "part_suffix")
-          .onChange(async (value) => {
-            this.plugin.settings.splitNamingFormat = value as "part_suffix" | "parenthesis" | "continued";
-            await this.plugin.saveSettings();
-          })
-      );
-
     // YAML Properties Generation Toggle
     new Setting(containerEl)
       .setName("Generate YAML Properties / Frontmatter")
@@ -309,6 +364,7 @@ export class NemotronSettingTab extends PluginSettingTab {
           })
       );
 
+    const advancedHeading = containerEl.createEl("h3", { text: "Advanced AI settings" });
     // Base URL
     new Setting(containerEl)
       .setName("API Base URL")
@@ -480,5 +536,21 @@ export class NemotronSettingTab extends PluginSettingTab {
           this.display();
         })
       );
+
+    const advancedDetails = containerEl.createEl("details", { cls: "autonatic-settings-advanced" });
+    advancedDetails.createEl("summary", { text: "Advanced AI settings" });
+    let next = advancedHeading.nextSibling;
+    while (next && next !== advancedDetails) {
+      const following = next.nextSibling;
+      advancedDetails.appendChild(next);
+      next = following;
+    }
+    advancedHeading.replaceWith(advancedDetails);
+  }
+
+  hide(): void {
+    this.askFolderNavigator?.destroy();
+    this.unsubscribeAskStatus?.();
+    super.hide();
   }
 }

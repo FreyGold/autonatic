@@ -2,6 +2,7 @@ import { requestUrl } from "obsidian";
 import { NemotronPluginSettings } from "./settings";
 import * as https from "https";
 import * as http from "http";
+import { StringDecoder } from "string_decoder";
 import { BARE_OBSIDIAN_SKILL_PROMPT, type NoteStyle } from "./prompts";
 
 export interface StreamCallbacks {
@@ -297,16 +298,20 @@ async function streamWithTimeoutRetry(
   callbacks?: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<StreamResult> {
-  try {
-    return await streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
-  } catch (error) {
-    const retryStatus = getRetryStatus(error);
-    if (!retryStatus || signal?.aborted) {
-      throw error;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
+    } catch (error) {
+      const retryStatus = getRetryStatus(error);
+      const overloaded = isRetryableOverload(error);
+      const retries = overloaded ? 2 : 1;
+      if (!retryStatus || signal?.aborted || attempt >= retries) throw error;
+      const delay = overloaded ? 2_000 * (2 ** attempt) : 0;
+      callbacks?.onStatus?.(overloaded
+        ? `NVIDIA is busy. Retrying in ${delay / 1000} seconds (${attempt + 1} of ${retries})…`
+        : retryStatus);
+      if (delay) await waitForRetry(delay, signal);
     }
-
-    callbacks?.onStatus?.(retryStatus);
-    return streamChatCompletionAttempt(settings, systemPrompt, userPrompt, callbacks, signal);
   }
 }
 
@@ -345,7 +350,33 @@ function isRetryableDegradedFunction(error: unknown): boolean {
   return /\bDEGRADED\b[\s\S]*\bcannot be invoked\b/i.test(providerMessage);
 }
 
+function waitForRetry(delay: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new DOMException("Aborted", "AbortError")); return; }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delay);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function isRetryableOverload(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const providerError = error as Partial<NvidiaApiError> & { receivedModelOutput?: boolean };
+  if (providerError.receivedModelOutput) return false;
+  return [429, 502, 503, 504].includes(providerError.statusCode || 0)
+    || (providerError.responseBody !== undefined
+      && /temporarily overloaded|service unavailable|too many requests/i.test(providerError.responseBody));
+}
+
 function getRetryStatus(error: unknown): string | null {
+  if ((error as { receivedModelOutput?: boolean } | null)?.receivedModelOutput) return null;
+  if (isRetryableOverload(error)) return "NVIDIA is temporarily overloaded.";
   if (isRetryableTimeout(error)) {
     return "NVIDIA connection timed out. Retrying once...";
   }
@@ -369,10 +400,46 @@ function streamChatCompletionAttempt(
   }
 
   return new Promise((resolve, reject) => {
-    try {
-      const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-      const urlObj = new URL(urlStr);
+    let req: http.ClientRequest | undefined;
+    let settled = false;
+    let receivedResponseData = false;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let fullContent = "";
+    let fullReasoning = "";
+    const cleanup = () => {
+      clearTimeout(idleTimer);
+      clearTimeout(deadlineTimer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      Object.assign(error, { receivedResponseData, receivedModelOutput: !!(fullContent || fullReasoning) });
+      reject(error);
+      req?.destroy();
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ content: sanitizeMermaidDiagrams(fullContent.trim()), reasoning: fullReasoning.trim() });
+      // SSE completion is authoritative even if the server keeps its HTTP body open.
+      req?.destroy();
+    };
+    const onAbort = () => fail(new DOMException("Aborted", "AbortError"));
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => fail(Object.assign(
+        new Error("NVIDIA stopped responding for 3 minutes. Try again; the request was stopped."),
+        { code: "ETIMEDOUT" },
+      )), 180_000);
+    };
 
+    if (signal?.aborted) { onAbort(); return; }
+    try {
+      const urlObj = new URL(`${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`);
       const requestBody: Record<string, any> = {
         model: settings.model,
         messages: [
@@ -384,64 +451,32 @@ function streamChatCompletionAttempt(
         max_tokens: settings.maxTokens,
         stream: true,
       };
-
-      if (settings.enableThinking) {
-        requestBody.chat_template_kwargs = { enable_thinking: true };
-      }
-
+      requestBody.chat_template_kwargs = { enable_thinking: settings.enableThinking };
       const postData = JSON.stringify(requestBody);
-      callbacks?.onStatus?.("Structuring notes with Nemotron reasoning...");
-
-      const isHttps = urlObj.protocol === "https:";
-      const requestFn = isHttps ? https.request : http.request;
-
-      const req = requestFn(
-        urlObj,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${settings.apiKey}`,
-            "Content-Length": Buffer.byteLength(postData),
-          },
+      callbacks?.onStatus?.("Waiting for NVIDIA...");
+      const requestFn = urlObj.protocol === "https:" ? https.request : http.request;
+      req = requestFn(urlObj, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.apiKey}`,
+          "Content-Length": Buffer.byteLength(postData),
         },
-        (res) => {
-          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-            let errBody = "";
-            res.on("data", (chunk) => {
-              errBody += chunk.toString();
-            });
-            res.on("end", () => {
-              reject(createNvidiaApiError(res.statusCode || 500, errBody));
-            });
-            return;
-          }
+      }, (res) => {
+        res.on("error", fail);
+        res.on("aborted", () => fail(new Error("NVIDIA closed the response before it finished. Try again.")));
+        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          let errBody = "";
+          res.on("data", (chunk) => { if (!settled) { resetIdleTimer(); errBody += chunk.toString(); } });
+          res.on("end", () => fail(createNvidiaApiError(res.statusCode || 500, errBody)));
+          return;
+        }
 
-          let fullContent = "";
-          let fullReasoning = "";
-          let buffer = "";
-          let isReasoningPhase = true;
-          let receivedResponseData = false;
-
-          callbacks?.onStatus?.("Nemotron thinking and formatting...");
-
-          res.on("data", (chunk: Buffer) => {
-            receivedResponseData = true;
-            buffer += chunk.toString("utf-8");
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed || !trimmed.startsWith("data: ")) continue;
-              const dataStr = trimmed.slice(6);
-              if (dataStr === "[DONE]") continue;
-
-              try {
-                const parsed = JSON.parse(dataStr);
-                const delta = parsed.choices?.[0]?.delta;
-                if (!delta) continue;
-
+        const decoder = new StringDecoder("utf8");
+        let buffer = "";
+        let isReasoningPhase = true;
+        callbacks?.onStatus?.("Receiving NVIDIA response...");
+        const consumeDelta = (delta: { reasoning_content?: string; content?: string }) => {
                 // 1. Direct reasoning_content field (NVIDIA NIM standard)
                 if (delta.reasoning_content) {
                   fullReasoning += delta.reasoning_content;
@@ -468,7 +503,7 @@ function streamChatCompletionAttempt(
                         fullReasoning += afterThink;
                         callbacks?.onReasoning?.(afterThink);
                       }
-                      continue;
+                      return;
                     }
 
                     if (chunkStr.includes("</think>")) {
@@ -480,7 +515,7 @@ function streamChatCompletionAttempt(
                         fullContent += realContent;
                         callbacks?.onContent?.(realContent);
                       }
-                      continue;
+                      return;
                     }
 
                     fullContent += chunkStr;
@@ -490,41 +525,52 @@ function streamChatCompletionAttempt(
                     callbacks?.onContent?.(chunkStr);
                   }
                 }
-              } catch {}
-            }
-          });
-
-          res.on("end", () => {
-            // Sanitize Mermaid diagrams inside content before resolving
-            const sanitizedContent = sanitizeMermaidDiagrams(fullContent.trim());
-            resolve({
-              content: sanitizedContent,
-              reasoning: fullReasoning.trim(),
-            });
-          });
-
-          res.on("error", (error: Error & { receivedResponseData?: boolean }) => {
-            error.receivedResponseData = receivedResponseData;
-            reject(error);
-          });
-        }
-      );
-
-      if (signal) {
-        signal.addEventListener("abort", () => {
-          req.destroy(new DOMException("Aborted", "AbortError"));
-          reject(new DOMException("Aborted", "AbortError"));
+        };
+        const consumeLine = (line: string) => {
+          if (settled) return;
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) return;
+          const data = trimmed.slice(5).trim();
+          if (data === "[DONE]") { finish(); return; }
+          let parsed: any;
+          try { parsed = JSON.parse(data); } catch { return; }
+          if (parsed.error) {
+            fail(createNvidiaApiError(Number(parsed.error.status || parsed.error.code) || 500, JSON.stringify(parsed)));
+            return;
+          }
+          const choice = parsed.choices?.[0];
+          if (choice?.delta) consumeDelta(choice.delta);
+          if (choice?.finish_reason === "length") {
+            fail(new Error("NVIDIA reached the token limit before finishing. Use a shorter source or increase the generation token limit."));
+          } else if (choice?.finish_reason === "content_filter") {
+            fail(new Error("NVIDIA filtered the response before finishing."));
+          } else if (choice?.finish_reason) {
+            finish();
+          }
+        };
+        res.on("data", (chunk: Buffer) => {
+          if (settled) return;
+          receivedResponseData = true;
+          resetIdleTimer();
+          buffer += decoder.write(chunk);
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) consumeLine(line);
         });
-      }
-
-      req.on("error", (err) => {
-        reject(err);
+        res.on("end", () => {
+          if (settled) return;
+          consumeLine(buffer + decoder.end());
+          finish();
+        });
       });
-
+      signal?.addEventListener("abort", onAbort, { once: true });
+      req.on("error", fail);
+      resetIdleTimer();
+      deadlineTimer = setTimeout(() => fail(new Error("NVIDIA exceeded the 15-minute request limit. Try a shorter source.")), 900_000);
       req.write(postData);
       req.end();
-    } catch (err) {
-      reject(err);
+    } catch (error) {
+      fail(error instanceof Error ? error : new Error(String(error)));
     }
   });
 }
