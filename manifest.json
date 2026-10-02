@@ -1,9 +1,9 @@
 {
   "id": "nemotron-note-crafter",
   "name": "autonatic",
-  "version": "1.6.6",
+  "version": "1.6.7",
   "minAppVersion": "1.13.1",
-  "description": "Turn text and shared Gemini conversations into structured Obsidian notes using your choice of AI provider.",
+  "description": "Turn text and shared AI conversations into structured Obsidian notes using your choice of AI provider.",
   "author": "Ahmed Tawfik",
   "isDesktopOnly": true
 }

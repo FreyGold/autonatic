@@ -1,13 +1,20 @@
 /* autonatic — source material routed into durable notes. */
 :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) {
   /* Fixed values are export fallbacks; the active Obsidian theme remains authoritative. */
-  --an-brand: var(--interactive-accent, #7c5cfc);
-  --an-brand-ink: var(--text-on-accent, #ffffff);
+  --an-brand: #2f6ff6;
+  --an-brand-top: #5d91ff;
+  --an-brand-bottom: #2864eb;
+  --an-brand-ink: #ffffff;
   --an-ink: var(--text-normal, #26242b);
   --an-muted: var(--text-muted, #77717f);
   --an-paper: var(--background-primary, #faf9f7);
   --an-paper-raised: var(--background-secondary, #f2f0f5);
   --an-rule: var(--background-modifier-border, #dedbe3);
+  --an-pill: var(--background-primary, #fbfbfa);
+  --an-pill-hover: var(--background-secondary, #f3f3f2);
+  --an-pill-border: color-mix(in srgb, var(--text-normal, #18181b) 22%, transparent);
+  --an-control-shadow: 0 1px 1px rgba(15, 23, 42, 0.08), 0 2px 5px rgba(15, 23, 42, 0.06);
+  --an-primary-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 5px rgba(34, 87, 200, 0.28);
   --an-space: 24px;
   --an-radius: 8px;
   --an-type-xs: 11px;
@@ -75,8 +82,8 @@
   flex-shrink: 0;
 }
 
-/* Flat surfaces are intentional, including theme-defined hover and focus states.
-   Use outlines for focus; never reintroduce a shadow as the focus indicator. */
+/* Keep Obsidian's large elevation tokens out of the plugin. Components below
+   use one restrained one-pixel control shadow from the identity system. */
 :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) {
   --input-shadow: none;
   --input-shadow-hover: none;
@@ -93,7 +100,6 @@
 :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) *,
 :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) *::before,
 :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) *::after {
-  box-shadow: none !important;
   text-shadow: none !important;
 }
 
@@ -101,7 +107,7 @@
   filter: none;
 }
 
-:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) :is(button, input, textarea, select) {
+:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) :is(input, textarea, select) {
   background-image: none;
 }
 
@@ -1832,6 +1838,378 @@ button.autonatic-ask-button:hover:not(:disabled) {
   margin-top: 8px;
 }
 
+/* Utility-card identity: dashed note rules, tactile capsule controls, and one
+   cobalt action. This is shared by every workspace rather than page-specific
+   decoration, so moving between tools still feels like one product. */
+:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) {
+  --interactive-accent: var(--an-brand);
+  --interactive-accent-hover: var(--an-brand-bottom);
+}
+
+.theme-dark :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) {
+  --an-pill: color-mix(in srgb, var(--background-primary) 88%, white 12%);
+  --an-pill-hover: color-mix(in srgb, var(--background-primary) 80%, white 20%);
+  --an-pill-border: color-mix(in srgb, var(--text-normal) 28%, transparent);
+  --an-control-shadow: 0 1px 1px rgba(0, 0, 0, 0.28), 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.modal:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell) {
+  border-color: var(--an-pill-border);
+  border-radius: 18px;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.14);
+}
+
+.autonatic-workspace-header {
+  min-height: 72px;
+  border-bottom: 1px dashed var(--an-rule);
+}
+
+.autonatic-workspace-nav {
+  gap: 7px;
+}
+
+button.autonatic-workspace-nav-button,
+button.nemotron-tab-btn,
+.autonatic-settings-nav button {
+  border: 1px solid var(--an-pill-border);
+  border-radius: 999px;
+  background: var(--an-pill);
+  box-shadow: var(--an-control-shadow);
+  color: var(--an-muted);
+}
+
+button.autonatic-workspace-nav-button {
+  height: 34px;
+  padding: 0 13px;
+}
+
+button.autonatic-workspace-nav-button:hover,
+button.nemotron-tab-btn:hover,
+.autonatic-settings-nav button:hover {
+  border-color: color-mix(in srgb, var(--an-ink) 40%, transparent);
+  background: var(--an-pill-hover);
+  color: var(--an-ink);
+}
+
+button.autonatic-workspace-nav-button.is-active,
+button.nemotron-tab-btn.is-active,
+.autonatic-settings-nav button[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--an-ink) 58%, transparent);
+  background: var(--an-pill);
+  color: var(--an-ink);
+  font-weight: 600;
+}
+
+button.autonatic-quiet-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--an-pill-border);
+  border-radius: 999px;
+  background: var(--an-pill);
+  box-shadow: var(--an-control-shadow);
+}
+
+button.autonatic-quiet-button:hover {
+  border-color: color-mix(in srgb, var(--an-ink) 40%, transparent);
+  background: var(--an-pill-hover);
+}
+
+.autonatic-page-heading {
+  padding: 22px 0 20px;
+  border-bottom: 1px dashed var(--an-rule);
+  margin-bottom: 22px;
+}
+
+.autonatic-page-heading h3 {
+  font-size: 24px;
+  font-weight: 620;
+  letter-spacing: -0.045em;
+}
+
+.nemotron-modal-nav-tabs {
+  gap: 7px;
+  border-bottom: 0;
+}
+
+button.nemotron-tab-btn {
+  padding: 7px 13px;
+  border-bottom-width: 1px;
+}
+
+.autonatic-output-column {
+  border-left: 1px dashed var(--an-rule);
+}
+
+.autonatic-source-toolbar,
+.autonatic-ask-passage,
+.autonatic-arrange-snapshot,
+.autonatic-included-folder {
+  border-bottom-color: var(--an-rule);
+  border-bottom-style: dashed;
+}
+
+.autonatic-advanced-options,
+.nemotron-reasoning-box,
+.autonatic-draft-source,
+.autonatic-ask-results,
+.autonatic-arrange-preview,
+.autonatic-arrange-snapshots {
+  border-top-color: var(--an-rule);
+  border-top-style: dashed;
+}
+
+.autonatic-composer,
+.nemotron-content-box,
+.nemotron-image-dropzone,
+.nemotron-image-gallery,
+.nemotron-folder-nav,
+.autonatic-ask-form,
+.autonatic-arrange-input,
+.autonatic-arrange-scope,
+.autonatic-arrange-moves,
+.autonatic-arrange-restore-confirm {
+  border-color: var(--an-pill-border);
+  border-radius: 14px;
+  background: var(--an-paper);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 65%, transparent);
+}
+
+.theme-dark :is(
+  .autonatic-composer,
+  .nemotron-content-box,
+  .nemotron-image-dropzone,
+  .nemotron-image-gallery,
+  .nemotron-folder-nav,
+  .autonatic-ask-form,
+  .autonatic-arrange-input,
+  .autonatic-arrange-scope,
+  .autonatic-arrange-moves,
+  .autonatic-arrange-restore-confirm
+) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+:is(.autonatic-crafter-shell, .autonatic-settings) :is(.nemotron-input, .nemotron-textarea),
+.autonatic-settings .setting-item-control :is(input, select, textarea) {
+  border-color: var(--an-pill-border);
+  background: var(--an-pill);
+}
+
+:is(.autonatic-crafter-shell, .autonatic-settings) input:not([type="checkbox"]):not([type="range"]),
+:is(.autonatic-crafter-shell, .autonatic-settings) select,
+.autonatic-arrange-scope {
+  min-height: 38px;
+  border-radius: 999px;
+  padding-inline: 14px;
+}
+
+:is(.autonatic-crafter-shell, .autonatic-settings) textarea,
+.autonatic-arrange-input {
+  border-radius: 14px;
+}
+
+:is(.autonatic-crafter-shell, .autonatic-settings) .nemotron-custom-select-trigger {
+  min-height: 38px;
+  padding: 8px 14px;
+  border-color: var(--an-pill-border);
+  border-radius: 999px;
+  background: var(--an-pill);
+  box-shadow: var(--an-control-shadow);
+}
+
+.nemotron-custom-select-menu {
+  margin-top: 3px;
+  padding: 7px;
+  border-color: var(--an-pill-border);
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+}
+
+.nemotron-select-option {
+  border-radius: 9px;
+}
+
+.autonatic-source-toolbar summary,
+.autonatic-instructions > summary,
+.autonatic-advanced-options > summary {
+  font-size: 13px;
+}
+
+.autonatic-editor-context {
+  padding: 13px 0;
+  border-top: 1px dashed var(--an-rule);
+}
+
+button.autonatic-provider-button {
+  padding: 6px 10px;
+  border: 1px solid var(--an-pill-border);
+  border-radius: 999px;
+  background: var(--an-pill);
+  box-shadow: var(--an-control-shadow);
+  color: var(--an-muted);
+}
+
+button.autonatic-provider-button:hover {
+  background: var(--an-pill-hover);
+}
+
+.autonatic-shortcut-hint kbd {
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.autonatic-action-bar {
+  padding-block: 14px;
+  border-top: 1px dashed var(--an-rule);
+  background: var(--an-paper);
+}
+
+.autonatic-destination-heading {
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+
+.nemotron-generation-summary {
+  font-size: 13px;
+}
+
+:is(
+  .nemotron-button-row button,
+  .autonatic-arrange-actions button,
+  .autonatic-arrange-snapshot button,
+  .autonatic-connection-notice button,
+  .autonatic-conversation-import-button,
+  .autonatic-settings .setting-item-control button,
+  .autonatic-folder-picker > button,
+  .autonatic-included-folder button,
+  .nemotron-history-btn,
+  .nemotron-paste-clipboard-btn,
+  .nemotron-folder-up-btn,
+  .autonatic-ask-button,
+  .autonatic-ask-stop,
+  .autonatic-ask-answer button
+) {
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid var(--an-pill-border);
+  border-radius: 999px;
+  background: var(--an-pill);
+  box-shadow: var(--an-control-shadow);
+  color: var(--an-ink);
+}
+
+:is(
+  .nemotron-button-row button,
+  .autonatic-arrange-actions button,
+  .autonatic-arrange-snapshot button,
+  .autonatic-connection-notice button,
+  .autonatic-conversation-import-button,
+  .autonatic-settings .setting-item-control button,
+  .autonatic-folder-picker > button,
+  .autonatic-included-folder button,
+  .nemotron-history-btn,
+  .nemotron-paste-clipboard-btn,
+  .nemotron-folder-up-btn,
+  .autonatic-ask-button,
+  .autonatic-ask-stop,
+  .autonatic-ask-answer button
+):hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--an-ink) 40%, transparent);
+  background: var(--an-pill-hover);
+}
+
+:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) button.mod-cta {
+  border-color: #245bd4;
+  background: linear-gradient(180deg, var(--an-brand-top), var(--an-brand-bottom));
+  box-shadow: var(--an-primary-shadow);
+  color: var(--an-brand-ink) !important;
+  font-weight: 550;
+}
+
+:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) button.mod-cta:hover:not(:disabled) {
+  border-color: #1f55cc;
+  background: linear-gradient(180deg, #4f84fb, #235cdd);
+  color: #ffffff !important;
+}
+
+.autonatic-ask-form button.autonatic-ask-button {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-color: #245bd4;
+  background: linear-gradient(180deg, var(--an-brand-top), var(--an-brand-bottom));
+  box-shadow: var(--an-primary-shadow);
+  color: #ffffff !important;
+}
+
+.autonatic-connection-notice {
+  border-style: dashed;
+  border-radius: 14px;
+  background: transparent;
+}
+
+.autonatic-settings-heading {
+  padding-top: 8px;
+}
+
+.autonatic-settings-heading p {
+  margin-bottom: 20px;
+}
+
+.autonatic-settings-nav {
+  gap: 7px;
+  padding: 0 0 14px;
+  border-bottom: 1px dashed var(--an-rule);
+}
+
+.autonatic-settings-nav button {
+  padding: 7px 13px;
+  border-bottom-width: 1px;
+}
+
+.autonatic-settings-section h3 {
+  margin: 24px 0 10px;
+  font-size: 18px;
+  font-weight: 620;
+  letter-spacing: -0.025em;
+}
+
+.autonatic-settings .setting-item {
+  padding: 14px 0;
+  border-top: 1px dashed var(--an-rule);
+  gap: 24px;
+}
+
+.autonatic-settings .setting-item-name {
+  font-size: 14px;
+  font-weight: 520;
+}
+
+.autonatic-settings .setting-item-description {
+  margin-top: 3px;
+  line-height: 1.5;
+}
+
+.autonatic-provider-settings {
+  padding: 0 14px;
+  border: 1px dashed var(--an-rule);
+  border-radius: 14px;
+}
+
+.autonatic-provider-settings[open] > summary {
+  border-bottom: 1px dashed var(--an-rule);
+}
+
+.autonatic-arrange-move {
+  border-bottom-style: dashed;
+}
+
+@media (prefers-contrast: more) {
+  :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) {
+    --an-pill-border: color-mix(in srgb, var(--text-normal) 62%, transparent);
+  }
+}
+
 @container (max-width: 520px) {
   .autonatic-settings .setting-item {
     flex-wrap: wrap;
@@ -1857,7 +2235,7 @@ button.autonatic-ask-button:hover:not(:disabled) {
   .autonatic-output-column {
     padding: 16px 0 0;
     border-left: 0;
-    border-top: 1px solid var(--background-modifier-border);
+    border-top: 1px dashed var(--an-rule);
   }
   .autonatic-composer .nemotron-textarea {
     height: 240px;
