@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24" fill="none" stroke="#7c5cfc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24" fill="none" stroke="#7c5cfc" stroke-linecap="round" stroke-linejoin="round" role="img" aria-labelledby="title desc">
   <title id="title">autonatic</title>
   <desc id="desc">A folded note crossed by one continuous N-shaped route.</desc>
-  <path d="M7.25 3.25h6.5l3.5 3.5v14H7.25a2 2 0 0 1-2-2v-13.5a2 2 0 0 1 2-2Z"/>
-  <path d="M13.75 3.25v3.5h3.5"/>
-  <path d="M9.25 16V9.5l5.5 6.5V9.5"/>
+  <path d="M7.25 3.25h6.5l3.5 3.5v14H7.25a2 2 0 0 1-2-2v-13.5a2 2 0 0 1 2-2Z" stroke-width="1.95"/>
+  <path d="M13.75 3.25v3.5h3.5" stroke-width="1.95"/>
+  <path d="M9.25 16V9.5l5.5 6.5V9.5" stroke-width="2.45"/>
 </svg>

@@ -118,7 +118,7 @@
 .autonatic-brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 11px;
   min-width: 0;
 }
 .autonatic-brand-mark {
@@ -128,19 +128,23 @@
   color: var(--an-brand);
 }
 .autonatic-brand-mark svg {
-  width: 21px;
-  height: 21px;
-  stroke-width: 1.7;
+  width: 25px;
+  height: 25px;
 }
 .autonatic-wordmark {
+  display: flex;
+  align-items: center;
   margin: 0;
   color: var(--an-ink);
-  font-family: inherit;
-  font-size: 17px;
-  font-weight: 720;
-  font-variation-settings: "wght" 720;
-  letter-spacing: -0.045em;
   line-height: 1;
+}
+svg.autonatic-wordmark-art {
+  display: block;
+  width: auto;
+  height: 23px;
+  overflow: visible;
+  fill: currentColor;
+  shape-rendering: geometricPrecision;
 }
 .autonatic-workspace-nav {
   display: flex;
@@ -193,7 +197,8 @@ button.autonatic-quiet-button:hover {
   color: var(--text-normal);
 }
 .autonatic-version {
-  margin-left: 1px;
+  align-self: flex-end;
+  margin: 0 0 1px -3px;
   color: var(--an-muted);
   font-size: var(--an-type-xs);
   font-variant-numeric: tabular-nums;
@@ -1668,14 +1673,20 @@ button.autonatic-ask-button:hover:not(:disabled) {
 }
 .autonatic-settings-heading h2 {
   margin: 0;
-  font-size: 17px;
+}
+.autonatic-settings-heading .autonatic-brand {
+  min-height: 40px;
+  gap: 13px;
 }
 .autonatic-settings-heading .autonatic-brand-mark svg {
-  width: 24px;
-  height: 24px;
+  width: 29px;
+  height: 29px;
+}
+.autonatic-settings-heading svg.autonatic-wordmark-art {
+  height: 26px;
 }
 .autonatic-settings-heading p {
-  margin: 10px 0 24px 33px;
+  margin: 9px 0 24px 42px;
   max-width: 62ch;
   font-size: var(--an-type-ui);
   color: var(--an-muted);
