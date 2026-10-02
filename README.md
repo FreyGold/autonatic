@@ -1,4 +1,6 @@
-# autonatic - Obsidian Plugin
+<img src="assets/autonatic-mark.svg" width="56" height="56" alt="autonatic mark">
+
+# autonatic — Obsidian plugin
 
 Transform raw, dense, or unorganized text into concise, beautifully structured notes strictly formatted **"The Obsidian Way"** using AI.
 
@@ -21,7 +23,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
   - **Append to Current Note**: Adds the formatted section directly to the end of your active note.
   - **In-Place Replace**: Transform selected text right inside the active editor.
 - **Bare source-only style**: Cleans pasted browser chat history into Markdown without expanding, inferring, summarizing, or adding new material.
-- **Gemini conversation import**: Paste a public **Share conversation** link into Note Crafter to load the text of every visible user and Gemini turn into the source field. Review it before generating one or several notes. Images and other attachments remain linked to the original shared page.
+- **Shared conversation import**: Paste a Gemini, ChatGPT, or Claude share link into Note Crafter to load every visible turn into the source field. Review it before generating one or several notes. Images and other attachments remain linked to the original shared page.
 - **Automatic placement across long sources**: Match separate conversation topics against the local vault index so repeated early topics do not hide later ones. Before appending, compare the proposed addition with the current target note and skip material already covered.
 - **Folder choices in the generation request**: Multi-note generation decides folders alongside the notes. Placement validates paths locally without additional folder-planning model calls. Failed saves can retry the completed draft.
 - **Topic-based note boundaries**: A long existing note stays together when new material belongs there. Generation no longer creates numbered Part or Continued notes when a word count is crossed.
@@ -44,12 +46,12 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 
 ## How to Use
 
-1. Click the **wand ribbon icon** or use `Ctrl/Cmd + P` and search for **"autonatic"**.
+1. Click the **autonatic note icon** in the ribbon or use `Ctrl/Cmd + P` and search for **"autonatic"**.
 2. Paste any text into the modal (or select text in an editor first to auto-populate).
 3. Use **Note options** to choose **One note**, **Separate notes**, or **Add to active note**. Choose a writing style, then use **Save to** for automatic placement or a specific folder. On narrow windows, expand **Note options** or click **Change output** in the footer.
 4. Review the destination summary and click the create button, or press **Ctrl/Cmd+Enter**.
 
-For a Gemini chat, use **Share conversation** in Gemini, expand **Import conversation**, paste the resulting `g.co/gemini/share/…` link into **Gemini conversation link**, and click **Import**. The plugin uses an installed Chrome, Chromium, Edge, or Brave browser to load the public snapshot, then fills **Source text** so you can review or edit it before generating notes. The shared page is a snapshot; later changes to the chat require a new share link. If link import fails, open the shared page in your browser and copy its conversation text into **Source text**. Do not share a chat publicly if it contains material you want to keep private.
+For a shared AI chat, choose **Share** in Gemini, ChatGPT, or Claude, expand **Import conversation**, paste the conversation link, and click **Import**. The plugin uses an installed Chrome, Chromium, Edge, or Brave browser to load the shared snapshot, then fills **Source text** so you can review or edit it before generating notes. Workspace-restricted links may require sign-in and cannot be imported automatically. If link import fails, open the shared page in your browser and copy its conversation text into **Source text**. Do not create a public link for a chat that contains sensitive material.
 
 To edit part of an existing note, highlight the text and open the editor context menu. Use an **autonatic** command. The plugin replaces only the highlighted text.
 

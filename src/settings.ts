@@ -6,6 +6,7 @@ import { DESTINATION_MODE_OPTIONS, type DestinationMode } from "./destination-mo
 import { FolderNavigator } from "./folder-nav";
 import { defaultProviderConfigs, EMBEDDING_PROVIDERS, fetchProviderModels, PROVIDERS, type AIProvider } from "./providers";
 import type { SettingsSection } from "./workspace-ui";
+import { renderAutonaticBrand } from "./brand";
 
 export interface NemotronPluginSettings {
   generationProvider: AIProvider;
@@ -96,7 +97,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     root.empty();
     root.addClass("autonatic-settings");
     const heading = root.createDiv({ cls: "autonatic-settings-heading" });
-    heading.createEl("h2", { text: "autonatic" });
+    renderAutonaticBrand(heading, this.plugin.manifest.version);
     heading.createEl("p", { text: "Providers, note preferences, and vault permissions." });
     const nav = root.createDiv({ cls: "autonatic-settings-nav", attr: { role: "tablist", "aria-label": "Plugin settings" } });
     const sections = {} as Record<SettingsSection, HTMLElement>;

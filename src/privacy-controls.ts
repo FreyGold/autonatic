@@ -218,11 +218,11 @@ export function sourceRetrievalQueries(source: string, maxQueries = 64): string[
   };
 
   for (const paragraph of paragraphs) {
-    // Gemini transcripts mark each turn with a numbered You heading. Keep its
-    // question and answer together, while giving the next turn its own query.
+    // Imported chat transcripts mark each turn with a numbered You heading.
+    // Keep its question and answer together, while giving the next turn its own query.
     if (/^##\s+\d+\.\s+You\s*$/i.test(paragraph)
       || /^(?:user|you|human):/i.test(paragraph)
-      || (/^#{1,3}\s+\S/.test(paragraph) && !/^##\s+\d+\.\s+Gemini\s*$/i.test(paragraph))) flush();
+      || (/^#{1,3}\s+\S/.test(paragraph) && !/^##\s+\d+\.\s+(?:Gemini|ChatGPT|Claude)\s*$/i.test(paragraph))) flush();
     if (paragraph.length > 1500) {
       flush();
       for (let start = 0; start < paragraph.length; start += 1400) {

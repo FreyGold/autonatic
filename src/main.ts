@@ -17,6 +17,7 @@ import { AskNotesModal } from "./ask-notes-modal";
 import { VaultArrangementManager } from "./arrangement-manager";
 import { VaultArrangementModal } from "./arrangement-modal";
 import { WorkspaceNavigation } from "./workspace-ui";
+import { AUTONATIC_MARK_ICON, registerAutonaticIcons } from "./brand";
 
 export default class NemotronPlugin extends Plugin {
   declare settings: NemotronPluginSettings;
@@ -30,6 +31,7 @@ export default class NemotronPlugin extends Plugin {
   private selectionEditInProgress = false;
 
   async onload() {
+    registerAutonaticIcons();
     this.workspaceNavigation.setFactory("create", () => new NemotronModal(this.app, this));
     this.workspaceNavigation.setFactory("search", () => new AskNotesModal(this.app, this));
     this.workspaceNavigation.setFactory("organize", () => new VaultArrangementModal(this.app, this));
@@ -51,7 +53,7 @@ export default class NemotronPlugin extends Plugin {
       () => this.saveHistory()
     );
 
-    this.addRibbonIcon("wand", "autonatic", () => {
+    this.addRibbonIcon(AUTONATIC_MARK_ICON, "Open autonatic", () => {
       new NemotronModal(this.app, this).open();
     });
 

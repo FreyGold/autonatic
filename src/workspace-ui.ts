@@ -1,5 +1,6 @@
 import { App, setIcon } from "obsidian";
 import type { Modal } from "obsidian";
+import { renderAutonaticBrand } from "./brand";
 
 export type WorkspacePage = "create" | "search" | "organize";
 export type SettingsSection = "providers" | "creation" | "search" | "privacy" | "advanced";
@@ -96,17 +97,13 @@ export function workspaceHeader(
   version?: string,
 ): HTMLElement {
   const header = root.createEl("header", { cls: "autonatic-workspace-header" });
-  const identity = header.createDiv({ cls: "autonatic-workspace-identity" });
-  const mark = identity.createSpan({ cls: "autonatic-workspace-mark", attr: { "aria-hidden": "true" } });
-  setIcon(mark, "notebook-pen");
-  identity.createEl("h2", { text: "autonatic", cls: "nemotron-modal-title" });
-  if (version) identity.createSpan({ text: `v${version}`, cls: "autonatic-version" });
+  renderAutonaticBrand(header, version);
   iconButton(header, "Settings", "settings-2", openSettings);
   const nav = header.createEl("nav", { cls: "autonatic-workspace-nav", attr: { "aria-label": "Note tools" } });
   const pages: Array<[WorkspacePage, string, string]> = [
-    ["create", "Create", "file-plus-2"],
-    ["search", "Search", "search"],
-    ["organize", "Organize", "folder-tree"],
+    ["create", "Create", "square-pen"],
+    ["search", "Search", "scan-search"],
+    ["organize", "Organize", "folders"],
   ];
   for (const [page, label, icon] of pages) {
     const button = nav.createEl("button", {

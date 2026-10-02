@@ -34,7 +34,12 @@ const TEST_TEXT_MODEL = "test-chat-model";
 import { organizeAtomicPlan } from "../src/atomic-organization-planner";
 import { normalizeGeneratedNoteMarkdown } from "../src/generated-markdown";
 import { AskNotesSearch, chunkMarkdown, isAskNoteEligible, rankSearchChunks } from "../src/ask-notes-search";
-import { formatGeminiConversation, parseGeminiShareUrl } from "../src/gemini-import";
+import {
+  formatGeminiConversation,
+  formatSharedConversation,
+  parseConversationShareUrl,
+  parseGeminiShareUrl,
+} from "../src/conversation-import";
 
 test("Gemini import accepts public conversation links and rejects other URLs", () => {
   assert.equal(parseGeminiShareUrl("https://g.co/gemini/share/435756f6ded5"),
@@ -61,6 +66,34 @@ test("Gemini import preserves turn order, source URL, and attachment references"
   assert.ok(transcript.indexOf("Explain joins") < transcript.indexOf("An inner join"));
   assert.ok(transcript.indexOf("An inner join") < transcript.indexOf("And a diagram?"));
   assert.match(transcript, /\[1 attachment in the shared conversation/);
+});
+
+test("conversation import recognizes ChatGPT and Claude share links without accepting lookalike hosts", () => {
+  assert.deepEqual(parseConversationShareUrl("https://chatgpt.com/share/696d5d04-5a2c-8009-be1e-ad1e26f7fe5d?utm_source=copy"), {
+    provider: "chatgpt",
+    url: "https://chatgpt.com/share/696d5d04-5a2c-8009-be1e-ad1e26f7fe5d",
+  });
+  assert.deepEqual(parseConversationShareUrl("https://claude.ai/share/B9D284AD-9E06-46DF-BB91-A9424E081326"), {
+    provider: "claude",
+    url: "https://claude.ai/share/b9d284ad-9e06-46df-bb91-a9424e081326",
+  });
+  assert.throws(() => parseConversationShareUrl("https://chatgpt.com.evil.test/share/696d5d04-5a2c-8009-be1e-ad1e26f7fe5d"), /public/);
+  assert.throws(() => parseConversationShareUrl("https://claude.ai/chat/696d5d04-5a2c-8009-be1e-ad1e26f7fe5d"), /not a Claude/);
+});
+
+test("shared conversation formatting uses the provider name and preserves message order", () => {
+  const transcript = formatSharedConversation({
+    provider: "chatgpt",
+    title: "Research thread",
+    url: "https://chatgpt.com/share/696d5d04-5a2c-8009-be1e-ad1e26f7fe5d",
+    messages: [
+      { role: "user", text: "Compare the options", attachments: 1 },
+      { role: "assistant", text: "Here is the comparison.", attachments: 0 },
+    ],
+  });
+  assert.match(transcript, /## 1\. You\n\nCompare the options/);
+  assert.match(transcript, /## 1\. ChatGPT\n\nHere is the comparison\./);
+  assert.ok(transcript.indexOf("Compare the options") < transcript.indexOf("Here is the comparison"));
 });
 
 test("Ask Notes requires consent before opening storage or contacting NVIDIA", async () => {

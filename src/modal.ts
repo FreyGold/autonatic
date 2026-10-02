@@ -37,7 +37,7 @@ import {
 } from "./excalidraw-generator";
 import type { SmartNoteChange } from "./useful-diagram-planner";
 import type { DiagramOptions, DiagramType, DiagramTheme } from "./diagram-engine";
-import { formatGeminiConversation, importGeminiConversation } from "./gemini-import";
+import { formatSharedConversation, importSharedConversation } from "./conversation-import";
 import { WorkflowProgress } from "./workflow-progress";
 import { reviewAppendDraft } from "./append-review";
 import { workspaceHeader, openPluginSettings, setWorkspaceBusy, shortcutHint, type WorkspacePage } from "./workspace-ui";
@@ -279,9 +279,9 @@ export class NemotronModal extends Modal {
       text: "Output", cls: "nemotron-label", attr: { id: "autonatic-output-label", for: "autonatic-output" },
     });
     const creationSelect = new CustomSelect(creationSection, [
-      { value: "single", label: "One note", description: "Keep the source together in one note." },
-      { value: "multiple", label: "Separate notes", description: "Split the source into focused notes by topic." },
-      { value: "append", label: "Add to active note", description: hasActiveNote ? `Append a section to ${activeView?.file?.basename}.` : "Open a note in Obsidian first.", disabled: !hasActiveNote },
+      { value: "single", label: "One note", icon: "file-text", description: "Keep the source together in one note." },
+      { value: "multiple", label: "Separate notes", icon: "files", description: "Split the source into focused notes by topic." },
+      { value: "append", label: "Add to active note", icon: "file-input", description: hasActiveNote ? `Append a section to ${activeView?.file?.basename}.` : "Open a note in Obsidian first.", disabled: !hasActiveNote },
     ], creationIntent, (value) => {
       creationIntent = value as CreationIntent;
       void updateModeUI(choicesToMode(creationIntent, placementPreference));
@@ -293,8 +293,8 @@ export class NemotronModal extends Modal {
       text: "Save to", cls: "nemotron-label", attr: { id: "autonatic-placement-label", for: "autonatic-placement" },
     });
     const placementSelect = new CustomSelect(placementSection, [
-      { value: "automatic", label: "Automatic placement", description: "Match an existing note or create one in a suitable folder." },
-      { value: "folder", label: "Choose a folder", description: "Create new notes in one folder. Existing notes stay unchanged." },
+      { value: "automatic", label: "Automatic placement", icon: "route", description: "Match an existing note or create one in a suitable folder." },
+      { value: "folder", label: "Choose a folder", icon: "folder", description: "Create new notes in one folder. Existing notes stay unchanged." },
     ], placementPreference, (value) => {
       placementPreference = value as PlacementPreference;
       void updateModeUI(choicesToMode(creationIntent, placementPreference));
@@ -434,16 +434,19 @@ export class NemotronModal extends Modal {
       {
         value: "concise",
         label: "Concise",
+        icon: "align-left",
         description: "Key ideas, short sections, and clear takeaways.",
       },
       {
         value: "detailed",
         label: "Detailed",
+        icon: "list-tree",
         description: "In-depth explanations, full architecture diagrams, trade-offs, and complete code walkthroughs.",
       },
       {
         value: "bare",
         label: "Source only",
+        icon: "text",
         description: "Cleans pasted chat history without expanding, inferring, summarizing, or adding content.",
       },
     ];
@@ -709,14 +712,14 @@ export class NemotronModal extends Modal {
 
     // 6. Public conversation import
     const importRow = paneEl.createDiv({ cls: "nemotron-form-row autonatic-conversation-import" });
-    const importLabel = importRow.createEl("label", { text: "Gemini conversation link", cls: "nemotron-label" });
+    const importLabel = importRow.createEl("label", { text: "Shared conversation link", cls: "nemotron-label" });
     const importControls = importRow.createDiv({ cls: "autonatic-conversation-import-controls" });
     const importInput = importControls.createEl("input", {
       type: "url",
-      placeholder: "https://g.co/gemini/share/…",
+      placeholder: "Paste a Gemini, ChatGPT, or Claude share link",
       cls: "nemotron-input",
     });
-    importInput.id = "autonatic-gemini-share-link";
+    importInput.id = "autonatic-conversation-share-link";
     importLabel.htmlFor = importInput.id;
     const importButton = importControls.createEl("button", { text: "Import", cls: "autonatic-conversation-import-button" });
     importButton.type = "button";
@@ -726,7 +729,7 @@ export class NemotronModal extends Modal {
     const importProgressHost = importRow.createDiv();
     let importProgress: WorkflowProgress | null = null;
     importRow.createDiv({
-      text: "Use Gemini’s Share conversation link. Anyone with that link can view the chat. Import fills the source text for review before creating notes.",
+      text: "Use a shared conversation link from Gemini, ChatGPT, or Claude. Access follows the provider’s sharing settings. Import fills the source text for review before creating notes.",
       cls: "autonatic-conversation-import-help",
     });
 
@@ -766,25 +769,26 @@ export class NemotronModal extends Modal {
       importProgress = new WorkflowProgress(importProgressHost, ["Open shared page", "Read conversation", "Add transcript"]);
       importProgress.setStage("Open shared page");
       try {
-        const conversation = await importGeminiConversation(importInput.value, this.importAbortController.signal, (progress) => {
+        const conversation = await importSharedConversation(importInput.value, this.importAbortController.signal, (progress) => {
           if (progress.stage === "reading") {
             importProgress?.setStage("Read conversation", progress.completed, progress.total);
           } else if (progress.stage === "finalizing") {
             importProgress?.setStage("Add transcript");
           }
         });
-        inputTextArea.value = formatGeminiConversation(conversation);
+        inputTextArea.value = formatSharedConversation(conversation);
         inputTextArea.rows = 12;
         inputTextArea.dispatchEvent(new Event("input", { bubbles: true }));
         inputTextArea.scrollIntoView({ block: "nearest" });
-        const attachmentCount = conversation.turns.reduce((sum, turn) => sum + turn.attachments, 0);
+        const attachmentCount = conversation.messages.reduce((sum, message) => sum + message.attachments, 0);
+        const exchangeCount = conversation.messages.filter((message) => message.role === "user").length;
         importProgress.finish();
-        importStatus.setText(`Imported ${conversation.turns.length} exchanges. Review the source text before creating notes.${
+        importStatus.setText(`Imported ${exchangeCount} exchange${exchangeCount === 1 ? "" : "s"}. Review the source text before creating notes.${
           attachmentCount ? ` ${attachmentCount} image or attachment reference${attachmentCount === 1 ? "" : "s"} need the source link to view.` : ""}`);
       } catch (error) {
         if (!(error instanceof Error && error.name === "AbortError")) {
           importProgress?.fail();
-          importStatus.setText(error instanceof Error ? error.message : "Could not import the Gemini conversation.");
+          importStatus.setText(error instanceof Error ? error.message : "Could not import the shared conversation.");
         }
       } finally {
         this.importAbortController = null;

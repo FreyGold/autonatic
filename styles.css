@@ -1,10 +1,24 @@
-/* autonatic — quiet, theme-native tools for a personal vault. */
+/* autonatic — source material routed into durable notes. */
 :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) {
+  /* Fixed values are export fallbacks; the active Obsidian theme remains authoritative. */
+  --an-brand: var(--interactive-accent, #7c5cfc);
+  --an-brand-ink: var(--text-on-accent, #ffffff);
+  --an-ink: var(--text-normal, #26242b);
+  --an-muted: var(--text-muted, #77717f);
+  --an-paper: var(--background-primary, #faf9f7);
+  --an-paper-raised: var(--background-secondary, #f2f0f5);
+  --an-rule: var(--background-modifier-border, #dedbe3);
   --an-space: 24px;
   --an-radius: 8px;
-  font-family: var(--font-interface);
+  --an-type-xs: 11px;
+  --an-type-sm: 12px;
+  --an-type-ui: 13px;
+  --an-type-body: 14px;
+  --an-type-title: 23px;
+  font-family: var(--font-interface), ui-sans-serif, system-ui, sans-serif;
   font-size: var(--font-ui-medium, 14px);
-  color: var(--text-normal);
+  font-synthesis: none;
+  color: var(--an-ink);
 }
 
 .modal:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell) {
@@ -13,9 +27,9 @@
   container: autonatic-workspace / inline-size;
   max-height: calc(100dvh - 48px);
   padding: 0;
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--an-rule);
   border-radius: 12px;
-  background: var(--background-primary);
+  background: var(--an-paper);
   overflow: hidden;
 }
 
@@ -96,26 +110,37 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 24px;
-  min-height: 72px;
-  padding: 16px 28px 16px 0;
-  border-bottom: 1px solid var(--background-modifier-border);
+  gap: 20px;
+  min-height: 68px;
+  padding: 14px 28px 14px 0;
+  border-bottom: 1px solid var(--an-rule);
 }
-.autonatic-workspace-identity {
+.autonatic-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+  min-width: 0;
 }
-.autonatic-workspace-mark {
+.autonatic-brand-mark {
   display: flex;
-  color: var(--text-normal);
+  align-items: center;
+  justify-content: center;
+  color: var(--an-brand);
 }
-.autonatic-workspace-header .nemotron-modal-title {
+.autonatic-brand-mark svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.7;
+}
+.autonatic-wordmark {
   margin: 0;
-  color: var(--text-normal);
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.4px;
+  color: var(--an-ink);
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 720;
+  font-variation-settings: "wght" 720;
+  letter-spacing: -0.045em;
+  line-height: 1;
 }
 .autonatic-workspace-nav {
   display: flex;
@@ -127,23 +152,26 @@ button.autonatic-workspace-nav-button {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 34px;
-  padding: 0 12px;
+  height: 38px;
+  padding: 0 10px;
   border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
+  color: var(--an-muted);
+  font-size: var(--an-type-ui);
 }
 .autonatic-workspace-nav-button > span:first-child {
   display: flex;
 }
-button.autonatic-workspace-nav-button:hover,
-button.autonatic-workspace-nav-button.is-active {
-  background: var(--background-secondary);
-  color: var(--text-normal);
+button.autonatic-workspace-nav-button:hover {
+  background: transparent;
+  color: var(--an-ink);
 }
 button.autonatic-workspace-nav-button.is-active {
-  font-weight: 600;
+  border-bottom-color: var(--an-brand);
+  color: var(--an-ink);
+  font-weight: 620;
 }
 button.autonatic-quiet-button {
   order: 3;
@@ -165,8 +193,11 @@ button.autonatic-quiet-button:hover {
   color: var(--text-normal);
 }
 .autonatic-version {
-  font-size: 12px;
-  color: var(--text-muted);
+  margin-left: 1px;
+  color: var(--an-muted);
+  font-size: var(--an-type-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .autonatic-page-heading {
@@ -178,17 +209,19 @@ button.autonatic-quiet-button:hover {
 }
 .autonatic-page-heading h3 {
   margin: 0;
-  color: var(--text-normal);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.5px;
-  line-height: 1.4;
+  color: var(--an-ink);
+  font-size: var(--an-type-title);
+  font-weight: 660;
+  font-variation-settings: "wght" 660;
+  letter-spacing: -0.035em;
+  line-height: 1.25;
 }
 .autonatic-page-heading p {
   margin: 4px 0 0;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.6;
+  max-width: 62ch;
+  color: var(--an-muted);
+  font-size: var(--an-type-ui);
+  line-height: 1.55;
 }
 .nemotron-modal-nav-tabs {
   display: flex;
@@ -646,9 +679,18 @@ button.autonatic-edit-output {
   min-width: 0;
 }
 
-.nemotron-select-icon {
-  font-size: 1.1em;
-  line-height: 1;
+.nemotron-select-icon,
+.nemotron-option-icon {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--an-muted);
+}
+
+.nemotron-select-icon svg,
+.nemotron-option-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.7;
 }
 
 .nemotron-select-label {
@@ -664,11 +706,16 @@ button.autonatic-edit-output {
 }
 
 .nemotron-select-chevron {
+  display: flex;
   flex: 0 0 auto;
-  font-size: 1em;
   color: var(--text-muted);
   transition: color 150ms ease;
   margin-left: 8px;
+}
+
+.nemotron-select-chevron svg {
+  width: 15px;
+  height: 15px;
 }
 
 .nemotron-custom-select-trigger.is-open .nemotron-select-chevron {
@@ -751,10 +798,6 @@ button.autonatic-edit-output {
   gap: 8px;
 }
 
-.nemotron-option-icon {
-  font-size: 1.05em;
-}
-
 .nemotron-option-title {
   font-weight: 600;
   color: var(--text-normal);
@@ -763,10 +806,15 @@ button.autonatic-edit-output {
 }
 
 .nemotron-option-check {
+  display: flex;
   color: var(--text-accent);
-  font-weight: bold;
-  font-size: 0.95em;
   opacity: 0;
+}
+
+.nemotron-option-check svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
 }
 
 .nemotron-select-option.is-selected .nemotron-option-check {
@@ -1620,14 +1668,17 @@ button.autonatic-ask-button:hover:not(:disabled) {
 }
 .autonatic-settings-heading h2 {
   margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.5px;
+  font-size: 17px;
+}
+.autonatic-settings-heading .autonatic-brand-mark svg {
+  width: 24px;
+  height: 24px;
 }
 .autonatic-settings-heading p {
-  margin: 8px 0 24px;
-  font-size: 13px;
-  color: var(--text-muted);
+  margin: 10px 0 24px 33px;
+  max-width: 62ch;
+  font-size: var(--an-type-ui);
+  color: var(--an-muted);
 }
 .autonatic-settings-nav {
   display: flex;
@@ -1647,8 +1698,8 @@ button.autonatic-ask-button:hover:not(:disabled) {
   font-size: 13px;
 }
 .autonatic-settings-nav button[aria-selected="true"] {
-  color: var(--text-normal);
-  border-bottom-color: var(--text-normal);
+  color: var(--an-ink);
+  border-bottom-color: var(--an-brand);
   font-weight: 600;
 }
 .autonatic-settings-nav button:hover {
@@ -1829,7 +1880,7 @@ button.autonatic-ask-button:hover:not(:disabled) {
     padding: 16px 0 0;
     gap: 12px;
   }
-  .autonatic-workspace-identity {
+  .autonatic-brand {
     flex: 1;
   }
   button.autonatic-quiet-button {

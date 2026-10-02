@@ -55,6 +55,7 @@ export class MarkdownRenderer {
 }
 
 export function setIcon() {}
+export function addIcon() {}
 
 export class MarkdownView {}
 export class Menu {}

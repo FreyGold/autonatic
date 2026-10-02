@@ -1,3 +1,5 @@
+import { setIcon } from "obsidian";
+
 export interface SelectOption {
   value: string;
   label: string;
@@ -58,7 +60,8 @@ export class CustomSelect {
 
     const triggerContent = this.triggerEl.createSpan({ cls: "nemotron-select-left" });
     this.valueEl = triggerContent.createSpan({ cls: "nemotron-select-label" });
-    this.triggerEl.createSpan({ cls: "nemotron-select-chevron", text: "⌄", attr: { "aria-hidden": "true" } });
+    const chevron = this.triggerEl.createSpan({ cls: "nemotron-select-chevron", attr: { "aria-hidden": "true" } });
+    setIcon(chevron, "chevron-down");
 
     this.menuEl = this.containerEl.createDiv({
       cls: "nemotron-custom-select-menu",
@@ -108,9 +111,13 @@ export class CustomSelect {
 
     const header = optionEl.createDiv({ cls: "nemotron-option-header" });
     const titleGroup = header.createDiv({ cls: "nemotron-option-title-group" });
-    if (option.icon) titleGroup.createSpan({ cls: "nemotron-option-icon", text: option.icon, attr: { "aria-hidden": "true" } });
+    if (option.icon) {
+      const icon = titleGroup.createSpan({ cls: "nemotron-option-icon", attr: { "aria-hidden": "true" } });
+      setIcon(icon, option.icon);
+    }
     titleGroup.createSpan({ cls: "nemotron-option-title", text: option.label });
-    header.createSpan({ cls: "nemotron-option-check", text: "✓", attr: { "aria-hidden": "true" } });
+    const check = header.createSpan({ cls: "nemotron-option-check", attr: { "aria-hidden": "true" } });
+    setIcon(check, "check");
     if (option.description) optionEl.createDiv({ cls: "nemotron-option-desc", text: option.description });
 
     if (!option.disabled) {
@@ -236,7 +243,10 @@ export class CustomSelect {
     const selected = this.options[this.selectedIndex];
     if (!selected) return;
     this.valueEl.empty();
-    if (selected.icon) this.valueEl.createSpan({ cls: "nemotron-select-icon", text: selected.icon, attr: { "aria-hidden": "true" } });
+    if (selected.icon) {
+      const icon = this.valueEl.createSpan({ cls: "nemotron-select-icon", attr: { "aria-hidden": "true" } });
+      setIcon(icon, selected.icon);
+    }
     this.valueEl.createSpan({ text: selected.label });
     this.optionEls.forEach((element, index) => {
       const isSelected = index === this.selectedIndex;
