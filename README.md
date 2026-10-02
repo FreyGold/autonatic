@@ -1,6 +1,6 @@
-<img src="assets/autonatic-mark.svg" width="56" height="56" alt="autonatic mark">
+<img src="assets/autonatic-mark.svg" width="56" height="56" alt="Autonatic mark">
 
-# autonatic — Obsidian plugin
+# Autonatic — Obsidian plugin
 
 Transform raw, dense, or unorganized text into concise, beautifully structured notes strictly formatted **"The Obsidian Way"** using AI.
 
@@ -46,16 +46,16 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 
 ## How to Use
 
-1. Click the **autonatic note icon** in the ribbon or use `Ctrl/Cmd + P` and search for **"autonatic"**.
+1. Click the **Autonatic icon** in the ribbon or use `Ctrl/Cmd + P` and search for **"Autonatic"**.
 2. Paste any text into the modal (or select text in an editor first to auto-populate).
 3. Use **Note options** to choose **One note**, **Separate notes**, or **Add to active note**. Choose a writing style, then use **Save to** for automatic placement or a specific folder. On narrow windows, expand **Note options** or click **Change output** in the footer.
 4. Review the destination summary and click the create button, or press **Ctrl/Cmd+Enter**.
 
 For a shared AI chat, choose **Share** in Gemini, ChatGPT, or Claude, expand **Import conversation**, paste the conversation link, and click **Import**. The plugin uses an installed Chrome, Chromium, Edge, or Brave browser to load the shared snapshot, then fills **Source text** so you can review or edit it before generating notes. Workspace-restricted links may require sign-in and cannot be imported automatically. If link import fails, open the shared page in your browser and copy its conversation text into **Source text**. Do not create a public link for a chat that contains sensitive material.
 
-To edit part of an existing note, highlight the text and open the editor context menu. Use an **autonatic** command. The plugin replaces only the highlighted text.
+To edit part of an existing note, highlight the text and open the editor context menu. Use an **Autonatic** command. The plugin replaces only the highlighted text.
 
-To search your notes, choose an embedding provider in **Settings > autonatic > AI providers**, open **Ask Notes**, include the folders you want searchable, and enable Ask Notes. Indexing sends selected Markdown text to that provider for embeddings. Then use **Ctrl+Shift+H** (or **Cmd+Shift+H** on macOS), the **Ask Notes** command, or the button in the Note Crafter. You can change the shortcut in Obsidian Hotkeys. Modified notes update in the background; settings also provide pause, rebuild, and clear controls.
+To search your notes, choose an embedding provider in **Settings > Autonatic > AI providers**, open **Ask Notes**, include the folders you want searchable, and enable Ask Notes. Indexing sends selected Markdown text to that provider for embeddings. Then use **Ctrl+Shift+H** (or **Cmd+Shift+H** on macOS), the **Ask Notes** command, or the button in the Note Crafter. You can change the shortcut in Obsidian Hotkeys. Modified notes update in the background; settings also provide pause, rebuild, and clear controls.
 
 To rearrange existing Markdown notes, choose **Organize notes** in Note Crafter or run the **Organize Notes and Manage Arrangement Snapshots** command. Describe the primary grouping and any priorities, optionally limit the scope to one folder, then click **Plan arrangement**. The preview lists each proposed destination and flags path conflicts. Click **Apply** only after reviewing the moves. **Saved arrangements** lets you review and restore the original paths later. A snapshot records paths, not note contents: edits and newly created notes remain, and a deleted note cannot be recovered from it. Restore stops if a destination is occupied or a tracked note is missing. The snapshot file lives in your vault's Obsidian plugin configuration directory.
 
@@ -69,7 +69,7 @@ Organize notes sends eligible note paths, titles, tags, and short summaries to t
 
 Run `npm run check` before a release. A tag starts the release workflow. The release contains `main.js`, `manifest.json`, `styles.css`, and `versions.json`.
 
-Go to **Obsidian Settings > autonatic** to configure:
+Go to **Obsidian Settings > Autonatic** to configure:
 - **AI providers**: Select generation and embedding providers, add each provider's API key, then fetch and select models available to that key.
 - **Enable Thinking**: Toggle deep reasoning tokens.
 - **Obsidian Skill System Prompt**: Customize the formatting instructions.

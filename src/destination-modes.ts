@@ -5,13 +5,13 @@ export type DestinationMode = "smart" | "multi_note" | "multi_note_folder" | "ne
 export const DESTINATION_MODE_OPTIONS: ReadonlyArray<SelectOption & { value: DestinationMode }> = [
   {
     value: "smart",
-    label: "One note — autonatic chooses location",
-    description: "Create one note and let autonatic find a matching note or suitable location.",
+    label: "One note — Autonatic chooses location",
+    description: "Create one note and let Autonatic find a matching note or suitable location.",
   },
   {
     value: "multi_note",
-    label: "Several focused notes — autonatic chooses locations",
-    description: "Split the source into focused notes and let autonatic organize or update them.",
+    label: "Several focused notes — Autonatic chooses locations",
+    description: "Split the source into focused notes and let Autonatic organize or update them.",
   },
   {
     value: "multi_note_folder",

@@ -124,7 +124,7 @@
 .autonatic-brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   min-width: 0;
 }
 .autonatic-brand-mark {
@@ -134,8 +134,8 @@
   color: var(--an-brand);
 }
 .autonatic-brand-mark svg {
-  width: 25px;
-  height: 25px;
+  width: 28px;
+  height: 28px;
 }
 .autonatic-wordmark {
   display: flex;
@@ -147,7 +147,7 @@
 svg.autonatic-wordmark-art {
   display: block;
   width: auto;
-  height: 23px;
+  height: 22px;
   overflow: visible;
   fill: currentColor;
   shape-rendering: geometricPrecision;
@@ -1682,14 +1682,14 @@ button.autonatic-ask-button:hover:not(:disabled) {
 }
 .autonatic-settings-heading .autonatic-brand {
   min-height: 40px;
-  gap: 13px;
+  gap: 11px;
 }
 .autonatic-settings-heading .autonatic-brand-mark svg {
-  width: 29px;
-  height: 29px;
+  width: 30px;
+  height: 30px;
 }
 .autonatic-settings-heading svg.autonatic-wordmark-art {
-  height: 26px;
+  height: 24px;
 }
 .autonatic-settings-heading p {
   margin: 9px 0 24px 42px;
@@ -1860,15 +1860,19 @@ button.autonatic-ask-button:hover:not(:disabled) {
 }
 
 .autonatic-workspace-header {
-  min-height: 72px;
+  min-height: 74px;
   border-bottom: 1px dashed var(--an-rule);
 }
 
 .autonatic-workspace-nav {
-  gap: 7px;
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--an-pill-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--an-pill) 86%, var(--an-muted) 14%);
+  box-shadow: var(--an-control-shadow);
 }
 
-button.autonatic-workspace-nav-button,
 button.nemotron-tab-btn,
 .autonatic-settings-nav button {
   border: 1px solid var(--an-pill-border);
@@ -1879,11 +1883,15 @@ button.nemotron-tab-btn,
 }
 
 button.autonatic-workspace-nav-button {
-  height: 34px;
-  padding: 0 13px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--an-muted);
 }
 
-button.autonatic-workspace-nav-button:hover,
 button.nemotron-tab-btn:hover,
 .autonatic-settings-nav button:hover {
   border-color: color-mix(in srgb, var(--an-ink) 40%, transparent);
@@ -1891,11 +1899,24 @@ button.nemotron-tab-btn:hover,
   color: var(--an-ink);
 }
 
-button.autonatic-workspace-nav-button.is-active,
 button.nemotron-tab-btn.is-active,
 .autonatic-settings-nav button[aria-selected="true"] {
   border-color: color-mix(in srgb, var(--an-ink) 58%, transparent);
   background: var(--an-pill);
+  color: var(--an-ink);
+  font-weight: 600;
+}
+
+button.autonatic-workspace-nav-button:hover {
+  border: 0;
+  background: color-mix(in srgb, var(--an-pill) 74%, transparent);
+  color: var(--an-ink);
+}
+
+button.autonatic-workspace-nav-button.is-active {
+  border: 0;
+  background: var(--an-pill);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
   color: var(--an-ink);
   font-weight: 600;
 }
@@ -2280,10 +2301,12 @@ button.autonatic-provider-button:hover {
     flex: 1 0 100%;
     margin: 0;
     justify-content: space-between;
-    gap: 4px;
-    padding-bottom: 12px;
+    gap: 0;
+    padding: 3px;
   }
   button.autonatic-workspace-nav-button {
+    flex: 1;
+    justify-content: center;
     padding: 0 8px;
     font-size: 12px;
   }

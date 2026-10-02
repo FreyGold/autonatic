@@ -197,7 +197,7 @@ export async function generateNemotronNote(
   signal?: AbortSignal
 ): Promise<StreamResult> {
   if (!getGenerationConfig(settings).apiKey.trim()) {
-    throw new Error("The selected generation provider's API key is missing. Add it in Obsidian Settings > autonatic > AI providers.");
+    throw new Error("The selected generation provider's API key is missing. Add it in Obsidian Settings > Autonatic > AI providers.");
   }
   const generationConfig = getGenerationConfig(settings);
   if (!generationConfig.model.trim()) {
