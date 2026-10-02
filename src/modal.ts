@@ -1,4 +1,4 @@
-import { App, Modal, Notice, MarkdownView, normalizePath, TFile, TFolder, Menu } from "obsidian";
+import { App, Modal, Notice, MarkdownView, normalizePath, TFile, TFolder, Menu, setIcon } from "obsidian";
 import type NemotronPlugin from "./main";
 import { generateNemotronNote, sanitizeMermaidDiagrams, streamChatCompletion, type StreamResult } from "./api";
 import { buildUserPrompt, type NoteStyle } from "./prompts";
@@ -37,11 +37,11 @@ import {
 } from "./excalidraw-generator";
 import type { SmartNoteChange } from "./useful-diagram-planner";
 import type { DiagramOptions, DiagramType, DiagramTheme } from "./diagram-engine";
-import { AskNotesModal } from "./ask-notes-modal";
 import { formatGeminiConversation, importGeminiConversation } from "./gemini-import";
 import { WorkflowProgress } from "./workflow-progress";
 import { reviewAppendDraft } from "./append-review";
-import { VaultArrangementModal } from "./arrangement-modal";
+import { workspaceHeader, openPluginSettings, setWorkspaceBusy, shortcutHint, type WorkspacePage } from "./workspace-ui";
+import { NotePreview } from "./note-preview";
 
 interface AttachedImage {
   id: string;
@@ -51,6 +51,27 @@ interface AttachedImage {
 
 type CreationIntent = "single" | "multiple" | "append";
 type PlacementPreference = "automatic" | "folder";
+
+interface WorkspaceDraft {
+  activeTab?: "notes" | "excalidraw";
+  source?: string;
+  instructions?: string;
+  title?: string;
+  mode?: DestinationMode;
+  style?: NoteStyle;
+  folder?: string;
+  scopeFolder?: string;
+  limitToFolder?: boolean;
+  diagramSource?: "active_note" | "standalone";
+  diagramTitle?: string;
+  diagramFolder?: string;
+  diagramPrompt?: string;
+  diagramType?: DiagramType | "auto";
+  diagramDetail?: DiagramOptions["detail"];
+  diagramDirection?: DiagramOptions["direction"];
+  diagramTheme?: DiagramTheme;
+  linkDiagramBack?: boolean;
+}
 
 export class NemotronModal extends Modal {
   plugin: NemotronPlugin;
@@ -68,46 +89,64 @@ export class NemotronModal extends Modal {
   styleSelectComponent!: CustomSelect;
   private selectComponents: CustomSelect[] = [];
   private folderNavigators: FolderNavigator[] = [];
+  private notePreview?: NotePreview;
+  private interfaceEvents?: AbortController;
   private updateModeUI?: (mode: DestinationMode) => Promise<void>;
   renderGalleryCallback?: () => void;
   renderExcalGalleryCallback?: () => void;
   inputTextAreaEl?: HTMLTextAreaElement;
   customInputEl?: HTMLInputElement;
   activeTab: "notes" | "excalidraw" = "notes";
+  private savedDraft?: WorkspaceDraft;
+  private saveDraftBeforeNavigation?: () => void;
+  private initialWorkspacePage: WorkspacePage;
 
-  constructor(app: App, plugin: NemotronPlugin, initialText: string = "", defaultTab: "notes" | "excalidraw" = "notes") {
+  constructor(
+    app: App,
+    plugin: NemotronPlugin,
+    initialText: string = "",
+    defaultTab: "notes" | "excalidraw" = "notes",
+    initialWorkspacePage: WorkspacePage = "create",
+  ) {
     super(app);
     this.plugin = plugin;
     this.initialText = initialText;
     this.activeTab = defaultTab;
+    this.initialWorkspacePage = initialWorkspacePage;
     this.enableExcalidrawInNoteTab = plugin.settings.enableExcalidrawMindMap ?? false;
   }
 
   async onOpen() {
     const { contentEl } = this;
+    this.activeTab = this.savedDraft?.activeTab ?? this.activeTab;
     this.modalEl.addClass("autonatic-crafter-shell");
     this.selectComponents.forEach((select) => select.destroy());
     this.selectComponents = [];
     this.folderNavigators.forEach((navigator) => navigator.destroy());
     this.folderNavigators = [];
+    this.notePreview?.destroy();
+    this.interfaceEvents?.abort();
+    this.interfaceEvents = new AbortController();
     contentEl.empty();
     contentEl.addClass("nemotron-modal-container");
+    this.plugin.workspaceNavigation.activate("create", this);
+    this.saveDraftBeforeNavigation = undefined;
+    const initialPage = this.initialWorkspacePage;
+    this.initialWorkspacePage = "create";
+    if (initialPage !== "create") {
+      this.plugin.workspaceNavigation.navigate(initialPage, this);
+      return;
+    }
 
-    // Workspace header
-    const headerRow = contentEl.createDiv({ cls: "nemotron-modal-header-row" });
-    headerRow.createEl("h2", { text: "autonatic", cls: "nemotron-modal-title" });
-    const askNotesButton = headerRow.createEl("button", { text: "Ask notes", cls: "autonatic-header-action" });
-    askNotesButton.type = "button";
-    askNotesButton.addEventListener("click", () => {
-      this.close();
-      new AskNotesModal(this.app, this.plugin).open();
-    });
-    const organizeButton = headerRow.createEl("button", { text: "Organize notes", cls: "autonatic-header-action" });
-    organizeButton.type = "button";
-    organizeButton.addEventListener("click", () => {
-      this.close();
-      new VaultArrangementModal(this.app, this.plugin).open();
-    });
+    workspaceHeader(contentEl, "create", (page) => {
+      this.saveDraftBeforeNavigation?.();
+      this.plugin.workspaceNavigation.navigate(page, this);
+    }, () => openPluginSettings(this.app, this.plugin.manifest.id));
+
+    const heading = contentEl.createDiv({ cls: "autonatic-page-heading" });
+    const headingCopy = heading.createDiv();
+    const pageTitle = headingCopy.createEl("h3", { text: "Create a note" });
+    const pageDescription = headingCopy.createEl("p", { text: "Turn text, conversations, and images into notes." });
 
     // History Toolbar Row (Undo / Redo up to 3 generations & Recent Prompts up to 5)
     const historyDetails = contentEl.createEl("details", { cls: "autonatic-history-details" });
@@ -120,13 +159,13 @@ export class NemotronModal extends Modal {
     this.renderApiKeySection(apiKeyBar);
 
     // Modal Nav Tabs (Note Crafter vs Excalidraw Diagram)
-    const tabNav = contentEl.createDiv({ cls: "nemotron-modal-nav-tabs" });
+    const tabNav = heading.createDiv({ cls: "nemotron-modal-nav-tabs" });
     const noteTabBtn = tabNav.createEl("button", {
-      text: "Create notes",
+      text: "Note",
       cls: `nemotron-tab-btn ${this.activeTab === "notes" ? "is-active" : ""}`,
     });
     const excalTabBtn = tabNav.createEl("button", {
-      text: "Create diagram",
+      text: "Diagram",
       cls: `nemotron-tab-btn ${this.activeTab === "excalidraw" ? "is-active" : ""}`,
     });
 
@@ -138,7 +177,10 @@ export class NemotronModal extends Modal {
     const tabs = [noteTabBtn, excalTabBtn];
     const panes = [notePane, excalPane];
     const activateTab = (index: number) => {
+      if (this.isGenerating) return;
       this.activeTab = index === 0 ? "notes" : "excalidraw";
+      pageTitle.setText(index === 0 ? "Create a note" : "Create a diagram");
+      pageDescription.setText(index === 0 ? "Turn text, conversations, and images into notes." : "Map out a process, system, or idea.");
       tabs.forEach((tab, i) => {
         tab.toggleClass("is-active", i === index);
         tab.setAttribute("aria-selected", String(i === index));
@@ -173,16 +215,25 @@ export class NemotronModal extends Modal {
 
     // TAB 2: Excalidraw Diagram Pane
     this.renderExcalidrawPane(excalPane, activeView, hasActiveNote);
+    const sourceTools = notePane.querySelector(".autonatic-source-toolbar");
+    sourceTools?.appendChild(historyDetails);
+    document.addEventListener("autonatic:settings-updated", () => {
+      this.renderApiKeySection(apiKeyBar);
+      const config = getGenerationConfig(this.plugin.settings);
+      contentEl.querySelector(".autonatic-provider-button > span:last-child")?.setText(
+        `${PROVIDERS[config.provider].label} / ${config.model.split("/").pop() || "Choose a model"}`,
+      );
+    }, { signal: this.interfaceEvents.signal });
   }
 
   // ==========================================
   // TAB 1: NOTE CRAFTER PANE
   // ==========================================
   private renderNoteCrafterPane(paneEl: HTMLElement, activeView: MarkdownView | null, hasActiveNote: boolean) {
-    const defaultMode = this.plugin.settings.defaultDestinationMode || "smart";
+    const defaultMode = this.savedDraft?.mode ?? this.plugin.settings.defaultDestinationMode ?? "smart";
     this.selectedMode = defaultMode;
 
-    let initialFolder = this.plugin.settings.defaultFolder || "";
+    let initialFolder = this.savedDraft?.folder ?? this.plugin.settings.defaultFolder ?? "";
     if (!initialFolder) {
       if (hasActiveNote && activeView?.file?.parent) {
         initialFolder = activeView.file.parent.path;
@@ -224,80 +275,49 @@ export class NemotronModal extends Modal {
     }
 
     const creationSection = workflow.createDiv({ cls: "nemotron-workflow-section" });
-    creationSection.createEl("div", { text: "Create", cls: "nemotron-workflow-question" });
-    const creationChoices = creationSection.createDiv({ cls: "nemotron-choice-grid" });
-    const creationControls = new Map<CreationIntent, HTMLInputElement>();
-    const createChoice = (
-      parent: HTMLElement,
-      group: string,
-      value: string,
-      title: string,
-      description: string,
-      checked: boolean,
-      disabled: boolean,
-      onChange: () => void,
-    ) => {
-      const label = parent.createEl("label", { cls: "nemotron-choice" });
-      const input = label.createEl("input", { type: "radio", cls: "nemotron-choice-input" });
-      input.name = group;
-      input.value = value;
-      input.checked = checked;
-      input.disabled = disabled;
-      const copy = label.createDiv({ cls: "nemotron-choice-copy" });
-      copy.createSpan({ text: title, cls: "nemotron-choice-title" });
-      copy.createSpan({ text: description, cls: "nemotron-choice-description" });
-      input.addEventListener("change", onChange);
-      return input;
-    };
-    creationControls.set("single", createChoice(
-      creationChoices, "nemotron-creation-intent", "single", "One note",
-      "Turn the source into one complete note.", creationIntent === "single", false,
-      () => { creationIntent = "single"; void updateModeUI(choicesToMode(creationIntent, placementPreference)); },
-    ));
-    creationControls.set("multiple", createChoice(
-      creationChoices, "nemotron-creation-intent", "multiple", "Separate notes",
-      "Split the source into separate, reusable notes.", creationIntent === "multiple", false,
-      () => { creationIntent = "multiple"; void updateModeUI(choicesToMode(creationIntent, placementPreference)); },
-    ));
-    creationControls.set("append", createChoice(
-      creationChoices, "nemotron-creation-intent", "append",
-      hasActiveNote ? `Add to ${activeView?.file?.basename}` : "Add to the active note",
-      hasActiveNote ? "Add a section to the note currently open in Obsidian." : "Open a note in Obsidian to use this option.",
-      creationIntent === "append", !hasActiveNote,
-      () => { creationIntent = "append"; void updateModeUI("append"); },
-    ));
+    const creationLabel = creationSection.createEl("label", {
+      text: "Output", cls: "nemotron-label", attr: { id: "autonatic-output-label", for: "autonatic-output" },
+    });
+    const creationSelect = new CustomSelect(creationSection, [
+      { value: "single", label: "One note", description: "Keep the source together in one note." },
+      { value: "multiple", label: "Separate notes", description: "Split the source into focused notes by topic." },
+      { value: "append", label: "Add to active note", description: hasActiveNote ? `Append a section to ${activeView?.file?.basename}.` : "Open a note in Obsidian first.", disabled: !hasActiveNote },
+    ], creationIntent, (value) => {
+      creationIntent = value as CreationIntent;
+      void updateModeUI(choicesToMode(creationIntent, placementPreference));
+    }, { controlId: "autonatic-output", labelId: creationLabel.id });
+    this.selectComponents.push(creationSelect);
 
     const placementSection = workflow.createDiv({ cls: "nemotron-workflow-section nemotron-placement-section" });
-    placementSection.createEl("div", { text: "Destination", cls: "nemotron-workflow-question" });
-    const placementChoices = placementSection.createDiv({ cls: "nemotron-choice-grid nemotron-placement-choice-grid" });
-    const placementControls = new Map<PlacementPreference, HTMLInputElement>();
-    placementControls.set("automatic", createChoice(
-      placementChoices, "nemotron-placement-preference", "automatic", "Automatic placement",
-      "Find a strong match or create notes in the most useful location.", placementPreference === "automatic", false,
-      () => { placementPreference = "automatic"; void updateModeUI(choicesToMode(creationIntent, placementPreference)); },
-    ));
-    placementControls.set("folder", createChoice(
-      placementChoices, "nemotron-placement-preference", "folder", "Choose a folder",
-      "Create new notes in one exact folder. Existing notes will not be changed.", placementPreference === "folder", false,
-      () => { placementPreference = "folder"; void updateModeUI(choicesToMode(creationIntent, placementPreference)); },
-    ));
+    const placementLabel = placementSection.createEl("label", {
+      text: "Save to", cls: "nemotron-label", attr: { id: "autonatic-placement-label", for: "autonatic-placement" },
+    });
+    const placementSelect = new CustomSelect(placementSection, [
+      { value: "automatic", label: "Automatic placement", description: "Match an existing note or create one in a suitable folder." },
+      { value: "folder", label: "Choose a folder", description: "Create new notes in one folder. Existing notes stay unchanged." },
+    ], placementPreference, (value) => {
+      placementPreference = value as PlacementPreference;
+      void updateModeUI(choicesToMode(creationIntent, placementPreference));
+    }, { controlId: "autonatic-placement", labelId: placementLabel.id });
+    this.selectComponents.push(placementSelect);
 
     const generationSummary = workflow.createDiv({ cls: "nemotron-generation-summary" });
     let updateActionButton: () => void = () => {};
 
     const smartModeInfo = workflow.createDiv({ cls: "nemotron-smart-info-banner" });
 
-    let limitPlacementToFolder = false;
-    let currentPlacementScopeFolder = initialFolder;
+    let limitPlacementToFolder = this.savedDraft?.limitToFolder ?? false;
+    let currentPlacementScopeFolder = this.savedDraft?.scopeFolder ?? initialFolder;
     const smartScopeOptionsDiv = paneEl.createDiv({ cls: "nemotron-smart-scope-options" });
     const smartScopeToggleRow = smartScopeOptionsDiv.createDiv({ cls: "nemotron-checkbox-row nemotron-smart-scope-toggle" });
     const smartScopeCheckbox = smartScopeToggleRow.createEl("input", { type: "checkbox", cls: "nemotron-checkbox" });
+    smartScopeCheckbox.checked = limitPlacementToFolder;
     smartScopeCheckbox.id = "nemotron-smart-folder-scope-toggle";
     smartScopeCheckbox.setAttribute("aria-controls", "nemotron-smart-folder-scope-options");
 
     const smartScopeToggleLabel = smartScopeToggleRow.createEl("label", { cls: "nemotron-checkbox-label" });
     smartScopeToggleLabel.htmlFor = smartScopeCheckbox.id;
-    smartScopeToggleLabel.createSpan({ text: "Search and place within a folder", cls: "nemotron-checkbox-title" });
+    smartScopeToggleLabel.createSpan({ text: "Limit to a folder", cls: "nemotron-checkbox-title" });
     smartScopeToggleLabel.createSpan({
       text: " Includes the selected folder and its subfolders.",
       cls: "nemotron-checkbox-desc",
@@ -314,7 +334,7 @@ export class NemotronModal extends Modal {
     const smartFolderNavigator = new FolderNavigator(
       this.app,
       smartScopeFolderRow,
-      initialFolder,
+      currentPlacementScopeFolder,
       (newPath) => {
         currentPlacementScopeFolder = newPath;
         void this.updateModeUI?.(this.selectedMode);
@@ -336,17 +356,18 @@ export class NemotronModal extends Modal {
     const titleLabel = titleRow.createEl("label", { text: "Title (optional)", cls: "nemotron-label" });
     const titleInput = titleRow.createEl("input", {
       type: "text",
-      placeholder: "Auto-detected from note content if left blank",
+      placeholder: "Choose automatically…",
       cls: "nemotron-input",
     });
     titleInput.id = "nemotron-note-title";
+    titleInput.value = this.savedDraft?.title ?? "";
     titleInput.name = "note-title";
     titleLabel.htmlFor = titleInput.id;
 
     const folderRow = newNoteOptionsDiv.createDiv({ cls: "nemotron-form-row" });
     folderRow.createEl("label", { text: "Folder", cls: "nemotron-label" });
     
-    let currentSelectedFolder = initialFolder;
+    let currentSelectedFolder = this.savedDraft?.folder ?? initialFolder;
     const folderNavigator = new FolderNavigator(
       this.app,
       folderRow,
@@ -364,8 +385,8 @@ export class NemotronModal extends Modal {
       const choices = modeToChoices(mode);
       creationIntent = choices.intent;
       placementPreference = choices.placement;
-      creationControls.get(creationIntent)!.checked = true;
-      placementControls.get(placementPreference)!.checked = true;
+      creationSelect.setValue(creationIntent);
+      placementSelect.setValue(placementPreference);
       placementSection.style.display = creationIntent === "append" ? "none" : "block";
       if (supportsPlacementFolderScope(mode)) {
         smartModeInfo.style.display = "flex";
@@ -427,7 +448,7 @@ export class NemotronModal extends Modal {
       },
     ];
 
-    const defaultStyle = this.plugin.settings.defaultNoteStyle || "concise";
+    const defaultStyle = this.savedDraft?.style ?? this.plugin.settings.defaultNoteStyle ?? "concise";
     this.selectedStyle = defaultStyle;
 
     this.styleSelectComponent = new CustomSelect(
@@ -452,9 +473,9 @@ export class NemotronModal extends Modal {
 
     const excalLabel = excalRow.createEl("label", { cls: "nemotron-checkbox-label" });
     excalLabel.setAttribute("for", "nemotron-note-excalidraw-toggle");
-    excalLabel.createSpan({ text: "Create useful diagrams after note placement", cls: "nemotron-checkbox-title" });
+    excalLabel.createSpan({ text: "Include useful diagrams", cls: "nemotron-checkbox-title" });
     excalLabel.createSpan({
-      text: ` Smart can create, update, or skip diagrams. Approved drawings are mirrored in /${this.plugin.settings.excalidrawFolder || "Excalidrawings"}.`,
+      text: `Create or update diagrams when they help. Saved in ${this.plugin.settings.excalidrawFolder || "Excalidrawings"}.`,
       cls: "nemotron-checkbox-desc",
     });
 
@@ -539,6 +560,7 @@ export class NemotronModal extends Modal {
     };
 
     this.renderGalleryCallback = renderGallery;
+    renderGallery();
 
     const addImage = (dataUrl: string, name: string) => {
       const id = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -681,6 +703,7 @@ export class NemotronModal extends Modal {
       cls: "nemotron-input",
     });
     customInput.id = "autonatic-note-instructions";
+    customInput.value = this.savedDraft?.instructions ?? "";
     customLabel.htmlFor = customInput.id;
     this.customInputEl = customInput;
 
@@ -710,14 +733,15 @@ export class NemotronModal extends Modal {
     // 7. Input Text area
     const inputAreaRow = paneEl.createDiv({ cls: "nemotron-form-row" });
     const inputHeading = inputAreaRow.createDiv({ cls: "autonatic-source-heading" });
-    const sourceLabel = inputHeading.createEl("label", { text: "Source text", cls: "nemotron-label" });
+    const sourceLabel = inputHeading.createEl("label", { text: "Source", cls: "nemotron-label" });
     const wordCount = inputHeading.createSpan({ cls: "autonatic-source-count" });
     const inputTextArea = inputAreaRow.createEl("textarea", {
       cls: "nemotron-textarea",
       placeholder: "Paste a conversation, rough notes, or anything you want to keep…",
     });
-    inputTextArea.value = this.initialText;
+    inputTextArea.value = this.savedDraft?.source ?? this.initialText;
     inputTextArea.id = "autonatic-source-text";
+    inputTextArea.name = "source";
     sourceLabel.htmlFor = inputTextArea.id;
     inputTextArea.rows = 12;
     const updateWordCount = () => {
@@ -786,12 +810,13 @@ export class NemotronModal extends Modal {
     previewContainer.style.display = "none";
     
     const reasoningDetails = previewContainer.createEl("details", { cls: "nemotron-reasoning-box" });
-    reasoningDetails.createEl("summary", { text: "AI Reasoning" });
+    reasoningDetails.createEl("summary", { text: "Reasoning" });
     const reasoningPre = reasoningDetails.createEl("pre", { cls: "nemotron-reasoning-content" });
 
     const contentPreviewBox = previewContainer.createEl("div", { cls: "nemotron-content-box" });
-    contentPreviewBox.createEl("h4", { text: "Generated Markdown" });
-    const contentPre = contentPreviewBox.createEl("pre", { cls: "nemotron-preview-content" });
+    const notePreview = new NotePreview(this.app, contentPreviewBox);
+    this.notePreview = notePreview;
+    let previewMarkdown = "";
 
     // Buttons
     const buttonRow = paneEl.createDiv({ cls: "nemotron-button-row" });
@@ -822,10 +847,8 @@ export class NemotronModal extends Modal {
       const label = this.selectedMode === "append"
         ? `Append to ${activeView?.file?.basename || "active note"}`
         : this.selectedMode === "multi_note" || this.selectedMode === "multi_note_folder"
-        ? "Create focused notes"
-        : this.selectedMode === "new_file"
-        ? "Create note"
-        : "Generate and place note";
+        ? "Create notes"
+        : "Create note";
       generateBtn.setText(label);
     };
     const updateGenerationStage = (stage: string, completed?: number, total?: number) => {
@@ -858,7 +881,7 @@ export class NemotronModal extends Modal {
       if (!getGenerationApiKey(this.plugin.settings).trim()) {
         new Notice(`Please enter your ${PROVIDERS[this.plugin.settings.generationProvider].label} API key first.`);
         statusDiv.style.display = "block";
-        statusDiv.setText(`Error: ${PROVIDERS[this.plugin.settings.generationProvider].label} API key is required. Set it above or in Settings.`);
+        statusDiv.setText(`Connect ${PROVIDERS[this.plugin.settings.generationProvider].label} in Settings to create notes.`);
         return;
       }
 
@@ -926,6 +949,7 @@ export class NemotronModal extends Modal {
       generationProgress = new WorkflowProgress(generationProgressHost, progressStages);
       updateGenerationStage("Prepare source");
       this.isGenerating = true;
+      setWorkspaceBusy(this.contentEl, true);
       retryPlacementBtn.disabled = true;
       generateBtn.disabled = true;
       generateBtn.setText("Preparing...");
@@ -942,6 +966,7 @@ export class NemotronModal extends Modal {
           generationProgress.fail();
           statusDiv.setText(error instanceof Error ? `Error: ${error.message}` : "Could not analyze the vault.");
           this.isGenerating = false;
+          setWorkspaceBusy(this.contentEl, false);
           generateBtn.disabled = false;
           updateActionButton();
           return;
@@ -991,7 +1016,8 @@ export class NemotronModal extends Modal {
       previewContainer.style.display = "block";
       if (!retryPlacement) {
         reasoningPre.setText("");
-        contentPre.setText("");
+        previewMarkdown = "";
+        notePreview.update("", mode);
       }
 
       this.abortController = new AbortController();
@@ -1014,12 +1040,13 @@ export class NemotronModal extends Modal {
               reasoningPre.setText(reasoningPre.getText() + chunk);
             },
             onContent: (chunk) => {
-              contentPre.setText(contentPre.getText() + chunk);
-              contentPre.scrollTop = contentPre.scrollHeight;
+              previewMarkdown += chunk;
+              notePreview.update(previewMarkdown, mode);
             },
           },
           this.abortController.signal
         );
+        notePreview.update(result.content, mode, true);
 
         const finishUsefulDiagrams = async () => {
           if (!this.enableExcalidrawInNoteTab || this.selectedStyle === "bare") return;
@@ -1268,6 +1295,7 @@ export class NemotronModal extends Modal {
         }
       } finally {
         this.isGenerating = false;
+        setWorkspaceBusy(this.contentEl, false);
         generateBtn.disabled = false;
         updateActionButton();
       }
@@ -1278,23 +1306,34 @@ export class NemotronModal extends Modal {
     const workspace = paneEl.createDiv({ cls: "autonatic-create-workspace" });
     const source = workspace.createDiv({ cls: "autonatic-source-column" });
     source.appendChild(inputAreaRow);
-    const imports = source.createEl("details", { cls: "autonatic-source-tools" });
-    imports.createEl("summary", { text: "Import a Gemini conversation" });
+    inputAreaRow.addClass("autonatic-composer");
+    const sourceToolbar = source.createDiv({ cls: "autonatic-source-toolbar" });
+    const imports = sourceToolbar.createEl("details", { cls: "autonatic-source-tools" });
+    imports.createEl("summary", { text: "Import conversation" });
     imports.appendChild(importRow);
-    source.appendChild(imageRow);
-    source.appendChild(customRow);
+    const attachments = sourceToolbar.createEl("details", { cls: "autonatic-source-tools autonatic-attachments" });
+    attachments.createEl("summary", { text: "Attach images" });
+    attachments.appendChild(imageRow);
+    source.appendChild(imageGallery);
+    const instructions = source.createEl("details", { cls: "autonatic-instructions" });
+    instructions.createEl("summary", { text: "Additional instructions" });
+    instructions.appendChild(customRow);
     const output = workspace.createEl("details", { cls: "autonatic-output-column" });
     output.open = !window.matchMedia("(max-width: 800px)").matches;
-    const outputHeading = output.createEl("summary", { text: "Output & destination", cls: "nemotron-workflow-heading" });
-    for (const element of [workflow, smartScopeOptionsDiv, newNoteOptionsDiv, styleContainer]) output.appendChild(element);
+    const outputHeading = output.createEl("summary", { text: "Note options", cls: "nemotron-workflow-heading" });
+    workflow.insertBefore(styleContainer, placementSection);
+    for (const element of [workflow, smartScopeOptionsDiv, newNoteOptionsDiv]) output.appendChild(element);
     const options = output.createEl("details", { cls: "autonatic-advanced-options" });
-    options.createEl("summary", { text: "Diagrams & placement index" });
+    options.createEl("summary", { text: "More options" });
     options.appendChild(excalRow);
     options.appendChild(smartModeInfo);
     const activity = paneEl.createDiv({ cls: "autonatic-activity" });
     for (const element of [generationProgressHost, previewContainer]) activity.appendChild(element);
     const footer = paneEl.createDiv({ cls: "autonatic-action-bar" });
     const destination = footer.createDiv({ cls: "autonatic-destination-summary" });
+    const destinationHeading = destination.createDiv({ cls: "autonatic-destination-heading" });
+    setIcon(destinationHeading.createSpan({ attr: { "aria-hidden": "true" } }), "folder");
+    destinationHeading.createSpan({ text: "Destination" });
     destination.appendChild(statusDiv);
     destination.appendChild(generationSummary);
     const editOutput = destination.createEl("button", { text: "Change output", cls: "autonatic-edit-output" });
@@ -1306,6 +1345,13 @@ export class NemotronModal extends Modal {
     });
     footer.appendChild(buttonRow);
     buttonRow.insertBefore(cancelBtn, generateBtn);
+    const contextBar = source.createDiv({ cls: "autonatic-editor-context" });
+    const providerButton = contextBar.createEl("button", { cls: "autonatic-provider-button", attr: { type: "button", title: "Change AI provider or model" } });
+    setIcon(providerButton.createSpan({ attr: { "aria-hidden": "true" } }), "sliders-horizontal");
+    const config = getGenerationConfig(this.plugin.settings);
+    providerButton.createSpan({ text: `${PROVIDERS[config.provider].label}${config.model ? ` / ${config.model.split("/").pop()}` : " / Choose a model"}` });
+    providerButton.addEventListener("click", () => openPluginSettings(this.app, this.plugin.manifest.id));
+    shortcutHint(contextBar, "create");
     const runFromKeyboard = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !this.isGenerating) {
         event.preventDefault();
@@ -1314,6 +1360,22 @@ export class NemotronModal extends Modal {
     };
     paneEl.addEventListener("keydown", runFromKeyboard);
     generateBtn.title = "Create notes (Ctrl/Cmd+Enter)";
+    const savePreviousDraft = this.saveDraftBeforeNavigation;
+    this.saveDraftBeforeNavigation = () => {
+      savePreviousDraft?.();
+      this.savedDraft = {
+        ...this.savedDraft,
+        activeTab: this.activeTab,
+        source: inputTextArea.value,
+        instructions: customInput.value,
+        title: titleInput.value,
+        mode: this.selectedMode,
+        style: this.selectedStyle,
+        folder: currentSelectedFolder,
+        scopeFolder: currentPlacementScopeFolder,
+        limitToFolder: smartScopeCheckbox.checked,
+      };
+    };
     if (!this.initialText && this.activeTab === "notes") setTimeout(() => inputTextArea.focus(), 0);
   }
 
@@ -1342,7 +1404,9 @@ export class NemotronModal extends Modal {
     ];
 
     const defaultSource = hasActiveNote ? "active_note" : "standalone";
-    let selectedSource: "active_note" | "standalone" = defaultSource;
+    let selectedSource: "active_note" | "standalone" = this.savedDraft?.diagramSource === "active_note" && hasActiveNote
+      ? "active_note"
+      : this.savedDraft?.diagramSource ?? defaultSource;
 
     const sourceContainer = paneEl.createDiv({ cls: "nemotron-form-row" });
     const sourceLabel = sourceContainer.createEl("label", { text: "Source", cls: "nemotron-label" });
@@ -1351,7 +1415,10 @@ export class NemotronModal extends Modal {
 
     // Standalone Options (Title & Subfolder)
     const standaloneOptionsDiv = paneEl.createDiv({ cls: "nemotron-standalone-excal-options" });
-    standaloneOptionsDiv.style.display = defaultSource === "standalone" ? "block" : "none";
+    standaloneOptionsDiv.style.display = selectedSource === "standalone" ? "block" : "none";
+    infoCard.setText(selectedSource === "active_note"
+      ? `Using ${activeView?.file?.basename} as the source`
+      : "Create a diagram from the description below.");
 
     const titleRow = standaloneOptionsDiv.createDiv({ cls: "nemotron-form-row" });
     const drawingTitleLabel = titleRow.createEl("label", { text: "Drawing title", cls: "nemotron-label" });
@@ -1361,6 +1428,7 @@ export class NemotronModal extends Modal {
       cls: "nemotron-input",
     });
     drawingTitleInput.id = "nemotron-drawing-title";
+    drawingTitleInput.value = this.savedDraft?.diagramTitle ?? "";
     drawingTitleInput.name = "drawing-title";
     drawingTitleLabel.htmlFor = drawingTitleInput.id;
 
@@ -1372,6 +1440,7 @@ export class NemotronModal extends Modal {
       cls: "nemotron-input",
     });
     excalFolderInput.id = "nemotron-drawing-folder";
+    excalFolderInput.value = this.savedDraft?.diagramFolder ?? "";
     excalFolderInput.name = "drawing-folder";
     excalFolderLabel.htmlFor = excalFolderInput.id;
 
@@ -1379,8 +1448,8 @@ export class NemotronModal extends Modal {
     const linkBackRow = paneEl.createDiv({ cls: "nemotron-form-row nemotron-checkbox-row" });
     const linkBackCheckbox = linkBackRow.createEl("input", { type: "checkbox", cls: "nemotron-checkbox" });
     linkBackCheckbox.id = "nemotron-excal-linkback";
-    linkBackCheckbox.checked = hasActiveNote;
-    linkBackCheckbox.disabled = !hasActiveNote;
+    linkBackCheckbox.checked = selectedSource === "active_note" && (this.savedDraft?.linkDiagramBack ?? hasActiveNote);
+    linkBackCheckbox.disabled = !hasActiveNote || selectedSource === "standalone";
 
     const linkBackLabel = linkBackRow.createEl("label", { cls: "nemotron-checkbox-label" });
     linkBackLabel.setAttribute("for", "nemotron-excal-linkback");
@@ -1389,7 +1458,7 @@ export class NemotronModal extends Modal {
     const sourceSelect = new CustomSelect(
       sourceContainer,
       sourceOptions,
-      defaultSource,
+      selectedSource,
       (val) => {
         selectedSource = val as "active_note" | "standalone";
         infoCard.setText(selectedSource === "active_note"
@@ -1425,10 +1494,10 @@ export class NemotronModal extends Modal {
       );
       this.selectComponents.push(select);
     };
-    let diagramType: DiagramType | "auto" = "auto";
-    let diagramDetail: DiagramOptions["detail"] = "balanced";
-    let diagramDirection: DiagramOptions["direction"] = "right";
-    let diagramTheme: DiagramTheme = "dark";
+    let diagramType: DiagramType | "auto" = this.savedDraft?.diagramType ?? "auto";
+    let diagramDetail: DiagramOptions["detail"] = this.savedDraft?.diagramDetail ?? "balanced";
+    let diagramDirection: DiagramOptions["direction"] = this.savedDraft?.diagramDirection ?? "right";
+    let diagramTheme: DiagramTheme = this.savedDraft?.diagramTheme ?? "dark";
     addSelect("nemotron-diagram-type", "Diagram type", [["auto", "Automatic"], ["mind-map", "Mind map"], ["flowchart", "Flowchart"], ["architecture", "Architecture"], ["timeline", "Timeline"], ["decision-tree", "Decision tree"], ["comparison", "Comparison"]], diagramType, (value) => { diagramType = value as DiagramType | "auto"; });
     addSelect("nemotron-diagram-detail", "Detail level", [["compact", "Compact"], ["balanced", "Balanced"], ["detailed", "Detailed"]], diagramDetail, (value) => { diagramDetail = value as DiagramOptions["detail"]; });
     addSelect("nemotron-diagram-direction", "Flow direction", [["right", "Left to right"], ["down", "Top to bottom"]], diagramDirection, (value) => { diagramDirection = value as DiagramOptions["direction"]; });
@@ -1444,6 +1513,7 @@ export class NemotronModal extends Modal {
         : "Describe the system components, data pipeline, state machine, or microservices...",
     });
     excalPromptArea.rows = 4;
+    excalPromptArea.value = this.savedDraft?.diagramPrompt ?? "";
     excalPromptArea.id = "nemotron-diagram-prompt";
     excalPromptArea.name = "diagram-prompt";
     excalPromptLabel.htmlFor = excalPromptArea.id;
@@ -1459,11 +1529,11 @@ export class NemotronModal extends Modal {
     excalPreviewContainer.style.display = "none";
     
     const excalReasoningDetails = excalPreviewContainer.createEl("details", { cls: "nemotron-reasoning-box" });
-    excalReasoningDetails.createEl("summary", { text: "AI Reasoning" });
+    excalReasoningDetails.createEl("summary", { text: "Reasoning" });
     const excalReasoningPre = excalReasoningDetails.createEl("pre", { cls: "nemotron-reasoning-content" });
 
     const excalContentPreviewBox = excalPreviewContainer.createEl("div", { cls: "nemotron-content-box" });
-    excalContentPreviewBox.createEl("h4", { text: "Architecture Plan & Diagram Schema Preview:" });
+    excalContentPreviewBox.createEl("h4", { text: "Diagram plan" });
     const excalContentPre = excalContentPreviewBox.createEl("pre", { cls: "nemotron-preview-content" });
 
     // Buttons for Tab 2
@@ -1494,6 +1564,7 @@ export class NemotronModal extends Modal {
       }
 
       this.isGenerating = true;
+      setWorkspaceBusy(this.contentEl, true);
       generateExcalBtn.disabled = true;
       generateExcalBtn.setText("Designing diagram...");
       excalStatusDiv.style.display = "block";
@@ -1659,6 +1730,7 @@ export class NemotronModal extends Modal {
         }
       } finally {
         this.isGenerating = false;
+        setWorkspaceBusy(this.contentEl, false);
         generateExcalBtn.disabled = false;
         generateExcalBtn.setText("Create diagram");
       }
@@ -1678,6 +1750,23 @@ export class NemotronModal extends Modal {
     footer.createSpan({ text: "Saves an Excalidraw drawing in your vault.", cls: "nemotron-generation-summary" });
     footer.appendChild(excalButtonRow);
     excalButtonRow.insertBefore(cancelExcalBtn, generateExcalBtn);
+    const savePreviousDraft = this.saveDraftBeforeNavigation;
+    this.saveDraftBeforeNavigation = () => {
+      savePreviousDraft?.();
+      this.savedDraft = {
+        ...this.savedDraft,
+        activeTab: this.activeTab,
+        diagramSource: selectedSource,
+        diagramTitle: drawingTitleInput.value,
+        diagramFolder: excalFolderInput.value,
+        diagramPrompt: excalPromptArea.value,
+        diagramType,
+        diagramDetail,
+        diagramDirection,
+        diagramTheme,
+        linkDiagramBack: linkBackCheckbox.checked,
+      };
+    };
   }
 
   private renderHistoryToolbar() {
@@ -1856,89 +1945,22 @@ export class NemotronModal extends Modal {
   }
 
   private renderApiKeySection(containerEl: HTMLElement) {
-    containerEl.empty();
-
     const config = getGenerationConfig(this.plugin.settings);
-    const provider = PROVIDERS[config.provider];
-    const isSet = !!config.apiKey.trim();
-    containerEl.style.display = isSet ? "none" : "block";
-
-    if (!isSet) {
-      const card = containerEl.createDiv({ cls: "nemotron-api-setup-card" });
-      
-      const header = card.createDiv({ cls: "nemotron-api-setup-header" });
-      header.createEl("label", { text: `Connect ${provider.label}`, cls: "nemotron-api-setup-title", attr: { for: "autonatic-api-key" } });
-      
-      const nimLink = header.createEl("a", {
-        text: `Get ${provider.label} API key`,
-        cls: "nemotron-nim-link",
-        href: provider.keyUrl,
-      });
-      nimLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        window.open(provider.keyUrl, "_blank");
-      });
-
-      const inputRow = card.createDiv({ cls: "nemotron-api-input-row" });
-      const keyInput = inputRow.createEl("input", {
-        type: "password",
-        placeholder: `Paste your ${provider.label} API key`,
-        cls: "nemotron-input nemotron-api-input",
-      });
-
-      keyInput.id = "autonatic-api-key";
-      const revealBtn = inputRow.createEl("button", { text: "Show", cls: "nemotron-icon-btn" });
-      revealBtn.setAttribute("type", "button");
-      revealBtn.setAttribute("title", "Show/hide key");
-      revealBtn.addEventListener("click", () => {
-        keyInput.type = keyInput.type === "password" ? "text" : "password";
-        revealBtn.setText(keyInput.type === "password" ? "Show" : "Hide");
-      });
-
-      const pasteKeyBtn = inputRow.createEl("button", {
-        text: "Paste",
-        cls: "nemotron-paste-clipboard-btn",
-      });
-      pasteKeyBtn.setAttribute("type", "button");
-      pasteKeyBtn.addEventListener("click", async () => {
-        let text = "";
-        try {
-          const electron = (window as any).require ? (window as any).require("electron") : null;
-          if (electron && electron.clipboard) {
-            text = electron.clipboard.readText();
-          }
-        } catch {}
-        if (!text && navigator.clipboard && navigator.clipboard.readText) {
-          try {
-            text = await navigator.clipboard.readText();
-          } catch {}
-        }
-        if (text && text.trim()) {
-          keyInput.value = text.trim();
-        }
-      });
-
-      const saveKeyBtn = inputRow.createEl("button", {
-        text: "Save",
-        cls: "mod-cta nemotron-save-key-btn",
-      });
-      saveKeyBtn.setAttribute("type", "button");
-      saveKeyBtn.addEventListener("click", async () => {
-        const val = keyInput.value.trim();
-        if (!val) {
-          new Notice("Please enter a valid API key.");
-          return;
-        }
-        this.plugin.settings.providers[config.provider].apiKey = val;
-        if (config.provider === "nvidia") this.plugin.settings.apiKey = val;
-        await this.plugin.saveSettings();
-        new Notice(`${provider.label} API key saved successfully!`);
-        this.renderApiKeySection(containerEl);
-      });
-    }
+    containerEl.empty();
+    containerEl.hidden = !!config.apiKey.trim() && !!config.model.trim();
+    if (containerEl.hidden) return;
+    const banner = containerEl.createDiv({ cls: "autonatic-connection-notice" });
+    setIcon(banner.createSpan({ attr: { "aria-hidden": "true" } }), "plug");
+    banner.createSpan({ text: config.apiKey.trim() ? "Choose a model to start creating." : "Connect an AI provider to start creating." });
+    const setup = banner.createEl("button", { text: "Set up provider", attr: { type: "button" } });
+    setup.addEventListener("click", () => openPluginSettings(this.app, this.plugin.manifest.id));
   }
 
   onClose() {
+    this.plugin.workspaceNavigation.closeHost(this);
+    this.plugin.workspaceNavigation.deactivate(this);
+    this.notePreview?.destroy();
+    this.interfaceEvents?.abort();
     this.importAbortController?.abort();
     if (this.isGenerating && this.abortController) {
       this.abortController.abort();
@@ -1953,6 +1975,22 @@ export class NemotronModal extends Modal {
     this.updateModeUI = undefined;
     const { contentEl } = this;
     contentEl.empty();
+  }
+
+  onWorkspacePageLeave(): void {
+    this.notePreview?.destroy();
+    this.notePreview = undefined;
+    this.interfaceEvents?.abort();
+    this.interfaceEvents = undefined;
+    this.importAbortController?.abort();
+    this.importAbortController = null;
+    if (this.pasteListener) window.removeEventListener("paste", this.pasteListener, true);
+    this.selectComponents.forEach((select) => select.destroy());
+    this.selectComponents = [];
+    this.folderNavigators.forEach((navigator) => navigator.destroy());
+    this.folderNavigators = [];
+    this.updateModeUI = undefined;
+    this.contentEl.empty();
   }
 
   private async createUsefulDiagramsAfterPlacement(

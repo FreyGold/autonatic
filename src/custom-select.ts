@@ -172,6 +172,7 @@ export class CustomSelect {
       else this.setActiveIndex(next);
     } else if (event.key === "Escape" && this.isOpen) {
       event.preventDefault();
+      event.stopPropagation();
       this.close(true);
     }
   }
@@ -188,6 +189,7 @@ export class CustomSelect {
       this.commit(this.activeIndex);
     } else if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       this.close(true);
     } else if (event.key === "Tab") {
       this.close(false);

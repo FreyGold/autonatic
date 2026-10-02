@@ -28,11 +28,11 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 - **Organize notes**: Describe a folder structure in plain language, such as grouping by programming language and then OS, HTTP, or security. Review every proposed note move before applying it. Each arrangement saves a path snapshot that you can restore later.
 - **Interactive UI**:
   - Ribbon icon for one-click access.
-  - Source-first note and diagram workspaces with visible output controls, a persistent destination summary, and collapsible options in narrow windows.
-  - Streaming live preview with collapsible reasoning thought process.
+  - Source-first note and diagram workspaces with compact output controls, a persistent destination summary, and collapsible options in narrow windows. Create, Search, and Organize share navigation; returning from another tool preserves the open draft.
+  - Rendered Markdown live preview with collapsible generated source and reasoning.
   - Optional folder scope for Smart Placement. Smart can create or append only in the selected folder and its subfolders.
   - Highlighted-text actions to improve, expand, or regenerate only the selected Markdown.
-  - Full settings tab to customize API keys, models, temperatures, folders, and prompt instructions.
+  - Settings grouped into Providers, Creation, Search, Privacy, and Advanced, with keyboard navigation.
 - **Ask Notes**: Find original passages with links to their notes. Exact term lookups can return from the local index. Natural-language questions combine whole-word and identifier matching with embeddings from the selected provider. Results use rarity-weighted text ranking and reciprocal-rank fusion; weak semantic candidates are filtered. Search never generates an answer; the passage and vector index stays in device-local IndexedDB outside the vault. No model runs locally.
 - **Adaptive Excalidraw Diagrams**:
   - Automatic mind map, flowchart, architecture, timeline, decision-tree, and comparison selection.
@@ -46,13 +46,10 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 
 1. Click the **wand ribbon icon** or use `Ctrl/Cmd + P` and search for **"autonatic"**.
 2. Paste any text into the modal (or select text in an editor first to auto-populate).
-3. Use **Output & destination** to choose the result and where to save it (expand it on a narrow window):
-   - **Create New Note File** (Specify title and folder if desired).
-   - **Create Multiple Notes in Folder** (Select one directory for all generated notes).
-   - **Append to Current Active Note**.
+3. Use **Note options** to choose **One note**, **Separate notes**, or **Add to active note**. Choose a writing style, then use **Save to** for automatic placement or a specific folder. On narrow windows, expand **Note options** or click **Change output** in the footer.
 4. Review the destination summary and click the create button, or press **Ctrl/Cmd+Enter**.
 
-For a Gemini chat, use **Share conversation** in Gemini, expand **Import a Gemini conversation**, paste the resulting `g.co/gemini/share/…` link into **Gemini conversation link**, and click **Import**. The plugin uses an installed Chrome, Chromium, Edge, or Brave browser to load the public snapshot, then fills **Source text** so you can review or edit it before generating notes. The shared page is a snapshot; later changes to the chat require a new share link. If link import fails, open the shared page in your browser and copy its conversation text into **Source text**. Do not share a chat publicly if it contains material you want to keep private.
+For a Gemini chat, use **Share conversation** in Gemini, expand **Import conversation**, paste the resulting `g.co/gemini/share/…` link into **Gemini conversation link**, and click **Import**. The plugin uses an installed Chrome, Chromium, Edge, or Brave browser to load the public snapshot, then fills **Source text** so you can review or edit it before generating notes. The shared page is a snapshot; later changes to the chat require a new share link. If link import fails, open the shared page in your browser and copy its conversation text into **Source text**. Do not share a chat publicly if it contains material you want to keep private.
 
 To edit part of an existing note, highlight the text and open the editor context menu. Use an **autonatic** command. The plugin replaces only the highlighted text.
 

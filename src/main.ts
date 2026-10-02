@@ -16,6 +16,7 @@ import { AskNotesSearch } from "./ask-notes-search";
 import { AskNotesModal } from "./ask-notes-modal";
 import { VaultArrangementManager } from "./arrangement-manager";
 import { VaultArrangementModal } from "./arrangement-modal";
+import { WorkspaceNavigation } from "./workspace-ui";
 
 export default class NemotronPlugin extends Plugin {
   declare settings: NemotronPluginSettings;
@@ -23,11 +24,15 @@ export default class NemotronPlugin extends Plugin {
   askNotesSearch!: AskNotesSearch;
   arrangementManager!: VaultArrangementManager;
   arrangementError: string | null = null;
+  workspaceNavigation = new WorkspaceNavigation();
   private updateDebounceTimer: any = null;
   private askNotesDebounceTimer: any = null;
   private selectionEditInProgress = false;
 
   async onload() {
+    this.workspaceNavigation.setFactory("create", () => new NemotronModal(this.app, this));
+    this.workspaceNavigation.setFactory("search", () => new AskNotesModal(this.app, this));
+    this.workspaceNavigation.setFactory("organize", () => new VaultArrangementModal(this.app, this));
     await this.loadSettings();
     this.askNotesSearch = new AskNotesSearch(this.app, () => this.settings);
     this.arrangementManager = new VaultArrangementManager(this.app, this.manifest.id);
@@ -70,13 +75,13 @@ export default class NemotronPlugin extends Plugin {
       id: "ask-notes",
       name: "Ask Notes",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "h" }],
-      callback: () => new AskNotesModal(this.app, this).open(),
+      callback: () => new NemotronModal(this.app, this, "", "notes", "search").open(),
     });
 
     this.addCommand({
       id: "organize-vault-notes",
       name: "Organize Notes and Manage Arrangement Snapshots",
-      callback: () => new VaultArrangementModal(this.app, this).open(),
+      callback: () => new NemotronModal(this.app, this, "", "notes", "organize").open(),
     });
 
     this.addCommand({

@@ -5,6 +5,7 @@ import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
 import { DESTINATION_MODE_OPTIONS, type DestinationMode } from "./destination-modes";
 import { FolderNavigator } from "./folder-nav";
 import { defaultProviderConfigs, EMBEDDING_PROVIDERS, fetchProviderModels, PROVIDERS, type AIProvider } from "./providers";
+import type { SettingsSection } from "./workspace-ui";
 
 export interface NemotronPluginSettings {
   generationProvider: AIProvider;
@@ -76,6 +77,9 @@ export class NemotronSettingTab extends PluginSettingTab {
   plugin: NemotronPlugin;
   private askFolderNavigator?: FolderNavigator;
   private unsubscribeAskStatus?: () => void;
+  private activeSection: SettingsSection = "providers";
+  private navigationController?: AbortController;
+  private renderVersion = 0;
 
   constructor(app: App, plugin: NemotronPlugin) {
     super(app, plugin);
@@ -83,21 +87,57 @@ export class NemotronSettingTab extends PluginSettingTab {
   }
 
   async display(): Promise<void> {
-    const { containerEl } = this;
+    const root = this.containerEl;
+    const renderVersion = ++this.renderVersion;
     this.askFolderNavigator?.destroy();
     this.unsubscribeAskStatus?.();
-    containerEl.empty();
-
-    containerEl.addClass("autonatic-settings");
-    containerEl.createEl("h2", { text: "autonatic" });
+    this.navigationController?.abort();
+    this.navigationController = new AbortController();
+    root.empty();
+    root.addClass("autonatic-settings");
+    const heading = root.createDiv({ cls: "autonatic-settings-heading" });
+    heading.createEl("h2", { text: "autonatic" });
+    heading.createEl("p", { text: "Providers, note preferences, and vault permissions." });
+    const nav = root.createDiv({ cls: "autonatic-settings-nav", attr: { role: "tablist", "aria-label": "Plugin settings" } });
+    const sections = {} as Record<SettingsSection, HTMLElement>;
+    const buttons = new Map<SettingsSection, HTMLButtonElement>();
+    const selectSection = (section: SettingsSection) => {
+      this.activeSection = section;
+      for (const [id, button] of buttons) {
+        const active = id === section;
+        button.setAttribute("aria-selected", String(active));
+        button.tabIndex = active ? 0 : -1;
+        sections[id].hidden = !active;
+      }
+    };
+    const pages: Array<[SettingsSection, string]> = [["providers", "Providers"], ["creation", "Creation"], ["search", "Search"], ["privacy", "Privacy"], ["advanced", "Advanced"]];
+    for (const [index, [id, label]] of pages.entries()) {
+      const button = nav.createEl("button", { text: label, attr: { type: "button", role: "tab", id: `autonatic-settings-tab-${id}`, "aria-controls": `autonatic-settings-${id}` } });
+      sections[id] = root.createEl("section", { cls: "autonatic-settings-section", attr: { role: "tabpanel", id: `autonatic-settings-${id}`, "aria-labelledby": button.id } });
+      buttons.set(id, button);
+      button.addEventListener("click", () => selectSection(id));
+      button.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? pages.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + pages.length) % pages.length;
+        selectSection(pages[next][0]);
+        buttons.get(pages[next][0])?.focus();
+      });
+    }
+    selectSection(this.activeSection);
+    document.addEventListener("autonatic:settings-section", ((event: CustomEvent<SettingsSection>) => {
+      if (buttons.has(event.detail)) selectSection(event.detail);
+    }) as EventListener, { signal: this.navigationController.signal });
+    let containerEl = sections.privacy;
     containerEl.createEl("h3", { text: "Privacy and cost" });
     new Setting(containerEl).setName("Automatic index updates").setDesc("Update the local vault index after a file changes.").addToggle((c) => c.setValue(this.plugin.settings.enableAutomaticIndexing).onChange(async (v) => { this.plugin.settings.enableAutomaticIndexing = v; await this.plugin.saveSettings(); }));
-    new Setting(containerEl).setName("AI summaries for placement index").setDesc("Send short excerpts to the selected generation provider to summarize the local index. Automatic appends separately send the target note, or excerpts from a long target, for duplicate review. Ask Notes has separate consent below.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("AI summaries for placement index").setDesc("Send short excerpts to the selected generation provider to summarize the local index. Automatic appends separately send the target note, or excerpts from a long target, for duplicate review. Search has separate consent in the Search settings.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Excluded folders").setDesc("Comma-separated folder paths that indexing must ignore.").addText((c) => c.setValue(this.plugin.settings.excludedFolders).onChange(async (v) => { this.plugin.settings.excludedFolders = v; await this.plugin.saveSettings(); this.plugin.scheduleAskNotesUpdate(); }));
     new Setting(containerEl).setName("Maximum context notes").setDesc("Limit the note summaries sent with one generation request.").addSlider((c) => c.setLimits(5, 100, 5).setValue(this.plugin.settings.maxVaultContextNotes).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxVaultContextNotes = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Confirm multi-file changes").setDesc("Show the planned file count before a multi-note write.").addToggle((c) => c.setValue(this.plugin.settings.confirmMultiFileChanges).onChange(async (v) => { this.plugin.settings.confirmMultiFileChanges = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Maximum automatic diagrams").setDesc("Limit useful diagrams created or updated after one note operation. Zero disables automatic diagrams.").addSlider((c) => c.setLimits(0, 10, 1).setValue(this.plugin.settings.maxAutomaticDiagrams).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxAutomaticDiagrams = v; await this.plugin.saveSettings(); }));
 
+    containerEl = sections.providers;
     containerEl.createEl("h3", { text: "AI providers" });
     new Setting(containerEl)
       .setName("Generation provider")
@@ -131,7 +171,10 @@ export class NemotronSettingTab extends PluginSettingTab {
       });
 
     containerEl.createEl("h4", { text: "Provider credentials and models" });
-    for (const [providerId, provider] of Object.entries(PROVIDERS) as [AIProvider, typeof PROVIDERS[AIProvider]][]) {
+    const providerEntries = Object.entries(PROVIDERS) as [AIProvider, typeof PROVIDERS[AIProvider]][];
+    const providerOrder = (id: AIProvider) => id === this.plugin.settings.generationProvider ? 0 : id === this.plugin.settings.embeddingProvider ? 1 : 2;
+    providerEntries.sort(([a], [b]) => providerOrder(a) - providerOrder(b));
+    for (const [providerId, provider] of providerEntries) {
       const config = this.plugin.settings.providers[providerId];
       const details = containerEl.createEl("details", { cls: "autonatic-provider-settings" });
       details.open = providerId === this.plugin.settings.generationProvider || providerId === this.plugin.settings.embeddingProvider;
@@ -157,7 +200,6 @@ export class NemotronSettingTab extends PluginSettingTab {
         });
         keyInput = text.inputEl;
         keyInput.type = "password";
-        keyInput.style.minWidth = "240px";
       }).addButton((button) => button.setButtonText("Show/Hide").onClick(() => {
         keyInput.type = keyInput.type === "password" ? "text" : "password";
       })).addButton((button) => button.setButtonText("Get key").onClick(() => window.open(provider.keyUrl, "_blank")))
@@ -236,7 +278,8 @@ export class NemotronSettingTab extends PluginSettingTab {
       }
     }
 
-    containerEl.createEl("h3", { text: "Ask Notes" });
+    containerEl = sections.search;
+    containerEl.createEl("h3", { text: "Search your notes" });
     containerEl.createEl("p", {
       text: "Choose folders before enabling search. Indexing sends their Markdown text to your selected embedding provider. Matching passages are shown unchanged. Exact term lookups can use the local index; natural-language questions also send your query to that provider for semantic matching. API usage may incur charges. Vectors and excerpts stay in local device storage, outside the vault.",
       cls: "autonatic-settings-help",
@@ -344,6 +387,7 @@ export class NemotronSettingTab extends PluginSettingTab {
         await this.display();
       }));
 
+    containerEl = sections.creation;
     containerEl.createEl("h3", { text: "Note creation" });
     // Default Destination Mode
     new Setting(containerEl)
@@ -363,18 +407,19 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // Vault Knowledge Index Status & Populate
     const indexData = await loadVaultIndex(this.app);
+    if (renderVersion !== this.renderVersion) return;
     const noteCount = indexData?.totalNotes || 0;
     const folderCount = indexData?.totalFolders || 0;
 
     new Setting(containerEl)
-      .setName("Hierarchical Vault Knowledge Tree")
+      .setName("Placement index")
       .setDesc(
         `Used for placing generated notes. Separate from Ask Notes search. Status: ${
           indexData ? `Indexed ${noteCount} notes across ${folderCount} folders.` : "Not yet generated."
         }`
       )
       .addButton((btn) => {
-        btn.setButtonText("Deep Analyze & Rebuild Knowledge Tree").onClick(async () => {
+        btn.setButtonText("Rebuild index").onClick(async () => {
           btn.setDisabled(true);
           btn.setButtonText("Analyzing notes with AI...");
           try {
@@ -386,13 +431,13 @@ export class NemotronSettingTab extends PluginSettingTab {
           } catch (e: any) {
             new Notice(`Error during deep indexing: ${e.message}`);
             btn.setDisabled(false);
-            btn.setButtonText("Deep Analyze & Rebuild Knowledge Tree");
+            btn.setButtonText("Rebuild index");
           }
         });
       });
 
     // Useful Excalidraw diagram settings
-    containerEl.createEl("h3", { text: "Useful Excalidraw Diagrams" });
+    containerEl.createEl("h3", { text: "Diagrams and formatting" });
 
     new Setting(containerEl)
       .setName("Create useful diagrams after note placement")
@@ -438,9 +483,9 @@ export class NemotronSettingTab extends PluginSettingTab {
       .setDesc("Choose the default output style. Bare is source-locked for pasted chat histories.")
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("concise", "Concise & Punchy (Smart Brevity)")
-          .addOption("detailed", "Detailed & Comprehensive")
-          .addOption("bare", "Bare (Source Only)")
+          .addOption("concise", "Concise")
+          .addOption("detailed", "Detailed")
+          .addOption("bare", "Source only")
           .setValue(this.plugin.settings.defaultNoteStyle || "concise")
           .onChange(async (value) => {
             this.plugin.settings.defaultNoteStyle = value as NoteStyle;
@@ -448,7 +493,8 @@ export class NemotronSettingTab extends PluginSettingTab {
           })
       );
 
-    const advancedHeading = containerEl.createEl("h3", { text: "Advanced AI settings" });
+    containerEl = sections.advanced;
+    containerEl.createEl("h3", { text: "Advanced AI settings" });
     // Enable Thinking / Reasoning
     new Setting(containerEl)
       .setName("Enable Thinking (Reasoning)")
@@ -509,9 +555,9 @@ export class NemotronSettingTab extends PluginSettingTab {
           })
       );
 
-    // Default Folder
-    new Setting(containerEl)
-      .setName("Fallback Default Folder")
+    // These preferences belong with note creation, even though advanced controls render here.
+    new Setting(sections.creation)
+      .setName("Default folder")
       .setDesc("Fallback vault folder path (leave blank to auto-detect last modified note folder).")
       .addText((text) =>
         text
@@ -524,8 +570,8 @@ export class NemotronSettingTab extends PluginSettingTab {
       );
 
     // Auto-open created note
-    new Setting(containerEl)
-      .setName("Auto-open Created Notes")
+    new Setting(sections.creation)
+      .setName("Open created notes")
       .setDesc("Automatically open newly created notes in the editor.")
       .addToggle((toggle) =>
         toggle
@@ -578,21 +624,14 @@ export class NemotronSettingTab extends PluginSettingTab {
           this.display();
         })
       );
-
-    const advancedDetails = containerEl.createEl("details", { cls: "autonatic-settings-advanced" });
-    advancedDetails.createEl("summary", { text: "Advanced AI settings" });
-    let next = advancedHeading.nextSibling;
-    while (next && next !== advancedDetails) {
-      const following = next.nextSibling;
-      advancedDetails.appendChild(next);
-      next = following;
-    }
-    advancedHeading.replaceWith(advancedDetails);
   }
 
   hide(): void {
+    this.renderVersion++;
+    this.navigationController?.abort();
     this.askFolderNavigator?.destroy();
     this.unsubscribeAskStatus?.();
+    document.dispatchEvent(new CustomEvent("autonatic:settings-updated"));
     super.hide();
   }
 }

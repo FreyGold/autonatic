@@ -1,6 +1,7 @@
 import { App, Component, MarkdownRenderer, Modal, Notice, setIcon } from "obsidian";
 import type NemotronPlugin from "./main";
 import type { SearchChunk } from "./ask-notes-search";
+import { workspaceHeader, openPluginSettings } from "./workspace-ui";
 
 export class AskNotesModal extends Modal {
   private asking = false;
@@ -17,15 +18,22 @@ export class AskNotesModal extends Modal {
     this.modalEl.addClass("autonatic-ask-shell");
     contentEl.empty();
     contentEl.addClass("autonatic-ask-modal");
-    const header = contentEl.createDiv({ cls: "autonatic-ask-header" });
-    header.createEl("h2", { text: "Search notes" });
-    contentEl.createEl("p", { text: "Find passages from your notes, exactly as written.", cls: "autonatic-ask-intro" });
+    this.plugin.workspaceNavigation.activate("search", this);
+    workspaceHeader(contentEl, "search", (page) => this.plugin.workspaceNavigation.navigate(page, this), () => {
+      this.close();
+      openPluginSettings(this.app, this.plugin.manifest.id, "search");
+    });
+    const header = contentEl.createDiv({ cls: "autonatic-page-heading" });
+    const headingCopy = header.createDiv();
+    headingCopy.createEl("h3", { text: "Search your notes" });
+    headingCopy.createEl("p", { text: "Search original passages and open the notes they came from." });
     const status = contentEl.createDiv({ cls: "autonatic-ask-status" });
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
     const form = contentEl.createEl("form", { cls: "autonatic-ask-form" });
     const label = form.createEl("label", { text: "Search", cls: "autonatic-ask-label" });
     const icon = form.createSpan({ cls: "autonatic-ask-search-icon" });
+    icon.setAttribute("aria-hidden", "true");
     setIcon(icon, "search");
     const input = form.createEl("input", {
       type: "search",
@@ -33,6 +41,8 @@ export class AskNotesModal extends Modal {
       cls: "autonatic-ask-input",
     });
     input.id = "autonatic-ask-question";
+    input.name = "query";
+    input.autocomplete = "off";
     label.htmlFor = input.id;
     const askButton = form.createEl("button", { cls: "autonatic-ask-button" });
     askButton.type = "submit";
@@ -45,8 +55,9 @@ export class AskNotesModal extends Modal {
     stopButton.hidden = true;
     stopButton.addEventListener("click", () => this.abortController?.abort());
     const empty = contentEl.createDiv({ cls: "autonatic-ask-empty" });
-    empty.createEl("p", { text: "Search for a term such as Unmarshal, or describe what you’re looking for." });
-    empty.createEl("p", { text: "Matches show the original passage and its source. Search uses the folders included in Ask Notes settings." });
+    setIcon(empty.createSpan({ cls: "autonatic-empty-icon", attr: { "aria-hidden": "true" } }), "files");
+    empty.createEl("h4", { text: "Find a passage" });
+    empty.createEl("p", { text: "Search a keyword or ask a question. You’ll see original passages from your included folders, with a link to each note." });
     const results = contentEl.createDiv({ cls: "autonatic-ask-results" });
     results.hidden = true;
     const answer = results.createDiv({ cls: "autonatic-ask-answer" });
@@ -63,10 +74,8 @@ export class AskNotesModal extends Modal {
     });
 
     const openSettings = () => {
-      const settings = (this.app as App & { setting?: { open: () => void; openTabById: (id: string) => void } }).setting;
-      settings?.open();
-      settings?.openTabById(this.plugin.manifest.id);
       this.close();
+      openPluginSettings(this.app, this.plugin.manifest.id, "search");
     };
     const showSetup = (message: string) => {
       status.setText(message);
@@ -175,6 +184,7 @@ export class AskNotesModal extends Modal {
   }
 
   onClose(): void {
+    this.plugin.workspaceNavigation.deactivate(this);
     this.closed = true;
     this.abortController?.abort();
     this.unsubscribeStatus?.();

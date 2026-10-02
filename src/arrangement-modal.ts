@@ -2,6 +2,7 @@ import { App, Modal, Notice, TFolder } from "obsidian";
 import type NemotronPlugin from "./main";
 import { planVaultArrangement, type ArrangementPlan } from "./arrangement-planner";
 import { isExcludedPath, parseExcludedFolders } from "./privacy-controls";
+import { workspaceHeader, openPluginSettings, setWorkspaceBusy } from "./workspace-ui";
 
 export class VaultArrangementModal extends Modal {
   private plan: ArrangementPlan | null = null;
@@ -16,11 +17,15 @@ export class VaultArrangementModal extends Modal {
     const root = this.contentEl;
     root.empty();
     root.addClass("autonatic-arrange-modal");
-    root.createEl("h2", { text: "Organize notes" });
-    root.createEl("p", {
-      text: "Describe the structure you want. Review every move before applying it. A path snapshot is saved first.",
-      cls: "autonatic-arrange-intro",
+    this.plugin.workspaceNavigation.activate("organize", this);
+    workspaceHeader(root, "organize", (page) => this.plugin.workspaceNavigation.navigate(page, this), () => {
+      this.close();
+      openPluginSettings(this.app, this.plugin.manifest.id);
     });
+    const heading = root.createDiv({ cls: "autonatic-page-heading" });
+    const headingCopy = heading.createDiv();
+    headingCopy.createEl("h3", { text: "Organize your vault" });
+    headingCopy.createEl("p", { text: "Describe a structure. Review the moves before anything changes." });
     if (this.plugin.arrangementError) {
       root.createEl("p", { text: this.plugin.arrangementError, cls: "autonatic-arrange-conflicts" });
       return;
@@ -77,6 +82,7 @@ export class VaultArrangementModal extends Modal {
     cancelButton.addEventListener("click", () => this.controller?.abort());
 
     const setWorking = (working: boolean) => {
+      setWorkspaceBusy(root, working);
       planButton.disabled = working;
       instruction.disabled = working;
       scope.disabled = working;
@@ -221,5 +227,6 @@ export class VaultArrangementModal extends Modal {
 
   onClose(): void {
     this.controller?.abort();
+    this.plugin.workspaceNavigation.deactivate(this);
   }
 }
