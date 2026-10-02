@@ -1,7 +1,7 @@
 {
   "name": "obsidian-nemotron-notes",
   "version": "1.6.0",
-  "description": "Transform raw text into structured Obsidian notes using AI through NVIDIA NIM.",
+  "description": "Transform raw text into structured Obsidian notes using your choice of AI provider.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

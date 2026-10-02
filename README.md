@@ -4,12 +4,12 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 
 ## AI providers
 
-- **Supported now:** NVIDIA NIM
-- **Coming soon as generation providers:** Groq and Gemini. Gemini conversation links can already be imported as source text.
+- **Generation providers:** OpenAI (ChatGPT), Google Gemini, Anthropic Claude, Groq, OpenRouter, and NVIDIA NIM.
+- **Embedding providers:** OpenAI, Google Gemini, OpenRouter, and NVIDIA NIM. Claude and Groq do not expose a compatible embedding endpoint.
 
 ## Features
 
-- **AI Integration**: NVIDIA NIM support with streaming responses and reasoning/thinking support.
+- **AI Integration**: Select separate providers for generation and embeddings, with individual API keys and model IDs.
 - **The Obsidian Way Skill Prompt**:
   - **Optional YAML Properties / Frontmatter**: Opt in to generated `title`, `aliases`, `tags`, `created`, `summary`, and `status` metadata.
   - **Callouts**: Strategic use of `> [!summary]`, `> [!info]`, `> [!tip]`, `> [!warning]`.
@@ -33,7 +33,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
   - Optional folder scope for Smart Placement. Smart can create or append only in the selected folder and its subfolders.
   - Highlighted-text actions to improve, expand, or regenerate only the selected Markdown.
   - Full settings tab to customize API keys, models, temperatures, folders, and prompt instructions.
-- **Ask Notes**: Find original passages with links to their notes. Exact term lookups can return from the local index. Natural-language questions combine whole-word and identifier matching with NVIDIA-hosted query embeddings. Results use rarity-weighted text ranking and reciprocal-rank fusion; weak semantic candidates are filtered. Search never generates an answer; the passage and vector index stays in device-local IndexedDB outside the vault. No model runs locally.
+- **Ask Notes**: Find original passages with links to their notes. Exact term lookups can return from the local index. Natural-language questions combine whole-word and identifier matching with embeddings from the selected provider. Results use rarity-weighted text ranking and reciprocal-rank fusion; weak semantic candidates are filtered. Search never generates an answer; the passage and vector index stays in device-local IndexedDB outside the vault. No model runs locally.
 - **Adaptive Excalidraw Diagrams**:
   - Automatic mind map, flowchart, architecture, timeline, decision-tree, and comparison selection.
   - Automatic note workflows finish note placement first. A usefulness check then creates, updates, or skips focused diagrams.
@@ -56,7 +56,7 @@ For a Gemini chat, use **Share conversation** in Gemini, expand **Import a Gemin
 
 To edit part of an existing note, highlight the text and open the editor context menu. Use an **autonatic** command. The plugin replaces only the highlighted text.
 
-To search your notes, open **Settings > autonatic > Ask Notes**, include the folders you want searchable, and enable Ask Notes. Indexing sends selected Markdown text to NVIDIA for embeddings. Then use **Ctrl+Shift+H** (or **Cmd+Shift+H** on macOS), the **Ask Notes** command, or the button in the Note Crafter. You can change the shortcut in Obsidian Hotkeys. Modified notes update in the background; settings also provide pause, rebuild, and clear controls.
+To search your notes, choose an embedding provider in **Settings > autonatic > AI providers**, open **Ask Notes**, include the folders you want searchable, and enable Ask Notes. Indexing sends selected Markdown text to that provider for embeddings. Then use **Ctrl+Shift+H** (or **Cmd+Shift+H** on macOS), the **Ask Notes** command, or the button in the Note Crafter. You can change the shortcut in Obsidian Hotkeys. Modified notes update in the background; settings also provide pause, rebuild, and clear controls.
 
 To rearrange existing Markdown notes, choose **Organize notes** in Note Crafter or run the **Organize Notes and Manage Arrangement Snapshots** command. Describe the primary grouping and any priorities, optionally limit the scope to one folder, then click **Plan arrangement**. The preview lists each proposed destination and flags path conflicts. Click **Apply** only after reviewing the moves. **Saved arrangements** lets you review and restore the original paths later. A snapshot records paths, not note contents: edits and newly created notes remain, and a deleted note cannot be recovered from it. Restore stops if a destination is occupied or a tracked note is missing. The snapshot file lives in your vault's Obsidian plugin configuration directory.
 
@@ -64,15 +64,14 @@ To rearrange existing Markdown notes, choose **Organize notes** in Note Crafter 
 
 ## Privacy and cost
 
-This is a desktop-only plugin. Generation currently sends your prompt and selected vault context to NVIDIA NIM. Automatic appends make an additional NVIDIA request containing the proposed addition and the target note's contents, or selected excerpts when the target is long. Remote placement indexing is off by default. Ask Notes has separate consent and indexes only included Markdown folders, subject to excluded folders. Its embeddings, stored passages, and search metadata remain on this device and are not placed in the vault. Semantic searches send the query to NVIDIA for an embedding. Search results show original note passages without an answer-generation request. The API provider can charge for each request.
+This is a desktop-only plugin. Generation sends your prompt and selected vault context to the configured generation provider. Automatic appends make an additional request containing the proposed addition and the target note's contents, or selected excerpts when the target is long. Remote placement indexing is off by default. Ask Notes has separate consent and indexes only included Markdown folders, subject to excluded folders. Its embeddings, stored passages, and search metadata remain on this device and are not placed in the vault. Semantic searches send the query to the configured embedding provider. Search results show original note passages without an answer-generation request. Providers can charge for each request.
 
-Organize notes sends eligible note paths, titles, tags, and short summaries to NVIDIA for planning. Excluded folders and hidden paths are omitted. The arrangement snapshots are saved locally in the plugin configuration directory.
+Organize notes sends eligible note paths, titles, tags, and short summaries to the configured generation provider for planning. Excluded folders and hidden paths are omitted. The arrangement snapshots are saved locally in the plugin configuration directory.
 
 Run `npm run check` before a release. A tag starts the release workflow. The release contains `main.js`, `manifest.json`, `styles.css`, and `versions.json`.
 
 Go to **Obsidian Settings > autonatic** to configure:
-- **API Key**: NVIDIA NIM API key.
-- **Model**: `nvidia/nemotron-3-ultra-550b-a55b`.
+- **AI providers**: Select generation and embedding providers, add each provider's API key, then fetch and select models available to that key.
 - **Enable Thinking**: Toggle deep reasoning tokens.
 - **Obsidian Skill System Prompt**: Customize the formatting instructions.
 - **Default Folder**: Folder path where new notes are created.

@@ -1,6 +1,7 @@
 import { App, TFile } from "obsidian";
 import type { NemotronPluginSettings } from "./settings";
 import { streamChatCompletion } from "./api";
+import { getGenerationApiKey, PROVIDERS } from "./providers";
 import { buildOrUpdateVaultIndex, type FolderNode, type NoteItem, type VaultKnowledgeIndex } from "./vault-indexer";
 import { isExcludedPath, isPathInFolder, parseExcludedFolders } from "./privacy-controls";
 
@@ -120,7 +121,7 @@ export async function planVaultArrangement(
 ): Promise<ArrangementPlan> {
   const requested = instruction.trim();
   if (!requested) throw new Error("Describe how you want the notes arranged.");
-  if (!settings.apiKey?.trim()) throw new Error("Add your NVIDIA NIM API key in settings first.");
+  if (!getGenerationApiKey(settings).trim()) throw new Error(`Add your ${PROVIDERS[settings.generationProvider].label} API key in settings first.`);
   const excluded = parseExcludedFolders(settings.excludedFolders);
   onProgress?.("Reading the local note index", 0, 1);
   const index = await (loadIndex ? loadIndex() : buildOrUpdateVaultIndex(app, { ...settings, allowRemoteVaultIndexing: false }));

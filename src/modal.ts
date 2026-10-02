@@ -4,6 +4,7 @@ import { generateNemotronNote, sanitizeMermaidDiagrams, streamChatCompletion, ty
 import { buildUserPrompt, type NoteStyle } from "./prompts";
 import { CustomSelect, SelectOption } from "./custom-select";
 import { FolderNavigator } from "./folder-nav";
+import { getGenerationApiKey, getGenerationConfig, PROVIDERS } from "./providers";
 import {
   buildOrUpdateVaultIndex,
   formatVaultTreeForAI,
@@ -854,10 +855,10 @@ export class NemotronModal extends Modal {
         return;
       }
       if (this.isGenerating) return;
-      if (!this.plugin.settings.apiKey || !this.plugin.settings.apiKey.trim()) {
-        new Notice("Please enter your NVIDIA NIM API key first.");
+      if (!getGenerationApiKey(this.plugin.settings).trim()) {
+        new Notice(`Please enter your ${PROVIDERS[this.plugin.settings.generationProvider].label} API key first.`);
         statusDiv.style.display = "block";
-        statusDiv.setText("Error: NVIDIA NIM API key is required. Please set it above or in Settings.");
+        statusDiv.setText(`Error: ${PROVIDERS[this.plugin.settings.generationProvider].label} API key is required. Set it above or in Settings.`);
         return;
       }
 
@@ -1484,10 +1485,11 @@ export class NemotronModal extends Modal {
 
     generateExcalBtn.addEventListener("click", async () => {
       if (this.isGenerating) return;
-      if (!this.plugin.settings.apiKey || !this.plugin.settings.apiKey.trim()) {
-        new Notice("Please enter your NVIDIA API Key first.");
+      if (!getGenerationApiKey(this.plugin.settings).trim()) {
+        const providerName = PROVIDERS[this.plugin.settings.generationProvider].label;
+        new Notice(`Please enter your ${providerName} API key first.`);
         excalStatusDiv.style.display = "block";
-        excalStatusDiv.setText("Error: NVIDIA API Key is required. Please set it above or in Settings.");
+        excalStatusDiv.setText(`Error: ${providerName} API key is required. Please set it in Settings.`);
         return;
       }
 
@@ -1856,29 +1858,31 @@ export class NemotronModal extends Modal {
   private renderApiKeySection(containerEl: HTMLElement) {
     containerEl.empty();
 
-    const isSet = !!(this.plugin.settings.apiKey && this.plugin.settings.apiKey.trim());
+    const config = getGenerationConfig(this.plugin.settings);
+    const provider = PROVIDERS[config.provider];
+    const isSet = !!config.apiKey.trim();
     containerEl.style.display = isSet ? "none" : "block";
 
     if (!isSet) {
       const card = containerEl.createDiv({ cls: "nemotron-api-setup-card" });
       
       const header = card.createDiv({ cls: "nemotron-api-setup-header" });
-      header.createEl("label", { text: "Connect NVIDIA NIM", cls: "nemotron-api-setup-title", attr: { for: "autonatic-api-key" } });
+      header.createEl("label", { text: `Connect ${provider.label}`, cls: "nemotron-api-setup-title", attr: { for: "autonatic-api-key" } });
       
       const nimLink = header.createEl("a", {
-        text: "Open NVIDIA NIM (build.nvidia.com)",
+        text: `Get ${provider.label} API key`,
         cls: "nemotron-nim-link",
-        href: "https://build.nvidia.com",
+        href: provider.keyUrl,
       });
       nimLink.addEventListener("click", (e) => {
         e.preventDefault();
-        window.open("https://build.nvidia.com", "_blank");
+        window.open(provider.keyUrl, "_blank");
       });
 
       const inputRow = card.createDiv({ cls: "nemotron-api-input-row" });
       const keyInput = inputRow.createEl("input", {
         type: "password",
-        placeholder: "Paste your key here (nvapi-...)",
+        placeholder: `Paste your ${provider.label} API key`,
         cls: "nemotron-input nemotron-api-input",
       });
 
@@ -1925,9 +1929,10 @@ export class NemotronModal extends Modal {
           new Notice("Please enter a valid API key.");
           return;
         }
-        this.plugin.settings.apiKey = val;
+        this.plugin.settings.providers[config.provider].apiKey = val;
+        if (config.provider === "nvidia") this.plugin.settings.apiKey = val;
         await this.plugin.saveSettings();
-        new Notice("NVIDIA NIM API key saved successfully!");
+        new Notice(`${provider.label} API key saved successfully!`);
         this.renderApiKeySection(containerEl);
       });
     }

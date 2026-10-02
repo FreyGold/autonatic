@@ -3,10 +3,13 @@ import type NemotronPlugin from "./main";
 import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT, type NoteStyle } from "./prompts";
 import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
 import { DESTINATION_MODE_OPTIONS, type DestinationMode } from "./destination-modes";
-import { DEFAULT_TEXT_MODEL } from "./model-defaults";
 import { FolderNavigator } from "./folder-nav";
+import { defaultProviderConfigs, EMBEDDING_PROVIDERS, fetchProviderModels, PROVIDERS, type AIProvider } from "./providers";
 
 export interface NemotronPluginSettings {
+  generationProvider: AIProvider;
+  embeddingProvider: AIProvider;
+  providers: Record<AIProvider, { apiKey: string; baseUrl: string; model: string; embeddingModel: string; availableModels: string[]; availableEmbeddingModels: string[] }>;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -37,10 +40,13 @@ export interface NemotronPluginSettings {
 }
 
 export const DEFAULT_SETTINGS: NemotronPluginSettings = {
+  generationProvider: "nvidia",
+  embeddingProvider: "nvidia",
+  providers: defaultProviderConfigs(),
   apiKey: "",
   baseUrl: "https://integrate.api.nvidia.com/v1",
-  model: DEFAULT_TEXT_MODEL,
-  visionModel: "meta/llama-3.2-11b-vision-instruct",
+  model: "",
+  visionModel: "",
   defaultDestinationMode: "smart",
   defaultNoteStyle: "concise",
   enableProperties: false,
@@ -86,47 +92,153 @@ export class NemotronSettingTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "autonatic" });
     containerEl.createEl("h3", { text: "Privacy and cost" });
     new Setting(containerEl).setName("Automatic index updates").setDesc("Update the local vault index after a file changes.").addToggle((c) => c.setValue(this.plugin.settings.enableAutomaticIndexing).onChange(async (v) => { this.plugin.settings.enableAutomaticIndexing = v; await this.plugin.saveSettings(); }));
-    new Setting(containerEl).setName("AI summaries for placement index").setDesc("Send short excerpts to NVIDIA to summarize the local index. Automatic appends separately send the target note, or excerpts from a long target, for duplicate review. Ask Notes has separate consent below.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("AI summaries for placement index").setDesc("Send short excerpts to the selected generation provider to summarize the local index. Automatic appends separately send the target note, or excerpts from a long target, for duplicate review. Ask Notes has separate consent below.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Excluded folders").setDesc("Comma-separated folder paths that indexing must ignore.").addText((c) => c.setValue(this.plugin.settings.excludedFolders).onChange(async (v) => { this.plugin.settings.excludedFolders = v; await this.plugin.saveSettings(); this.plugin.scheduleAskNotesUpdate(); }));
     new Setting(containerEl).setName("Maximum context notes").setDesc("Limit the note summaries sent with one generation request.").addSlider((c) => c.setLimits(5, 100, 5).setValue(this.plugin.settings.maxVaultContextNotes).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxVaultContextNotes = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Confirm multi-file changes").setDesc("Show the planned file count before a multi-note write.").addToggle((c) => c.setValue(this.plugin.settings.confirmMultiFileChanges).onChange(async (v) => { this.plugin.settings.confirmMultiFileChanges = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Maximum automatic diagrams").setDesc("Limit useful diagrams created or updated after one note operation. Zero disables automatic diagrams.").addSlider((c) => c.setLimits(0, 10, 1).setValue(this.plugin.settings.maxAutomaticDiagrams).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxAutomaticDiagrams = v; await this.plugin.saveSettings(); }));
 
-    containerEl.createEl("h3", { text: "NVIDIA NIM" });
-    const apiKeySetting = new Setting(containerEl)
-      .setName("NVIDIA NIM API Key")
-      .setDesc("Your personal API key (starts with nvapi-...). Saved in this plugin's Obsidian settings.");
+    containerEl.createEl("h3", { text: "AI providers" });
+    new Setting(containerEl)
+      .setName("Generation provider")
+      .setDesc("Provider used for note generation, planning, diagrams, and image transcription.")
+      .addDropdown((dropdown) => {
+        for (const [id, provider] of Object.entries(PROVIDERS)) dropdown.addOption(id, provider.label);
+        return dropdown.setValue(this.plugin.settings.generationProvider || "nvidia").onChange(async (value) => {
+          this.plugin.settings.generationProvider = value as AIProvider;
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
+    new Setting(containerEl)
+      .setName("Embedding provider")
+      .setDesc("Used for Ask Notes semantic search. Claude and Groq do not provide compatible embedding APIs.")
+      .addDropdown((dropdown) => {
+        for (const provider of EMBEDDING_PROVIDERS) dropdown.addOption(provider, PROVIDERS[provider].label);
+        return dropdown.setValue(this.plugin.settings.embeddingProvider || "nvidia").onChange(async (value) => {
+          this.plugin.settings.embeddingProvider = value as AIProvider;
+          await this.plugin.saveSettings();
+          if (this.plugin.settings.askNotesEnabled) {
+            await this.plugin.askNotesSearch.clear();
+            const selected = this.plugin.settings.providers[value as AIProvider];
+            if (selected.apiKey.trim() && selected.embeddingModel.trim()
+              && selected.availableEmbeddingModels.includes(selected.embeddingModel)) {
+              this.plugin.scheduleAskNotesUpdate();
+            }
+          }
+          this.display();
+        });
+      });
 
-    let apiKeyInputEl: HTMLInputElement;
-
-    apiKeySetting.addText((text) => {
-      text
-        .setPlaceholder("nvapi-...")
-        .setValue(this.plugin.settings.apiKey)
-        .onChange(async (value) => {
-          this.plugin.settings.apiKey = value.trim();
+    containerEl.createEl("h4", { text: "Provider credentials and models" });
+    for (const [providerId, provider] of Object.entries(PROVIDERS) as [AIProvider, typeof PROVIDERS[AIProvider]][]) {
+      const config = this.plugin.settings.providers[providerId];
+      const details = containerEl.createEl("details", { cls: "autonatic-provider-settings" });
+      details.open = providerId === this.plugin.settings.generationProvider || providerId === this.plugin.settings.embeddingProvider;
+      details.createEl("summary", { text: provider.label });
+      const invalidateProviderModels = async () => {
+        const hadCatalog = config.availableModels.length > 0 || config.availableEmbeddingModels.length > 0;
+        config.availableModels = [];
+        config.availableEmbeddingModels = [];
+        config.model = "";
+        config.embeddingModel = "";
+        if (providerId === "nvidia") this.plugin.settings.model = "";
+        if (hadCatalog && this.plugin.settings.askNotesEnabled && this.plugin.settings.embeddingProvider === providerId) {
+          await this.plugin.askNotesSearch.clear();
+        }
+      };
+      let keyInput: HTMLInputElement;
+      new Setting(details).setName("API key").setDesc("Stored in this plugin's Obsidian settings.").addText((text) => {
+        text.setPlaceholder("Paste API key").setValue(config.apiKey).onChange(async (value) => {
+          if (value.trim() !== config.apiKey) await invalidateProviderModels();
+          config.apiKey = value.trim();
+          if (providerId === "nvidia") this.plugin.settings.apiKey = config.apiKey;
           await this.plugin.saveSettings();
         });
-      apiKeyInputEl = text.inputEl;
-      apiKeyInputEl.type = "password";
-      apiKeyInputEl.style.minWidth = "240px";
-    });
-
-    // Reveal / Mask toggle
-    apiKeySetting.addButton((btn) => {
-      btn.setButtonText("Show/Hide").setTooltip("Toggle visibility").onClick(() => {
-        if (apiKeyInputEl) {
-          apiKeyInputEl.type = apiKeyInputEl.type === "password" ? "text" : "password";
-        }
+        keyInput = text.inputEl;
+        keyInput.type = "password";
+        keyInput.style.minWidth = "240px";
+      }).addButton((button) => button.setButtonText("Show/Hide").onClick(() => {
+        keyInput.type = keyInput.type === "password" ? "text" : "password";
+      })).addButton((button) => button.setButtonText("Get key").onClick(() => window.open(provider.keyUrl, "_blank")))
+        .addButton((button) => button.setButtonText("Paste").onClick(async () => {
+          try {
+            const electron = (window as any).require?.("electron");
+            const value = electron?.clipboard?.readText?.() || await navigator.clipboard?.readText?.() || "";
+            if (value.trim()) {
+              if (value.trim() !== config.apiKey) await invalidateProviderModels();
+              config.apiKey = value.trim();
+              if (providerId === "nvidia") this.plugin.settings.apiKey = config.apiKey;
+              keyInput.value = config.apiKey;
+              await this.plugin.saveSettings();
+            }
+          } catch { new Notice("Could not read the clipboard."); }
+        }));
+      new Setting(details).setName("Available models").setDesc("Fetch the models available to this API key. This request also checks that the key is accepted.")
+        .addButton((button) => button.setButtonText("Test key & fetch models").onClick(async () => {
+          const apiKey = keyInput.value.trim();
+          if (!apiKey) { new Notice(`Enter a ${provider.label} API key first.`); return; }
+          config.apiKey = apiKey;
+          config.baseUrl = config.baseUrl.trim() || provider.baseUrl;
+          if (providerId === "nvidia") this.plugin.settings.apiKey = apiKey;
+          await this.plugin.saveSettings();
+          button.setDisabled(true);
+          button.setButtonText("Fetching…");
+          try {
+            const models = await fetchProviderModels(providerId, config.baseUrl, apiKey);
+            config.availableModels = models.chat;
+            config.availableEmbeddingModels = models.embeddings;
+            if (config.model && !models.chat.includes(config.model)) {
+              config.model = "";
+              if (providerId === "nvidia") this.plugin.settings.model = "";
+            }
+            if (config.embeddingModel && !models.embeddings.includes(config.embeddingModel)) config.embeddingModel = "";
+            await this.plugin.saveSettings();
+            new Notice(`Key accepted. Found ${models.chat.length} chat models${EMBEDDING_PROVIDERS.includes(providerId) ? ` and ${models.embeddings.length} embedding models` : ""}.`);
+            await this.display();
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : "Could not fetch provider models.", 7000);
+            button.setDisabled(false);
+            button.setButtonText("Test key & fetch models");
+          }
+        }));
+      new Setting(details).setName("Chat model").setDesc("Choose a model returned by the provider. Fetch models after adding your key.").addDropdown((dropdown) => {
+        dropdown.addOption("", config.availableModels.length ? "Select a model" : "Fetch models first");
+        for (const model of config.availableModels) dropdown.addOption(model, model);
+        return dropdown.setValue(config.availableModels.includes(config.model) ? config.model : "").onChange(async (value) => {
+          config.model = value;
+          if (providerId === "nvidia") this.plugin.settings.model = value;
+          await this.plugin.saveSettings();
+        });
       });
-    });
-    apiKeySetting.addButton((btn) => btn.setButtonText("Get key").onClick(() => {
-      window.open("https://build.nvidia.com", "_blank");
-    }));
+      new Setting(details).setName("API base URL").setDesc("Change only when using a compatible custom endpoint.").addText((text) => text
+        .setPlaceholder(provider.baseUrl).setValue(config.baseUrl).onChange(async (value) => {
+          const nextUrl = value.trim() || provider.baseUrl;
+          if (nextUrl !== config.baseUrl) await invalidateProviderModels();
+          config.baseUrl = nextUrl;
+          if (providerId === "nvidia") this.plugin.settings.baseUrl = config.baseUrl;
+          await this.plugin.saveSettings();
+        }));
+      if (EMBEDDING_PROVIDERS.includes(providerId)) {
+        new Setting(details).setName("Embedding model").setDesc("Choose an embedding model returned by the provider.").addDropdown((dropdown) => {
+          dropdown.addOption("", config.availableEmbeddingModels.length ? "Select an embedding model" : "Fetch models first");
+          for (const model of config.availableEmbeddingModels) dropdown.addOption(model, model);
+          return dropdown.setValue(config.availableEmbeddingModels.includes(config.embeddingModel) ? config.embeddingModel : "").onChange(async (value) => {
+            if (value === config.embeddingModel) return;
+            config.embeddingModel = value;
+            await this.plugin.saveSettings();
+            if (this.plugin.settings.askNotesEnabled && this.plugin.settings.embeddingProvider === providerId) {
+              await this.plugin.askNotesSearch.clear();
+              this.plugin.scheduleAskNotesUpdate();
+            }
+          });
+        });
+      }
+    }
 
     containerEl.createEl("h3", { text: "Ask Notes" });
     containerEl.createEl("p", {
-      text: "Choose folders before enabling search. Indexing sends their Markdown text to NVIDIA for embeddings. Matching passages are shown unchanged. Exact term lookups can use the local index; natural-language questions also send your query to NVIDIA for semantic matching. API usage may incur charges. Vectors and excerpts stay in local device storage, outside the vault.",
+      text: "Choose folders before enabling search. Indexing sends their Markdown text to your selected embedding provider. Matching passages are shown unchanged. Exact term lookups can use the local index; natural-language questions also send your query to that provider for semantic matching. API usage may incur charges. Vectors and excerpts stay in local device storage, outside the vault.",
       cls: "autonatic-settings-help",
     });
     const includedList = containerEl.createDiv({ cls: "autonatic-included-folders" });
@@ -186,8 +298,9 @@ export class NemotronSettingTab extends PluginSettingTab {
       .setName("Enable Ask Notes")
       .setDesc("Enable passage search. Selected notes are sent for indexing embeddings; semantic search sends only the query. No answer is generated.")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.askNotesEnabled).onChange(async (enabled) => {
-        if (enabled && (!this.plugin.settings.askNotesFolders.length || !this.plugin.settings.apiKey.trim())) {
-          new Notice("Choose a folder and add your NVIDIA NIM API key first.");
+        const embeddingConfig = this.plugin.settings.providers[this.plugin.settings.embeddingProvider];
+        if (enabled && (!this.plugin.settings.askNotesFolders.length || !embeddingConfig.apiKey.trim() || !embeddingConfig.embeddingModel.trim())) {
+          new Notice("Choose a folder, fetch models, and select an embedding model first.");
           toggle.setValue(false);
           return;
         }
@@ -230,35 +343,6 @@ export class NemotronSettingTab extends PluginSettingTab {
         catch (error) { new Notice(error instanceof Error ? error.message : "Could not clear local search data."); }
         await this.display();
       }));
-
-    // 1-Click Paste Button
-    apiKeySetting.addButton((btn) => {
-      btn.setButtonText("Paste").setTooltip("Paste API key from clipboard").onClick(async () => {
-        let text = "";
-        try {
-          const electron = (window as any).require ? (window as any).require("electron") : null;
-          if (electron && electron.clipboard) {
-            text = electron.clipboard.readText();
-          }
-        } catch {}
-
-        if (!text && navigator.clipboard && navigator.clipboard.readText) {
-          try {
-            text = await navigator.clipboard.readText();
-          } catch {}
-        }
-
-        if (text && text.trim()) {
-          this.plugin.settings.apiKey = text.trim();
-          await this.plugin.saveSettings();
-          if (apiKeyInputEl) {
-            apiKeyInputEl.value = text.trim();
-          }
-          btn.setButtonText("Pasted!");
-          setTimeout(() => btn.setButtonText("Paste"), 2000);
-        }
-      });
-    });
 
     containerEl.createEl("h3", { text: "Note creation" });
     // Default Destination Mode
@@ -365,48 +449,6 @@ export class NemotronSettingTab extends PluginSettingTab {
       );
 
     const advancedHeading = containerEl.createEl("h3", { text: "Advanced AI settings" });
-    // Base URL
-    new Setting(containerEl)
-      .setName("API Base URL")
-      .setDesc("The OpenAI-compatible base URL for the currently supported NVIDIA NIM provider.")
-      .addText((text) =>
-        text
-          .setPlaceholder("https://integrate.api.nvidia.com/v1")
-          .setValue(this.plugin.settings.baseUrl)
-          .onChange(async (value) => {
-            this.plugin.settings.baseUrl = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    // Text Model Name
-    new Setting(containerEl)
-      .setName("Text Model Name")
-      .setDesc("Model identifier to use for note architecture and synthesis.")
-      .addText((text) =>
-        text
-          .setPlaceholder(DEFAULT_TEXT_MODEL)
-          .setValue(this.plugin.settings.model)
-          .onChange(async (value) => {
-            this.plugin.settings.model = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    // Vision Model Name
-    new Setting(containerEl)
-      .setName("Vision Model Name")
-      .setDesc("Multimodal OCR model used to read and transcribe attached photos/screenshots.")
-      .addText((text) =>
-        text
-          .setPlaceholder("meta/llama-3.2-11b-vision-instruct")
-          .setValue(this.plugin.settings.visionModel)
-          .onChange(async (value) => {
-            this.plugin.settings.visionModel = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
     // Enable Thinking / Reasoning
     new Setting(containerEl)
       .setName("Enable Thinking (Reasoning)")

@@ -1,8 +1,7 @@
 import { App, FileSystemAdapter, requestUrl, TFile } from "obsidian";
 import type { NemotronPluginSettings } from "./settings";
 import { isExcludedPath, isPathInFolder, parseExcludedFolders } from "./privacy-controls";
-
-export const ASK_EMBED_MODEL = "nvidia/nemotron-3-embed-1b";
+import { getEmbeddingConfig } from "./providers";
 
 export interface SearchChunk {
   id: string;
@@ -237,25 +236,40 @@ export class AskNotesSearch {
 
   private async embed(texts: string[], inputType: "passage" | "query"): Promise<number[][]> {
     const settings = this.settings();
-    if (!settings.apiKey.trim()) throw new Error("Add a NVIDIA NIM API key in settings first.");
+    const config = getEmbeddingConfig(settings);
+    if (!config.apiKey.trim()) throw new Error(`Add the ${config.provider} API key in settings first.`);
+    if (!config.embeddingModel.trim()) throw new Error(`Fetch and select an embedding model for ${config.provider} in settings first.`);
+    const storedProvider = settings.providers?.[config.provider];
+    if (storedProvider && !storedProvider.availableEmbeddingModels.includes(config.embeddingModel)) {
+      throw new Error(`Fetch ${config.provider} models in settings and select an available embedding model first.`);
+    }
+    const isGemini = config.provider === "gemini";
     const response = await requestUrl({
-      url: `${settings.baseUrl.replace(/\/+$/, "")}/embeddings`,
+      url: isGemini
+        ? `${config.baseUrl.replace(/\/+$/, "")}/models/${encodeURIComponent(config.embeddingModel)}:batchEmbedContents`
+        : `${config.baseUrl.replace(/\/+$/, "")}/embeddings`,
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
-      body: JSON.stringify({ model: ASK_EMBED_MODEL, input: texts, input_type: inputType, encoding_format: "float", truncate: "NONE" }),
+      headers: { "Content-Type": "application/json", ...(isGemini
+        ? { "x-goog-api-key": config.apiKey } : { Authorization: `Bearer ${config.apiKey}` }) },
+      body: JSON.stringify(isGemini
+        ? { requests: texts.map((text) => ({ model: `models/${config.embeddingModel}`, content: { parts: [{ text }] }, taskType: inputType === "query" ? "RETRIEVAL_QUERY" : "RETRIEVAL_DOCUMENT" })) }
+        : { model: config.embeddingModel, input: texts,
+          ...(config.provider === "nvidia" ? { input_type: inputType, truncate: "NONE" } : {}), encoding_format: "float" }),
       throw: false,
     });
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(`NVIDIA embeddings failed (${response.status}). Check API access and try again.`);
+      throw new Error(`${config.provider} embeddings failed (${response.status}): ${response.text}`);
     }
-    const items = response.json?.data;
-    if (!Array.isArray(items) || items.length !== texts.length) throw new Error("NVIDIA returned incomplete embeddings.");
+    const items = isGemini
+      ? response.json?.embeddings?.map((item: { values: number[] }, index: number) => ({ embedding: item.values, index }))
+      : response.json?.data;
+    if (!Array.isArray(items) || items.length !== texts.length) throw new Error(`${config.provider} returned incomplete embeddings.`);
     const vectors = items.sort((a: { index: number }, b: { index: number }) => a.index - b.index)
       .map((item: { embedding: number[] }) => item.embedding);
     const dimensions = vectors[0]?.length ?? 0;
     if (!dimensions || vectors.some((v: unknown) => !Array.isArray(v)
       || (v as number[]).length !== dimensions || !(v as number[]).every(Number.isFinite))) {
-      throw new Error("NVIDIA returned invalid embeddings.");
+      throw new Error(`${config.provider} returned invalid embeddings.`);
     }
     return vectors;
   }
@@ -386,7 +400,7 @@ export class AskNotesSearch {
     const localSources = rankSearchChunks(chunks, question, []);
     if (!sourcesCurrent(localSources)) throw new Error("Search access or source notes changed. Try again.");
     onMatches?.(localSources);
-    if (hasStrongSearchMatch(localSources, question) || !this.settings().apiKey.trim()) {
+    if (hasStrongSearchMatch(localSources, question) || !getEmbeddingConfig(this.settings()).apiKey.trim()) {
       return { sources: localSources };
     }
 

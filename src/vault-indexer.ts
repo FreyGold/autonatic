@@ -1,8 +1,8 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
 import type { NemotronPluginSettings } from "./settings";
 import { isExcludedPath, parseExcludedFolders } from "./privacy-controls";
-import * as https from "https";
-import * as http from "http";
+import { streamChatCompletion } from "./api";
+import { getGenerationApiKey, getGenerationConfig } from "./providers";
 
 export interface NoteItem {
   title: string;
@@ -113,56 +113,13 @@ async function callNemotronJson(
   systemPrompt: string,
   userPrompt: string
 ): Promise<any> {
-  const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const urlObj = new URL(urlStr);
-
-  const requestBody = {
-    model: settings.model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.2,
-    max_tokens: 3000,
-  };
-
-  const postData = JSON.stringify(requestBody);
-  const isHttps = urlObj.protocol === "https:";
-  const requestFn = isHttps ? https.request : http.request;
-
-  return new Promise((resolve, reject) => {
-    const req = requestFn(
-      urlObj,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${settings.apiKey}`,
-          "Content-Length": Buffer.byteLength(postData),
-        },
-      },
-      (res) => {
-        let body = "";
-        res.on("data", (chunk) => (body += chunk));
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(body);
-            const content = parsed.choices?.[0]?.message?.content || "";
-            const jsonMatch = content.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/) || [null, content];
-            const cleanJson = (jsonMatch[1] || content).trim();
-            const data = JSON.parse(cleanJson);
-            resolve(data);
-          } catch (err) {
-            reject(err);
-          }
-        });
-      }
-    );
-
-    req.on("error", (e) => reject(e));
-    req.write(postData);
-    req.end();
-  });
+  const config = getGenerationConfig(settings);
+  const response = await streamChatCompletion({ ...settings, apiKey: config.apiKey, baseUrl: config.baseUrl,
+    model: config.model, temperature: 0.2, maxTokens: 3000 } as NemotronPluginSettings,
+  systemPrompt, userPrompt);
+  const content = response.content;
+  const jsonMatch = content.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/) || [null, content];
+  return JSON.parse((jsonMatch[1] || content).trim());
 }
 
 /**
@@ -262,7 +219,7 @@ export async function buildOrUpdateVaultIndex(
   }
 
   // Phase 2: Deep AI Semantic Analysis (if API key available)
-  if (settings?.allowRemoteVaultIndexing && settings.apiKey && notesToAnalyzeWithAI.length > 0) {
+  if (settings?.allowRemoteVaultIndexing && getGenerationApiKey(settings) && notesToAnalyzeWithAI.length > 0) {
     const BATCH_SIZE = 6;
     const totalAiBatches = Math.ceil(notesToAnalyzeWithAI.length / BATCH_SIZE);
 

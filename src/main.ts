@@ -4,7 +4,7 @@ import {
   DEFAULT_SETTINGS,
   NemotronSettingTab,
 } from "./settings";
-import { resolveTextModel } from "./model-defaults";
+import { getGenerationApiKey, PROVIDERS } from "./providers";
 import { NemotronModal } from "./modal";
 import { generateNemotronNote } from "./api";
 import { buildSelectionEditPrompt, buildUserPrompt, SelectionEditAction } from "./prompts";
@@ -89,8 +89,8 @@ export default class NemotronPlugin extends Plugin {
           return;
         }
 
-        if (!this.settings.apiKey || !this.settings.apiKey.trim()) {
-          new Notice("Please enter your NVIDIA NIM API key in Settings first.");
+        if (!getGenerationApiKey(this.settings).trim()) {
+          new Notice(`Please enter your ${PROVIDERS[this.settings.generationProvider].label} API key in Settings first.`);
           return;
         }
 
@@ -290,8 +290,8 @@ export default class NemotronPlugin extends Plugin {
       new Notice("Highlight text before you use an autonatic action.");
       return;
     }
-    if (!this.settings.apiKey?.trim()) {
-      new Notice("Enter your NVIDIA NIM API key in the plugin settings first.");
+    if (!getGenerationApiKey(this.settings).trim()) {
+      new Notice(`Enter your ${PROVIDERS[this.settings.generationProvider].label} API key in the plugin settings first.`);
       return;
     }
     if (this.selectionEditInProgress) {
@@ -387,9 +387,23 @@ export default class NemotronPlugin extends Plugin {
   async loadSettings() {
     const savedSettings = (await this.loadData()) || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
-    this.settings.model = resolveTextModel(savedSettings.model);
-
-    let settingsChanged = savedSettings.model !== this.settings.model;
+    this.settings.providers = Object.assign({}, DEFAULT_SETTINGS.providers,
+      Object.fromEntries(Object.entries(savedSettings.providers || {}).map(([provider, config]) => [
+        provider, { ...DEFAULT_SETTINGS.providers[provider as keyof typeof DEFAULT_SETTINGS.providers], ...(config as object) },
+      ])));
+    this.settings.providers.nvidia = {
+      ...this.settings.providers.nvidia,
+      apiKey: this.settings.providers.nvidia.apiKey || savedSettings.apiKey || "",
+      baseUrl: this.settings.providers.nvidia.baseUrl === DEFAULT_SETTINGS.providers.nvidia.baseUrl && savedSettings.baseUrl
+        ? savedSettings.baseUrl : this.settings.providers.nvidia.baseUrl,
+      model: this.settings.providers.nvidia.model || savedSettings.model || "",
+    };
+    this.settings.apiKey = this.settings.providers.nvidia.apiKey;
+    this.settings.baseUrl = this.settings.providers.nvidia.baseUrl;
+    this.settings.model = this.settings.providers.nvidia.model;
+    if (!this.settings.generationProvider) this.settings.generationProvider = "nvidia";
+    if (!this.settings.embeddingProvider) this.settings.embeddingProvider = "nvidia";
+    let settingsChanged = false;
     if (savedSettings.propertiesOptInVersion !== DEFAULT_SETTINGS.propertiesOptInVersion) {
       this.settings.enableProperties = false;
       this.settings.propertiesOptInVersion = DEFAULT_SETTINGS.propertiesOptInVersion;

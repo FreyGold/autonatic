@@ -4,6 +4,7 @@ import * as https from "https";
 import * as http from "http";
 import { StringDecoder } from "string_decoder";
 import { BARE_OBSIDIAN_SKILL_PROMPT, type NoteStyle } from "./prompts";
+import { getGenerationConfig } from "./providers";
 
 export interface StreamCallbacks {
   onReasoning?: (reasoningChunk: string) => void;
@@ -148,84 +149,40 @@ export async function extractContentFromImage(
       : "Analyzing attached image / screenshot..."
   );
 
-  const requestBody = {
-    model: settings.visionModel || "meta/llama-3.2-11b-vision-instruct",
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: visionPrompt },
-          {
-            type: "image_url",
-            image_url: {
-              url: dataUrl,
-            },
-          },
-        ],
-      },
-    ],
-    max_tokens: 4096,
-    temperature: 0.2,
-  };
-
-  const urlStr = `${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const urlObj = new URL(urlStr);
-  const postData = JSON.stringify(requestBody);
-
-  return new Promise((resolve, reject) => {
-    try {
-      const isHttps = urlObj.protocol === "https:";
-      const requestFn = isHttps ? https.request : http.request;
-
-      const req = requestFn(
-        urlObj,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${settings.apiKey}`,
-            "Content-Length": Buffer.byteLength(postData),
-          },
-        },
-        (res) => {
-          let body = "";
-          res.on("data", (chunk) => {
-            body += chunk.toString("utf-8");
-          });
-
-          res.on("end", () => {
-            try {
-              if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-                reject(new Error(`Vision API error (${res.statusCode}): ${body}`));
-                return;
-              }
-              const parsed = JSON.parse(body);
-              const text = parsed.choices?.[0]?.message?.content || "";
-              resolve(text);
-            } catch (err: any) {
-              reject(new Error(`Failed to parse Vision response: ${err.message}`));
-            }
-          });
-        }
-      );
-
-      if (signal) {
-        signal.addEventListener("abort", () => {
-          req.destroy(new DOMException("Aborted", "AbortError"));
-          reject(new DOMException("Aborted", "AbortError"));
-        });
-      }
-
-      req.on("error", (err) => {
-        reject(err);
-      });
-
-      req.write(postData);
-      req.end();
-    } catch (err) {
-      reject(err);
-    }
-  });
+  const config = getGenerationConfig(settings);
+  const [meta, encoded] = dataUrl.split(",", 2);
+  const mimeType = /data:([^;]+)/.exec(meta)?.[1] || "image/png";
+  const model = config.model;
+  const body: Record<string, any> = { model, max_tokens: 4096, temperature: 0.2 };
+  let url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` };
+  if (config.provider === "anthropic") {
+    url = `${config.baseUrl.replace(/\/+$/, "")}/messages`;
+    headers["x-api-key"] = config.apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+    delete headers.Authorization;
+    body.messages = [{ role: "user", content: [{ type: "text", text: visionPrompt },
+      { type: "image", source: { type: "base64", media_type: mimeType, data: encoded } }] }];
+  } else if (config.provider === "gemini") {
+    url = `${config.baseUrl.replace(/\/+$/, "")}/models/${encodeURIComponent(model)}:generateContent`;
+    body.contents = [{ role: "user", parts: [{ text: visionPrompt }, { inlineData: { mimeType, data: encoded } }] }];
+    body.generationConfig = { maxOutputTokens: 4096, temperature: 0.2 };
+    delete body.model;
+    delete body.max_tokens;
+    delete body.temperature;
+    delete headers.Authorization;
+    headers["x-goog-api-key"] = config.apiKey;
+  } else {
+    body.messages = [{ role: "user", content: [{ type: "text", text: visionPrompt }, { type: "image_url", image_url: { url: dataUrl } }] }];
+  }
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  const response = await requestUrl({ url, method: "POST", headers, body: JSON.stringify(body), throw: false });
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  if (response.status < 200 || response.status >= 300) throw new Error(`Vision API error (${response.status}): ${response.text}`);
+  const data = response.json;
+  if (config.provider === "anthropic") return (data.content || []).filter((item: any) => item.type === "text").map((item: any) => item.text).join("");
+  if (config.provider === "gemini") return (data.candidates?.[0]?.content?.parts || []).map((item: any) => item.text || "").join("");
+  return typeof data.choices?.[0]?.message?.content === "string" ? data.choices[0].message.content : "";
 }
 
 /**
@@ -239,8 +196,16 @@ export async function generateNemotronNote(
   callbacks?: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<StreamResult> {
-  if (!settings.apiKey || !settings.apiKey.trim()) {
-    throw new Error("NVIDIA API key is missing. Please enter your API key in Obsidian Settings > autonatic.");
+  if (!getGenerationConfig(settings).apiKey.trim()) {
+    throw new Error("The selected generation provider's API key is missing. Add it in Obsidian Settings > autonatic > AI providers.");
+  }
+  const generationConfig = getGenerationConfig(settings);
+  if (!generationConfig.model.trim()) {
+    throw new Error("Fetch models for the selected generation provider in settings and choose a chat model first.");
+  }
+  const storedProvider = settings.providers?.[generationConfig.provider];
+  if (storedProvider && !storedProvider.availableModels.includes(generationConfig.model)) {
+    throw new Error("Fetch the selected generation provider's models in settings, then choose an available chat model.");
   }
 
   let combinedPrompt = userPrompt;
@@ -288,7 +253,57 @@ export async function streamChatCompletion(
   callbacks?: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<StreamResult> {
-  return streamWithTimeoutRetry(settings, systemPrompt, userPrompt, callbacks, signal);
+  const config = getGenerationConfig(settings);
+  if (!config.model.trim()) throw new Error("Fetch models for the selected generation provider in settings and choose a chat model first.");
+  const storedProvider = settings.providers?.[config.provider];
+  if (storedProvider && !storedProvider.availableModels.includes(config.model)) {
+    throw new Error("Fetch the selected generation provider's models in settings, then choose an available chat model.");
+  }
+  if (config.provider === "anthropic" || config.provider === "gemini") {
+    return generateWithProviderRequestUrl(settings, systemPrompt, userPrompt, callbacks, signal);
+  }
+  return streamWithTimeoutRetry({ ...settings, apiKey: config.apiKey, baseUrl: config.baseUrl, model: config.model,
+    provider: config.provider } as NemotronPluginSettings, systemPrompt, userPrompt, callbacks, signal);
+}
+
+async function generateWithProviderRequestUrl(
+  settings: NemotronPluginSettings,
+  systemPrompt: string,
+  userPrompt: string,
+  callbacks?: StreamCallbacks,
+  signal?: AbortSignal,
+): Promise<StreamResult> {
+  const config = getGenerationConfig(settings);
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  callbacks?.onStatus?.(`Calling ${config.provider === "anthropic" ? "Claude" : "Gemini"}...`);
+  let url: string;
+  let headers: Record<string, string> = { "Content-Type": "application/json" };
+  let body: Record<string, any>;
+  if (config.provider === "anthropic") {
+    url = `${config.baseUrl.replace(/\/+$/, "")}/messages`;
+    headers["x-api-key"] = config.apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+    body = { model: config.model, max_tokens: settings.maxTokens, temperature: settings.temperature,
+      system: systemPrompt, messages: [{ role: "user", content: userPrompt }] };
+  } else {
+    url = `${config.baseUrl.replace(/\/+$/, "")}/models/${encodeURIComponent(config.model)}:generateContent`;
+    headers["x-goog-api-key"] = config.apiKey;
+    body = { systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      generationConfig: { temperature: settings.temperature, topP: settings.topP, maxOutputTokens: settings.maxTokens } };
+  }
+  const response = await requestUrl({ url, method: "POST", headers, body: JSON.stringify(body), throw: false });
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`${config.provider === "anthropic" ? "Claude" : "Gemini"} API error (${response.status}): ${response.text}`);
+  }
+  const data = response.json;
+  const content = config.provider === "anthropic"
+    ? (data.content || []).filter((item: any) => item.type === "text").map((item: any) => item.text).join("")
+    : (data.candidates?.[0]?.content?.parts || []).map((item: any) => item.text || "").join("");
+  if (!content) throw new Error("The provider returned an empty response.");
+  callbacks?.onContent?.(content);
+  return { content: sanitizeMermaidDiagrams(content.trim()), reasoning: "" };
 }
 
 async function streamWithTimeoutRetry(
@@ -308,7 +323,7 @@ async function streamWithTimeoutRetry(
       if (!retryStatus || signal?.aborted || attempt >= retries) throw error;
       const delay = overloaded ? 2_000 * (2 ** attempt) : 0;
       callbacks?.onStatus?.(overloaded
-        ? `NVIDIA is busy. Retrying in ${delay / 1000} seconds (${attempt + 1} of ${retries})…`
+        ? `Provider is busy. Retrying in ${delay / 1000} seconds (${attempt + 1} of ${retries})…`
         : retryStatus);
       if (delay) await waitForRetry(delay, signal);
     }
@@ -320,7 +335,7 @@ type NvidiaApiError = Error & {
   responseBody: string;
 };
 
-function createNvidiaApiError(statusCode: number, responseBody: string): NvidiaApiError {
+function createProviderApiError(statusCode: number, responseBody: string): NvidiaApiError {
   let detail = responseBody.trim();
   try {
     const parsed = JSON.parse(responseBody);
@@ -329,7 +344,7 @@ function createNvidiaApiError(statusCode: number, responseBody: string): NvidiaA
   } catch {}
 
   if (!detail) detail = "The requested model endpoint is unavailable.";
-  return Object.assign(new Error(`NVIDIA API error (${statusCode}): ${detail}`), {
+  return Object.assign(new Error(`Provider API error (${statusCode}): ${detail}`), {
     statusCode,
     responseBody,
   });
@@ -376,12 +391,12 @@ function isRetryableOverload(error: unknown): boolean {
 
 function getRetryStatus(error: unknown): string | null {
   if ((error as { receivedModelOutput?: boolean } | null)?.receivedModelOutput) return null;
-  if (isRetryableOverload(error)) return "NVIDIA is temporarily overloaded.";
+  if (isRetryableOverload(error)) return "The provider is temporarily overloaded.";
   if (isRetryableTimeout(error)) {
-    return "NVIDIA connection timed out. Retrying once...";
+    return "Provider connection timed out. Retrying once...";
   }
   if (isRetryableDegradedFunction(error)) {
-    return "NVIDIA function is temporarily degraded. Retrying the same model once...";
+    return "Provider is temporarily degraded. Retrying the same model once...";
   }
   return null;
 }
@@ -432,7 +447,7 @@ function streamChatCompletionAttempt(
     const resetIdleTimer = () => {
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => fail(Object.assign(
-        new Error("NVIDIA stopped responding for 3 minutes. Try again; the request was stopped."),
+        new Error("The provider stopped responding for 3 minutes. Try again; the request was stopped."),
         { code: "ETIMEDOUT" },
       )), 180_000);
     };
@@ -451,9 +466,11 @@ function streamChatCompletionAttempt(
         max_tokens: settings.maxTokens,
         stream: true,
       };
-      requestBody.chat_template_kwargs = { enable_thinking: settings.enableThinking };
+      if ((settings as NemotronPluginSettings & { provider?: string }).provider === "nvidia") {
+        requestBody.chat_template_kwargs = { enable_thinking: settings.enableThinking };
+      }
       const postData = JSON.stringify(requestBody);
-      callbacks?.onStatus?.("Waiting for NVIDIA...");
+      callbacks?.onStatus?.("Waiting for provider...");
       const requestFn = urlObj.protocol === "https:" ? https.request : http.request;
       req = requestFn(urlObj, {
         method: "POST",
@@ -464,18 +481,18 @@ function streamChatCompletionAttempt(
         },
       }, (res) => {
         res.on("error", fail);
-        res.on("aborted", () => fail(new Error("NVIDIA closed the response before it finished. Try again.")));
+        res.on("aborted", () => fail(new Error("The provider closed the response before it finished. Try again.")));
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
           let errBody = "";
           res.on("data", (chunk) => { if (!settled) { resetIdleTimer(); errBody += chunk.toString(); } });
-          res.on("end", () => fail(createNvidiaApiError(res.statusCode || 500, errBody)));
+          res.on("end", () => fail(createProviderApiError(res.statusCode || 500, errBody)));
           return;
         }
 
         const decoder = new StringDecoder("utf8");
         let buffer = "";
         let isReasoningPhase = true;
-        callbacks?.onStatus?.("Receiving NVIDIA response...");
+        callbacks?.onStatus?.("Receiving provider response...");
         const consumeDelta = (delta: { reasoning_content?: string; content?: string }) => {
                 // 1. Direct reasoning_content field (NVIDIA NIM standard)
                 if (delta.reasoning_content) {
@@ -535,15 +552,15 @@ function streamChatCompletionAttempt(
           let parsed: any;
           try { parsed = JSON.parse(data); } catch { return; }
           if (parsed.error) {
-            fail(createNvidiaApiError(Number(parsed.error.status || parsed.error.code) || 500, JSON.stringify(parsed)));
+            fail(createProviderApiError(Number(parsed.error.status || parsed.error.code) || 500, JSON.stringify(parsed)));
             return;
           }
           const choice = parsed.choices?.[0];
           if (choice?.delta) consumeDelta(choice.delta);
           if (choice?.finish_reason === "length") {
-            fail(new Error("NVIDIA reached the token limit before finishing. Use a shorter source or increase the generation token limit."));
+            fail(new Error("The provider reached the token limit before finishing. Use a shorter source or increase the generation token limit."));
           } else if (choice?.finish_reason === "content_filter") {
-            fail(new Error("NVIDIA filtered the response before finishing."));
+            fail(new Error("The provider filtered the response before finishing."));
           } else if (choice?.finish_reason) {
             finish();
           }
@@ -566,7 +583,7 @@ function streamChatCompletionAttempt(
       signal?.addEventListener("abort", onAbort, { once: true });
       req.on("error", fail);
       resetIdleTimer();
-      deadlineTimer = setTimeout(() => fail(new Error("NVIDIA exceeded the 15-minute request limit. Try a shorter source.")), 900_000);
+      deadlineTimer = setTimeout(() => fail(new Error("The provider exceeded the 15-minute request limit. Try a shorter source.")), 900_000);
       req.write(postData);
       req.end();
     } catch (error) {
@@ -584,7 +601,7 @@ async function generateWithObsidianRequestUrl(
   userPrompt: string,
   callbacks?: StreamCallbacks
 ): Promise<StreamResult> {
-  callbacks?.onStatus?.("Calling NVIDIA API...");
+  callbacks?.onStatus?.("Calling provider API...");
 
   const requestBody: Record<string, any> = {
     model: settings.model,
@@ -608,7 +625,7 @@ async function generateWithObsidianRequestUrl(
   });
 
   if (response.status < 200 || response.status >= 300) {
-    throw createNvidiaApiError(response.status, response.text);
+    throw createProviderApiError(response.status, response.text);
   }
 
   const data = response.json;

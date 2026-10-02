@@ -30,6 +30,7 @@ import { replaceCapturedSelection } from "../src/selection-editor";
 import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
 import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/destination-modes";
 import { DEFAULT_TEXT_MODEL, resolveTextModel } from "../src/model-defaults";
+const TEST_TEXT_MODEL = "test-chat-model";
 import { organizeAtomicPlan } from "../src/atomic-organization-planner";
 import { normalizeGeneratedNoteMarkdown } from "../src/generated-markdown";
 import { AskNotesSearch, chunkMarkdown, isAskNoteEligible, rankSearchChunks } from "../src/ask-notes-search";
@@ -122,12 +123,10 @@ test("generated YAML properties are opt-in", () => {
   assert.match(optedInPrompt, /FRONTMATTER RULES/);
 });
 
-test("Ultra is the default text model", () => {
-  assert.equal(DEFAULT_TEXT_MODEL, "nvidia/nemotron-3-ultra-550b-a55b");
-  assert.equal(resolveTextModel(), DEFAULT_TEXT_MODEL);
-  assert.equal(resolveTextModel("nvidia/nemotron-3-ultra-550b-a55b"), DEFAULT_TEXT_MODEL);
-  assert.equal(resolveTextModel("nvidia/nemotron-3-super-120b-a12b"), DEFAULT_TEXT_MODEL);
-  assert.equal(resolveTextModel("nvidia/nemotron-3.5-lightning-30b-a3b"), DEFAULT_TEXT_MODEL);
+test("models are unset until fetched from the selected provider", () => {
+  assert.equal(DEFAULT_TEXT_MODEL, "");
+  assert.equal(resolveTextModel(), "");
+  assert.equal(resolveTextModel("provider/model"), "provider/model");
   assert.equal(resolveTextModel("custom/model"), "custom/model");
 });
 
@@ -166,7 +165,7 @@ test("streaming retries one temporary read timeout", async () => {
     const result = await streamChatCompletion({
       apiKey: "test-key",
       baseUrl: "http://nvidia.test/v1",
-      model: DEFAULT_TEXT_MODEL,
+      model: TEST_TEXT_MODEL,
       temperature: 1,
       topP: 0.95,
       maxTokens: 100,
@@ -221,7 +220,7 @@ test("streaming retries the same model after a temporary degraded-function respo
     const result = await streamChatCompletion({
       apiKey: "test-key",
       baseUrl: "http://nvidia.test/v1",
-      model: DEFAULT_TEXT_MODEL,
+      model: TEST_TEXT_MODEL,
       temperature: 1,
       topP: 0.95,
       maxTokens: 100,
@@ -229,7 +228,7 @@ test("streaming retries the same model after a temporary degraded-function respo
     } as never, "system", "user", { onStatus: (status) => statuses.push(status) });
 
     assert.equal(result.content, "Recovered");
-    assert.deepEqual(requestedModels, [DEFAULT_TEXT_MODEL, DEFAULT_TEXT_MODEL]);
+    assert.deepEqual(requestedModels, [TEST_TEXT_MODEL, TEST_TEXT_MODEL]);
     assert.match(statuses.join(" "), /degraded.*retry/i);
   } finally {
     (http as any).request = originalRequest;
@@ -267,7 +266,7 @@ test("the configured model is not substituted after a route 404", async () => {
       () => streamChatCompletion({
         apiKey: "test-key",
         baseUrl: "http://nvidia.test/v1",
-        model: DEFAULT_TEXT_MODEL,
+        model: TEST_TEXT_MODEL,
         temperature: 1,
         topP: 0.95,
         maxTokens: 100,
@@ -276,7 +275,7 @@ test("the configured model is not substituted after a route 404", async () => {
       /requested model endpoint is unavailable/i
     );
 
-    assert.deepEqual(requestedModels, [DEFAULT_TEXT_MODEL]);
+    assert.deepEqual(requestedModels, [TEST_TEXT_MODEL]);
   } finally {
     (http as any).request = originalRequest;
   }
@@ -2119,7 +2118,7 @@ function mockStreamingRequest(
 }
 
 const streamTestSettings = {
-  apiKey: "test-key", baseUrl: "http://nvidia.test/v1", model: DEFAULT_TEXT_MODEL,
+  apiKey: "test-key", baseUrl: "http://nvidia.test/v1", model: TEST_TEXT_MODEL,
   temperature: 0.2, topP: 0.9, maxTokens: 100, enableThinking: false,
 } as never;
 
@@ -2218,7 +2217,7 @@ for (const transport of ["http", "sse"]) {
       assert.equal(attempts, 1);
       t.mock.timers.tick(2000);
       assert.equal((await result).content, "Folder plan");
-      assert.deepEqual(models, [DEFAULT_TEXT_MODEL, DEFAULT_TEXT_MODEL]);
+      assert.deepEqual(models, [TEST_TEXT_MODEL, TEST_TEXT_MODEL]);
     } finally { restore(); t.mock.timers.reset(); }
   });
 }

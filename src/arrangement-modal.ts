@@ -49,7 +49,7 @@ export class VaultArrangementModal extends Modal {
       .sort((a, b) => a.path.localeCompare(b.path))
       .forEach((folder) => scope.createEl("option", { text: folder.path, value: folder.path }));
     root.createEl("p", {
-      text: "Excluded folders stay untouched. Planning sends note paths, titles, and summaries to NVIDIA.",
+      text: "Excluded folders stay untouched. Planning sends note paths, titles, and summaries to your selected generation provider.",
       cls: "autonatic-arrange-hint",
     });
 
