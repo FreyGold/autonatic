@@ -8,7 +8,13 @@ import { getGenerationApiKey, PROVIDERS } from "./providers";
 import { NemotronModal } from "./modal";
 import { generateNemotronNote } from "./api";
 import { buildSelectionEditPrompt, buildUserPrompt, SelectionEditAction } from "./prompts";
-import { buildOrUpdateVaultIndex, VAULT_INDEX_FILENAME } from "./vault-indexer";
+import {
+  buildOrUpdateVaultIndex,
+  LEGACY_VAULT_INDEX_FILENAME,
+  migrateVaultIndexStorage,
+  VAULT_INDEX_FILENAME,
+  vaultIndexPath,
+} from "./vault-indexer";
 import { FileSnapshot, HistoryManager, revertFileSnapshots } from "./history-manager";
 import { createMirroredExcalidrawDrawing } from "./excalidraw-generator";
 import { CapturedSelection, captureEditorSelection, replaceCapturedSelection } from "./selection-editor";
@@ -36,6 +42,8 @@ export default class NemotronPlugin extends Plugin {
     this.workspaceNavigation.setFactory("search", () => new AskNotesModal(this.app, this));
     this.workspaceNavigation.setFactory("organize", () => new VaultArrangementModal(this.app, this));
     await this.loadSettings();
+    try { await migrateVaultIndexStorage(this.app); }
+    catch (error) { console.warn("Could not migrate the legacy vault index:", error); }
     this.askNotesSearch = new AskNotesSearch(this.app, () => this.settings);
     this.arrangementManager = new VaultArrangementManager(this.app, this.manifest.id);
     try { await this.arrangementManager.load(); }
@@ -259,13 +267,13 @@ export default class NemotronPlugin extends Plugin {
 
     this.registerEvent(this.app.vault.on("create", () => { void this.scheduleIndexUpdate(); this.scheduleAskNotesUpdate(); }));
     this.registerEvent(this.app.vault.on("modify", (file) => {
-      if (file.name !== VAULT_INDEX_FILENAME) {
+      if (file.name !== VAULT_INDEX_FILENAME && file.name !== LEGACY_VAULT_INDEX_FILENAME) {
         void this.scheduleIndexUpdate();
         this.scheduleAskNotesUpdate();
       }
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
-      if (file.name !== VAULT_INDEX_FILENAME) {
+      if (file.name !== VAULT_INDEX_FILENAME && file.name !== LEGACY_VAULT_INDEX_FILENAME) {
         void this.scheduleIndexUpdate();
         this.scheduleAskNotesUpdate();
       }
@@ -352,7 +360,7 @@ export default class NemotronPlugin extends Plugin {
   public async scheduleIndexUpdate() {
     try {
       if (!this.settings.enableAutomaticIndexing) return;
-      const exists = await this.app.vault.adapter.exists(VAULT_INDEX_FILENAME);
+      const exists = await this.app.vault.adapter.exists(vaultIndexPath(this.app));
       if (!exists) return;
 
       if (this.updateDebounceTimer) {
@@ -414,6 +422,10 @@ export default class NemotronPlugin extends Plugin {
     if (savedSettings.propertiesOptInVersion !== DEFAULT_SETTINGS.propertiesOptInVersion) {
       this.settings.enableProperties = false;
       this.settings.propertiesOptInVersion = DEFAULT_SETTINGS.propertiesOptInVersion;
+      settingsChanged = true;
+    }
+    if (typeof this.settings.defaultFolder !== "string" || !this.settings.defaultFolder.trim()) {
+      this.settings.defaultFolder = DEFAULT_SETTINGS.defaultFolder;
       settingsChanged = true;
     }
     if (settingsChanged) await this.saveSettings();

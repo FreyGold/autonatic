@@ -125,6 +125,12 @@ async function ensureFolder(app: App, target: string): Promise<string[]> {
   return created;
 }
 
+function nonRootDrawingFolder(value: string | undefined): string {
+  const segments = (value || "Excalidrawings").trim().replace(/\\/g, "/").split("/").filter(Boolean);
+  if (segments.some((segment) => segment === "." || segment === "..")) return "Excalidrawings";
+  return segments.join("/") || "Excalidrawings";
+}
+
 function drawingContent(json: string, sourceNotePath?: string, sourceTitle?: string): string {
   const linkedNote = sourceNotePath
     ? `> [!info] Source note\n> [[${sourceNotePath}|${sourceTitle || sourceNotePath}]]\n\n`
@@ -146,8 +152,9 @@ ${json}
 }
 
 export function getMirroredDrawingPath(noteFile: TFile, rootExcalidrawFolder = "Excalidrawings"): string {
+  const drawingRoot = nonRootDrawingFolder(rootExcalidrawFolder);
   const noteDirectory = noteFile.parent?.path === "/" ? "" : noteFile.parent?.path || "";
-  const targetDirectory = normalizePath(noteDirectory ? `${rootExcalidrawFolder}/${noteDirectory}` : rootExcalidrawFolder);
+  const targetDirectory = normalizePath(noteDirectory ? `${drawingRoot}/${noteDirectory}` : drawingRoot);
   return normalizePath(`${targetDirectory}/${noteFile.basename}.excalidraw.md`);
 }
 
@@ -161,8 +168,9 @@ export async function createMirroredExcalidrawDrawing(
   signal?: AbortSignal,
   diagramOptions?: Partial<DiagramOptions>
 ): Promise<{ drawingPath: string; drawingFile: TFile; foldersCreated: string[]; fileSnapshot: FileSnapshot }> {
+  const drawingRoot = nonRootDrawingFolder(rootExcalidrawFolder);
   const noteDirectory = noteFile.parent?.path === "/" ? "" : noteFile.parent?.path || "";
-  const targetDirectory = normalizePath(noteDirectory ? `${rootExcalidrawFolder}/${noteDirectory}` : rootExcalidrawFolder);
+  const targetDirectory = normalizePath(noteDirectory ? `${drawingRoot}/${noteDirectory}` : drawingRoot);
   const foldersCreated = await ensureFolder(app, targetDirectory);
   const result = await createDiagramEngine(settings, callbacks).generate(
     {
@@ -175,7 +183,7 @@ export async function createMirroredExcalidrawDrawing(
     signal
   );
   const content = drawingContent(result.excalidrawJson, noteFile.path, noteFile.basename);
-  const drawingPath = getMirroredDrawingPath(noteFile, rootExcalidrawFolder);
+  const drawingPath = getMirroredDrawingPath(noteFile, drawingRoot);
   const existing = app.vault.getAbstractFileByPath(drawingPath);
   let drawingFile: TFile;
   let fileSnapshot: FileSnapshot;
@@ -202,7 +210,7 @@ export async function createStandaloneRichExcalidrawDrawing(
   signal?: AbortSignal,
   diagramOptions?: Partial<DiagramOptions>
 ): Promise<{ drawingPath: string; drawingFile: TFile; foldersCreated: string[]; fileSnapshot: FileSnapshot }> {
-  const cleanFolder = normalizePath(targetFolder || "Excalidrawings");
+  const cleanFolder = nonRootDrawingFolder(targetFolder);
   const foldersCreated = await ensureFolder(app, cleanFolder);
   const result = await createDiagramEngine(settings, callbacks).generate(
     { title, content, sourceNotePath },

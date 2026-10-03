@@ -3,10 +3,16 @@ import { EventEmitter } from "node:events";
 import http from "node:http";
 import test from "node:test";
 import { TFile, TFolder } from "obsidian";
-import { extractAtomicDecompositionPlan, extractSmartDecision } from "../src/vault-indexer";
+import {
+  extractAtomicDecompositionPlan,
+  extractSmartDecision,
+  LEGACY_VAULT_INDEX_FILENAME,
+  migrateVaultIndexStorage,
+  vaultIndexPath,
+} from "../src/vault-indexer";
 import { HistoryManager, revertFileSnapshots } from "../src/history-manager";
 import { NemotronModal } from "../src/modal";
-import { createMirroredExcalidrawDrawing } from "../src/excalidraw-generator";
+import { createMirroredExcalidrawDrawing, getMirroredDrawingPath } from "../src/excalidraw-generator";
 import {
   estimateRemoteRequests,
   isExcludedPath,
@@ -40,6 +46,11 @@ import {
   parseConversationShareUrl,
   parseGeminiShareUrl,
 } from "../src/conversation-import";
+import {
+  GENERATED_NOTES_FALLBACK_FOLDER,
+  ensureNonRootNoteFolder,
+  resolveNewNoteFolder,
+} from "../src/note-destination";
 
 test("Gemini import accepts public conversation links and rejects other URLs", () => {
   assert.equal(parseGeminiShareUrl("https://g.co/gemini/share/435756f6ded5"),
@@ -154,6 +165,21 @@ test("generated YAML properties are opt-in", () => {
   assert.match(defaultPrompt, /Do NOT include YAML frontmatter\/properties block/);
   assert.doesNotMatch(defaultPrompt, /FRONTMATTER RULES/);
   assert.match(optedInPrompt, /FRONTMATTER RULES/);
+});
+
+test("new note destinations never resolve to vault root", () => {
+  assert.equal(ensureNonRootNoteFolder(""), GENERATED_NOTES_FALLBACK_FOLDER);
+  assert.equal(ensureNonRootNoteFolder("/", "Inbox"), "Inbox");
+  assert.equal(resolveNewNoteFolder("# Topic", "", "Inbox", false), "Inbox");
+  assert.equal(resolveNewNoteFolder(`---\ntags:\n  - notes/DB/SQL\n---\n# Topic`, "", "Inbox", true), "DB/SQL");
+  assert.throws(() => ensureNonRootNoteFolder("../Private"), /unsafe path/);
+});
+
+test("diagram destinations never resolve to vault root", () => {
+  assert.equal(
+    getMirroredDrawingPath(new TFile("Architecture.md"), "/"),
+    "Excalidrawings/Architecture.excalidraw.md",
+  );
 });
 
 test("models are unset until fetched from the selected provider", () => {
@@ -1130,6 +1156,7 @@ class FakeVault {
     exists: async (path: string) => this.storage.has(path),
     read: async (path: string) => this.storage.get(path) ?? "",
     write: async (path: string, content: string) => { this.storage.set(path, content); },
+    remove: async (path: string) => { this.storage.delete(path); },
   };
   failCreates = false;
 
@@ -1231,6 +1258,19 @@ function fakeApp(vault: FakeVault) {
     },
   };
 }
+
+test("the vault index migrates out of vault root into plugin data", async () => {
+  const vault = new FakeVault(".obsidian-test");
+  const payload = JSON.stringify({ version: 2, tree: {} });
+  vault.storage.set(LEGACY_VAULT_INDEX_FILENAME, payload);
+  const app = fakeApp(vault);
+
+  await migrateVaultIndexStorage(app as never);
+
+  assert.equal(vault.storage.get(vaultIndexPath(app as never)), payload);
+  assert.equal(vault.storage.has(LEGACY_VAULT_INDEX_FILENAME), false);
+  assert.match(vaultIndexPath(app as never), /^\.obsidian-test\/plugins\/nemotron-note-crafter\//);
+});
 
 test("vault organizer follows primary and secondary instructions without moving notes during planning", async () => {
   const vault = new FakeVault();
@@ -1864,6 +1904,29 @@ test("nested note folders create every folder in the selected path", async () =>
 
   assert.equal(result.snaps[0]?.path, "Areas/Engineering/HTTP/Buffer Growth.md");
   assert.deepEqual(result.foldersCreated, ["Areas", "Areas/Engineering", "Areas/Engineering/HTTP"]);
+});
+
+test("the final file writer redirects an empty destination away from vault root", async () => {
+  const vault = new FakeVault();
+  const plugin = {
+    settings: {
+      defaultFolder: "",
+      enableProperties: false,
+      enableExcalidrawMindMap: false,
+      autoOpenCreatedNote: false,
+    },
+  };
+  const modal = new NemotronModal(fakeApp(vault) as never, plugin as never);
+  const result = await (modal as never as {
+    createNewNoteFile(content: string, title: string, folder: string, properties: boolean, depth: null, allowGeneratedFolder: boolean): Promise<{
+      snaps: FileSnapshot[];
+      foldersCreated: string[];
+    }>;
+  }).createNewNoteFile("# Rootless", "Rootless", "", false, null, false);
+
+  assert.equal(result.snaps[0]?.path, `${GENERATED_NOTES_FALLBACK_FOLDER}/Rootless.md`);
+  assert.equal(vault.getAbstractFileByPath("Rootless.md"), null);
+  assert.deepEqual(result.foldersCreated, [GENERATED_NOTES_FALLBACK_FOLDER]);
 });
 
 test("the final file writer creates the deeper folder from the generated note tag", async () => {

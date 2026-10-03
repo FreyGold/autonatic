@@ -50,7 +50,26 @@ export interface AtomicNoteItem {
   content: string;
 }
 
-export const VAULT_INDEX_FILENAME = ".nemotron-vault-index.json";
+export const VAULT_INDEX_FILENAME = "vault-index.json";
+export const LEGACY_VAULT_INDEX_FILENAME = ".nemotron-vault-index.json";
+
+export function vaultIndexPath(app: App): string {
+  return normalizePath(`${app.vault.configDir}/plugins/nemotron-note-crafter/${VAULT_INDEX_FILENAME}`);
+}
+
+export async function migrateVaultIndexStorage(app: App): Promise<void> {
+  const adapter = app.vault.adapter;
+  const target = vaultIndexPath(app);
+  const hasLegacyIndex = await adapter.exists(LEGACY_VAULT_INDEX_FILENAME);
+  if (await adapter.exists(target)) {
+    if (hasLegacyIndex) await adapter.remove(LEGACY_VAULT_INDEX_FILENAME);
+    return;
+  }
+  if (!hasLegacyIndex) return;
+  const raw = await adapter.read(LEGACY_VAULT_INDEX_FILENAME);
+  await adapter.write(target, raw);
+  await adapter.remove(LEGACY_VAULT_INDEX_FILENAME);
+}
 
 /**
  * Extracts a structural outline & metadata from a note file
@@ -123,13 +142,19 @@ async function callNemotronJson(
 }
 
 /**
- * Loads the existing index from the hidden file `.nemotron-vault-index.json`
+ * Loads the existing index from the plugin data directory.
  */
 export async function loadVaultIndex(app: App): Promise<VaultKnowledgeIndex | null> {
   try {
     const adapter = app.vault.adapter;
-    if (await adapter.exists(VAULT_INDEX_FILENAME)) {
-      const raw = await adapter.read(VAULT_INDEX_FILENAME);
+    const currentPath = vaultIndexPath(app);
+    const path = await adapter.exists(currentPath)
+      ? currentPath
+      : await adapter.exists(LEGACY_VAULT_INDEX_FILENAME)
+      ? LEGACY_VAULT_INDEX_FILENAME
+      : "";
+    if (path) {
+      const raw = await adapter.read(path);
       return JSON.parse(raw) as VaultKnowledgeIndex;
     }
   } catch (err) {
@@ -376,12 +401,15 @@ Output ONLY a JSON array of objects.`;
     tree,
   };
 
-  // Phase 4: Save to hidden file `.nemotron-vault-index.json`
+  // Phase 4: Save inside the plugin data directory, never at vault root.
   try {
     const jsonStr = JSON.stringify(fullIndex, null, 2);
-    await adapter.write(VAULT_INDEX_FILENAME, jsonStr);
+    await adapter.write(vaultIndexPath(app), jsonStr);
+    if (await adapter.exists(LEGACY_VAULT_INDEX_FILENAME)) {
+      await adapter.remove(LEGACY_VAULT_INDEX_FILENAME);
+    }
   } catch (err) {
-    console.error("Failed to write .nemotron-vault-index.json:", err);
+    console.error("Failed to write the Autonatic vault index:", err);
   }
 
   return fullIndex;

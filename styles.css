@@ -1,5 +1,5 @@
 /* autonatic — source material routed into durable notes. */
-:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) {
+:is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-placement-shell, .autonatic-settings) {
   /* Fixed values are export fallbacks; the active Obsidian theme remains authoritative. */
   --an-brand: #2f6ff6;
   --an-brand-top: #5d91ff;
@@ -1672,6 +1672,321 @@ button.autonatic-ask-button:hover:not(:disabled) {
   font-size: var(--font-ui-small);
 }
 
+/* Placement review: the path tree is the interface, not a stack of cards. */
+.modal.autonatic-placement-shell {
+  width: min(820px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--an-pill-border);
+  border-radius: 18px;
+  background: var(--an-paper);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.14);
+  overflow: hidden;
+}
+
+.modal-content.autonatic-placement-modal {
+  margin: 0;
+  padding: 0 24px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.autonatic-placement-shell [hidden] {
+  display: none !important;
+}
+
+.autonatic-placement-shell :is(button, input) {
+  font: inherit;
+}
+
+.autonatic-placement-shell :is(button, input, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--an-brand);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.autonatic-placement-shell svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.7;
+}
+
+.autonatic-placement-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 26px 32px 22px 0;
+  border-bottom: 1px dashed var(--an-rule);
+}
+
+.autonatic-placement-heading-icon {
+  display: flex;
+  margin-top: 2px;
+  color: var(--an-brand);
+}
+
+.autonatic-placement-heading-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.autonatic-placement-heading h2 {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 630;
+  letter-spacing: -0.04em;
+}
+
+.autonatic-placement-heading p {
+  max-width: 62ch;
+  margin: 5px 0 0;
+  color: var(--an-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.autonatic-placement-toolbar {
+  padding: 16px 0;
+  border-bottom: 1px dashed var(--an-rule);
+}
+
+.autonatic-placement-toolbar > label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--an-muted);
+  font-size: 12px;
+}
+
+.autonatic-placement-folder-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.autonatic-placement-folder-controls input {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 14px;
+  border: 1px solid var(--an-pill-border);
+  border-radius: 999px;
+  background: var(--an-pill);
+  color: var(--an-ink);
+}
+
+.autonatic-placement-folder-controls button,
+.autonatic-placement-actions button,
+button.autonatic-placement-move-here {
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid var(--an-pill-border);
+  border-radius: 999px;
+  background: var(--an-pill);
+  box-shadow: var(--an-control-shadow);
+  color: var(--an-ink);
+}
+
+.autonatic-placement-folder-controls button:hover,
+.autonatic-placement-actions button:hover,
+button.autonatic-placement-move-here:hover {
+  background: var(--an-pill-hover);
+}
+
+.autonatic-placement-status {
+  min-height: 18px;
+  margin-top: 7px;
+  color: var(--an-muted);
+  font-size: 12px;
+}
+
+.autonatic-placement-tree {
+  max-height: min(52vh, 480px);
+  margin-top: 18px;
+  border: 1px solid var(--an-pill-border);
+  border-radius: 14px;
+  background: var(--an-paper);
+  overflow: auto;
+}
+
+.autonatic-placement-folder > summary {
+  list-style: none;
+}
+
+.autonatic-placement-folder > summary::-webkit-details-marker {
+  display: none;
+}
+
+.autonatic-placement-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 39px;
+  padding: 6px 10px;
+  border-bottom: 1px dashed var(--an-rule);
+  cursor: pointer;
+  user-select: none;
+}
+
+.autonatic-placement-folder-row:hover {
+  background: color-mix(in srgb, var(--an-pill-hover) 72%, transparent);
+}
+
+.autonatic-placement-chevron {
+  display: flex;
+  color: var(--an-muted);
+  transition: transform 120ms ease;
+}
+
+.autonatic-placement-folder[open] > summary .autonatic-placement-chevron {
+  transform: rotate(90deg);
+}
+
+.autonatic-placement-folder-icon {
+  display: flex;
+  color: var(--an-muted);
+}
+
+.autonatic-placement-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 570;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autonatic-placement-count,
+.autonatic-placement-new {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--an-rule);
+  border-radius: 999px;
+  color: var(--an-muted);
+  font-size: 11px;
+}
+
+.autonatic-placement-new {
+  border-style: dashed;
+}
+
+button.autonatic-placement-move-here {
+  min-height: 27px;
+  margin-left: auto;
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
+.autonatic-placement-folder-row.is-drop-target {
+  background: color-mix(in srgb, var(--an-brand) 10%, var(--an-paper));
+  box-shadow: inset 3px 0 0 var(--an-brand);
+}
+
+.autonatic-placement-folder-row.is-drop-target .autonatic-placement-folder-icon {
+  color: var(--an-brand);
+}
+
+.autonatic-placement-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 7px 12px 7px 7px;
+  border-bottom: 1px dashed var(--an-rule);
+  background: color-mix(in srgb, var(--an-paper-raised) 46%, transparent);
+  cursor: grab;
+}
+
+.autonatic-placement-note:hover,
+.autonatic-placement-note.is-selected {
+  background: color-mix(in srgb, var(--an-brand) 7%, var(--an-paper));
+}
+
+.autonatic-placement-note.is-selected {
+  box-shadow: inset 3px 0 0 var(--an-brand);
+}
+
+.autonatic-placement-note.is-dragging {
+  opacity: 0.45;
+}
+
+.autonatic-placement-grip {
+  display: flex;
+  color: var(--an-muted);
+}
+
+.autonatic-placement-note-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.autonatic-placement-note-title {
+  overflow: hidden;
+  color: var(--an-muted);
+  font-size: 12px;
+  font-weight: 430;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autonatic-placement-note-path {
+  overflow: hidden;
+  color: var(--an-ink);
+  font-size: 13px;
+  font-weight: 590;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autonatic-placement-summary {
+  padding: 10px 1px 14px;
+  color: var(--an-muted);
+  font-size: 12px;
+}
+
+.autonatic-placement-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--an-rule);
+}
+
+.autonatic-placement-actions button.mod-cta {
+  border-color: #245bd4;
+  background: linear-gradient(180deg, var(--an-brand-top), var(--an-brand-bottom));
+  box-shadow: var(--an-primary-shadow);
+  color: var(--an-brand-ink);
+  font-weight: 560;
+}
+
+@media (max-width: 560px) {
+  .modal.autonatic-placement-shell {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .modal-content.autonatic-placement-modal {
+    padding-inline: 16px;
+  }
+  .autonatic-placement-folder-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .autonatic-placement-folder-controls button {
+    align-self: flex-start;
+  }
+  .autonatic-placement-actions button {
+    flex: 1;
+  }
+  button.autonatic-placement-move-here {
+    max-width: 82px;
+  }
+}
+
 
 /* Settings are short, named sections rather than one long form. */
 .autonatic-settings {
@@ -2385,7 +2700,7 @@ button.autonatic-background-button svg {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-settings) *,
+  :is(.autonatic-crafter-shell, .autonatic-ask-shell, .autonatic-arrange-shell, .autonatic-placement-shell, .autonatic-settings) *,
   .nemotron-custom-select-container * {
     animation: none !important;
     transition: none !important;

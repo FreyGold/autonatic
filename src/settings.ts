@@ -7,6 +7,7 @@ import { FolderNavigator } from "./folder-nav";
 import { defaultProviderConfigs, EMBEDDING_PROVIDERS, fetchProviderModels, PROVIDERS, type AIProvider } from "./providers";
 import type { SettingsSection } from "./workspace-ui";
 import { renderAutonaticBrand } from "./brand";
+import { GENERATED_NOTES_FALLBACK_FOLDER } from "./note-destination";
 
 export interface NemotronPluginSettings {
   generationProvider: AIProvider;
@@ -35,6 +36,7 @@ export interface NemotronPluginSettings {
   excludedFolders: string;
   maxVaultContextNotes: number;
   confirmMultiFileChanges: boolean;
+  reviewNotePlacement: boolean;
   maxAutomaticDiagrams: number;
   askNotesEnabled: boolean;
   askNotesPaused: boolean;
@@ -59,7 +61,7 @@ export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   topP: 0.95,
   maxTokens: 16384,
   enableThinking: true,
-  defaultFolder: "",
+  defaultFolder: GENERATED_NOTES_FALLBACK_FOLDER,
   systemPrompt: CONCISE_OBSIDIAN_SKILL_PROMPT,
   detailedPrompt: DETAILED_OBSIDIAN_SKILL_PROMPT,
   autoOpenCreatedNote: true,
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: NemotronPluginSettings = {
   excludedFolders: "Private, Templates",
   maxVaultContextNotes: 40,
   confirmMultiFileChanges: true,
+  reviewNotePlacement: false,
   maxAutomaticDiagrams: 3,
   askNotesEnabled: false,
   askNotesPaused: false,
@@ -559,16 +562,26 @@ export class NemotronSettingTab extends PluginSettingTab {
     // These preferences belong with note creation, even though advanced controls render here.
     new Setting(sections.creation)
       .setName("Default folder")
-      .setDesc("Fallback vault folder path (leave blank to auto-detect last modified note folder).")
+      .setDesc("Used whenever automatic placement would otherwise create a note at vault root. Generated notes are never written directly to root.")
       .addText((text) =>
         text
-          .setPlaceholder("Auto-detected")
+          .setPlaceholder(GENERATED_NOTES_FALLBACK_FOLDER)
           .setValue(this.plugin.settings.defaultFolder)
           .onChange(async (value) => {
-            this.plugin.settings.defaultFolder = value.trim();
+            this.plugin.settings.defaultFolder = value.trim() || GENERATED_NOTES_FALLBACK_FOLDER;
             await this.plugin.saveSettings();
           })
       );
+
+    new Setting(sections.creation)
+      .setName("Review note destinations")
+      .setDesc("Pause before creating new notes. Review every planned path in a folder tree and drag notes to different folders. Appends to existing notes are unchanged.")
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.reviewNotePlacement ?? false)
+        .onChange(async (value) => {
+          this.plugin.settings.reviewNotePlacement = value;
+          await this.plugin.saveSettings();
+        }));
 
     // Auto-open created note
     new Setting(sections.creation)

@@ -12,7 +12,7 @@ import {
   extractAtomicDecompositionPlan,
   loadVaultIndex,
   enforceMaxDepthFolder,
-  VAULT_INDEX_FILENAME,
+  vaultIndexPath,
 } from "./vault-indexer";
 import {
   isPathInFolder,
@@ -27,7 +27,7 @@ import {
   type DestinationMode,
 } from "./destination-modes";
 import type { VaultKnowledgeIndex } from "./vault-indexer";
-import { normalizeGeneratedNoteMarkdown, resolveGeneratedNoteFolder } from "./generated-markdown";
+import { normalizeGeneratedNoteMarkdown } from "./generated-markdown";
 import { FileSnapshot, PromptHistoryItem, revertFileSnapshots } from "./history-manager";
 import {
   createMirroredExcalidrawDrawing,
@@ -42,6 +42,8 @@ import { WorkflowProgress } from "./workflow-progress";
 import { reviewAppendDraft } from "./append-review";
 import { workspaceHeader, openPluginSettings, setWorkspaceBusy, shortcutHint, type WorkspacePage } from "./workspace-ui";
 import { NotePreview } from "./note-preview";
+import { deriveSafeNoteTitle, GENERATED_NOTES_FALLBACK_FOLDER, resolveNewNoteFolder } from "./note-destination";
+import { reviewNoteDestinations, type NoteDestinationDraft } from "./placement-review-modal";
 
 interface AttachedImage {
   id: string;
@@ -250,6 +252,7 @@ export class NemotronModal extends Modal {
       }
     }
     if (initialFolder === "/" || initialFolder === ".") initialFolder = "";
+    if (!initialFolder) initialFolder = this.plugin.settings.defaultFolder || GENERATED_NOTES_FALLBACK_FOLDER;
 
     const workflow = paneEl.createDiv({ cls: "nemotron-generation-workflow" });
 
@@ -405,15 +408,15 @@ export class NemotronModal extends Modal {
         newNoteOptionsDiv.style.display = "none";
       }
       const scopeSummary = limitPlacementToFolder
-        ? ` within ${currentPlacementScopeFolder || "the vault root"} and its subfolders`
+        ? ` within ${currentPlacementScopeFolder || GENERATED_NOTES_FALLBACK_FOLDER} and its subfolders`
         : " anywhere in the vault";
       generationSummary.setText(
         mode === "append"
           ? `A section will be added to ${activeView?.file?.basename || "the active note"}.`
           : mode === "new_file"
-          ? `One new note will be created in ${currentSelectedFolder || "the vault root"}. Existing notes will not be changed.`
+          ? `One new note will be created in ${currentSelectedFolder || GENERATED_NOTES_FALLBACK_FOLDER}. Existing notes will not be changed.`
           : mode === "multi_note_folder"
-          ? `Several new notes will be created in ${currentSelectedFolder || "the vault root"}. Existing notes will not be changed.`
+          ? `Several new notes will be created in ${currentSelectedFolder || GENERATED_NOTES_FALLBACK_FOLDER}. Existing notes will not be changed.`
           : mode === "multi_note"
           ? `Several focused notes may be created or updated${scopeSummary}.`
           : `One note may be created or updated${scopeSummary}.`,
@@ -860,7 +863,7 @@ export class NemotronModal extends Modal {
       generationProgress?.setStage(stage, completed, total);
       const labels: Record<string, string> = {
         "Prepare source": "Preparing…", "Generate notes": "Generating…",
-        "Check placement": "Checking destinations…", "Place notes": "Saving notes…",
+        "Check placement": "Checking destinations…", "Review placement": "Review destinations…", "Place notes": "Saving notes…",
         "Create diagrams": "Creating diagrams…",
       };
       generateBtn.setText(labels[stage] || stage);
@@ -961,6 +964,7 @@ export class NemotronModal extends Modal {
       const progressStages = [
         "Prepare source", "Generate notes",
         ...(mode === "multi_note" ? ["Check placement"] : []),
+        ...(this.plugin.settings.reviewNotePlacement && mode !== "append" ? ["Review placement"] : []),
         "Place notes",
         ...(includeDiagramStage ? ["Create diagrams"] : []),
       ];
@@ -1094,6 +1098,35 @@ export class NemotronModal extends Modal {
           );
         };
 
+        const destinationDraft = (
+          id: string,
+          content: string,
+          requestedTitle: string | undefined,
+          requestedFolder: string | undefined,
+          allowGeneratedFolder: boolean,
+        ): NoteDestinationDraft => ({
+          id,
+          title: deriveSafeNoteTitle(content, requestedTitle),
+          folder: resolveNewNoteFolder(
+            content,
+            requestedFolder,
+            this.plugin.settings.defaultFolder,
+            allowGeneratedFolder,
+          ),
+        });
+        const reviewDestinations = async (drafts: NoteDestinationDraft[]): Promise<Map<string, NoteDestinationDraft>> => {
+          if (drafts.length === 0) return new Map();
+          if (!this.plugin.settings.reviewNotePlacement) {
+            return new Map(drafts.map((draft) => [draft.id, draft]));
+          }
+          updateGenerationStage("Review placement", 0, drafts.length);
+          statusDiv.setText("Review every new note destination before anything is written...");
+          const reviewed = await reviewNoteDestinations(this.app, drafts, this.abortController?.signal);
+          if (!reviewed) throw new DOMException("Placement review cancelled.", "AbortError");
+          updateGenerationStage("Review placement", reviewed.length, reviewed.length);
+          return new Map(reviewed.map((draft) => [draft.id, draft]));
+        };
+
         if (mode === "multi_note" || mode === "multi_note_folder") {
           const plan = extractAtomicDecompositionPlan(result.content);
           // Folder decisions are generated with the notes. Resolve and validate them
@@ -1103,22 +1136,38 @@ export class NemotronModal extends Modal {
           const placementPlan = mode === "multi_note"
             ? resolveAtomicPlacementPlan(plan, placementScopeFolder, existingVaultFolders)
             : [];
-          updateGenerationStage("Place notes", 0, plan.length);
-          statusDiv.setText("Saving notes to their generated destinations...");
           let createdCount = 0;
           let appendedCount = 0;
           let skippedCount = 0;
           const fixedTargetFolder = mode === "multi_note_folder" ? currentSelectedFolder : undefined;
+          const plannedDestinations = plan.flatMap((item, itemIndex): NoteDestinationDraft[] => {
+            const target = fixedTargetFolder !== undefined
+              ? { action: "create_new_note" as const, targetFolder: fixedTargetFolder }
+              : placementPlan[itemIndex] || resolveAtomicPlacementTarget(item, placementScopeFolder);
+            if (target.action !== "create_new_note") return [];
+            return [destinationDraft(
+              `note-${itemIndex}`,
+              item.content,
+              item.title,
+              target.targetFolder,
+              fixedTargetFolder === undefined,
+            )];
+          });
+          const reviewedDestinations = await reviewDestinations(plannedDestinations);
+          updateGenerationStage("Place notes", 0, plan.length);
+          statusDiv.setText("Saving notes to their reviewed destinations...");
 
           for (const [itemIndex, item] of plan.entries()) {
             this.abortController?.signal.throwIfAborted();
             statusDiv.setText(`Saving ${itemIndex + 1} of ${plan.length}: ${item.title}`);
             try {
               if (fixedTargetFolder !== undefined) {
+                const destination = reviewedDestinations.get(`note-${itemIndex}`);
+                if (!destination) throw new Error("The reviewed destination is missing.");
                 const { snaps, foldersCreated } = await this.createNewNoteFile(
                   item.content,
                   item.title,
-                  fixedTargetFolder,
+                  destination.folder,
                   enableProperties,
                   null,
                   false,
@@ -1146,11 +1195,15 @@ export class NemotronModal extends Modal {
                     appendedCount++;
                   }
                 } else {
+                  const destination = reviewedDestinations.get(`note-${itemIndex}`);
+                  if (!destination) throw new Error("The reviewed destination is missing.");
                   const { snaps, foldersCreated } = await this.createNewNoteFile(
                     item.content,
                     item.title,
-                    target.targetFolder,
+                    destination.folder,
                     enableProperties,
+                    null,
+                    false,
                   );
                   fileSnapshots.push(...snaps);
                   foldersCreatedList.push(...foldersCreated);
@@ -1163,6 +1216,14 @@ export class NemotronModal extends Modal {
             }
           }
 
+          const createdDestinationFolders = Array.from(new Set(
+            fileSnapshots
+              .filter((snapshot) => snapshot.isNewFile)
+              .map((snapshot) => snapshot.path.split("/").slice(0, -1).join("/")),
+          ));
+          const createdDestinationSummary = createdDestinationFolders.length === 1
+            ? createdDestinationFolders[0]
+            : `${createdDestinationFolders.length} folders`;
           if (fileSnapshots.length > 0) {
             await finishUsefulDiagrams();
             this.plugin.historyManager.recordGeneration({
@@ -1170,7 +1231,7 @@ export class NemotronModal extends Modal {
               timestamp: Date.now(),
               mode,
               description: mode === "multi_note_folder"
-                ? `Created ${createdCount} notes in ${fixedTargetFolder || "Vault Root"}`
+                ? `Created ${createdCount} notes in ${createdDestinationSummary}`
                 : `Atomic Decomposition: ${createdCount} created, ${appendedCount} updated, ${skippedCount} already covered`,
               files: fileSnapshots,
               foldersCreated: Array.from(new Set(foldersCreatedList)),
@@ -1181,7 +1242,7 @@ export class NemotronModal extends Modal {
           }
 
           new Notice(mode === "multi_note_folder"
-            ? `Created ${createdCount} note(s) in ${fixedTargetFolder || "Vault Root"}.`
+            ? `Created ${createdCount} note(s) in ${createdDestinationSummary}.`
             : `Atomic Decomposition Complete: ${createdCount} created, ${appendedCount} updated, ${skippedCount} already covered.`, 8000);
         } else if (mode === "smart") {
           updateGenerationStage("Place notes", 0, 1);
@@ -1226,15 +1287,21 @@ export class NemotronModal extends Modal {
             const rawFolder = decision?.action === "create_new_note" ? decision.targetFolder : undefined;
             const targetFolder = resolveFolderWithinScope(rawFolder, placementScopeFolder);
             const title = decision?.title || titleInput.value.trim();
-            const { snaps, foldersCreated } = await this.createNewNoteFile(cleanedContent, title, targetFolder, enableProperties);
+            const draft = destinationDraft("smart-note", cleanedContent, title, targetFolder, true);
+            const reviewed = await reviewDestinations([draft]);
+            const reviewedFolder = reviewed.get(draft.id)?.folder;
+            if (!reviewedFolder) throw new Error("The reviewed destination is missing.");
+            updateGenerationStage("Place notes", 0, 1);
+            const { snaps, foldersCreated } = await this.createNewNoteFile(
+              cleanedContent, title, reviewedFolder, enableProperties, null, false);
             fileSnapshots.push(...snaps);
             foldersCreatedList.push(...foldersCreated);
             const outsideScopeTarget = decision?.action === "append_to_note" && !requestedTargetIsInScope;
             const reason = outsideScopeTarget
-              ? `The suggested note was outside the retrieved candidates or selected folder. A new note was created inside ${placementScopeFolder || "Vault Root"}.`
+              ? `The suggested note was outside the retrieved candidates or selected folder. A new note was created inside ${reviewedFolder}.`
               : decision?.reason;
             const reasonMsg = reason ? `\nReason: ${reason}` : "";
-            new Notice(`Smart Placed in folder: "${targetFolder || "Vault Root"}"${reasonMsg}`, 7000);
+            new Notice(`Smart placed in folder: "${reviewedFolder}"${reasonMsg}`, 7000);
           }
 
           updateGenerationStage("Place notes", 1, 1);
@@ -1253,9 +1320,14 @@ export class NemotronModal extends Modal {
             this.plugin.scheduleIndexUpdate();
           }
         } else if (mode === "new_file") {
-          updateGenerationStage("Place notes", 0, 1);
           const targetFolder = currentSelectedFolder;
-          const { snaps, foldersCreated } = await this.createNewNoteFile(result.content, titleInput.value.trim(), targetFolder, enableProperties, null, false);
+          const draft = destinationDraft("new-note", result.content, titleInput.value.trim(), targetFolder, false);
+          const reviewed = await reviewDestinations([draft]);
+          const reviewedFolder = reviewed.get(draft.id)?.folder;
+          if (!reviewedFolder) throw new Error("The reviewed destination is missing.");
+          updateGenerationStage("Place notes", 0, 1);
+          const { snaps, foldersCreated } = await this.createNewNoteFile(
+            result.content, titleInput.value.trim(), reviewedFolder, enableProperties, null, false);
           fileSnapshots.push(...snaps);
           foldersCreatedList.push(...foldersCreated);
 
@@ -1937,7 +2009,7 @@ export class NemotronModal extends Modal {
   }
 
   private async renderSmartBanner(containerEl: HTMLElement) {
-    const exists = await this.app.vault.adapter.exists(VAULT_INDEX_FILENAME);
+    const exists = await this.app.vault.adapter.exists(vaultIndexPath(this.app));
     containerEl.empty();
 
     if (!exists) {
@@ -2193,7 +2265,6 @@ export class NemotronModal extends Modal {
     folderDepthLimit: number | null = null,
     allowGeneratedFolder: boolean = true,
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
-    let title = requestedTitle;
     let finalContent = sanitizeMermaidDiagrams(normalizeGeneratedNoteMarkdown(content));
     const snaps: FileSnapshot[] = [];
     const foldersCreated: string[] = [];
@@ -2202,27 +2273,7 @@ export class NemotronModal extends Modal {
       finalContent = finalContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
     }
 
-    if (!title) {
-      const yamlTitleMatch = finalContent.match(/^title:\s*["']?([^"'\n\r]+)["']?/m);
-      if (yamlTitleMatch) {
-        title = yamlTitleMatch[1].trim();
-      } else {
-        const headingMatch = finalContent.match(/^#\s+(.+)$/m);
-        if (headingMatch) {
-          title = headingMatch[1].trim();
-        } else {
-          const dateStr = new Date().toISOString().slice(0, 19).replace(/[:]/g, "-");
-          title = `AI Note ${dateStr}`;
-        }
-      }
-    }
-
-    title = title.replace(/(?:\.md)+$/i, "");
-    let safeTitle = title.replace(/[\\/:\*\?"<>\|]/g, "_").trim();
-    if (!safeTitle) {
-      const dateStr = new Date().toISOString().slice(0, 19).replace(/[:]/g, "-");
-      safeTitle = `AI Note ${dateStr}`;
-    }
+    const safeTitle = deriveSafeNoteTitle(finalContent, requestedTitle);
 
     if (requestedFolder?.split(/[\\/]+/).some((segment) => segment === "..")) {
       throw new Error("The target folder cannot contain a parent-directory segment.");
@@ -2230,49 +2281,47 @@ export class NemotronModal extends Modal {
     const selectedFolder = folderDepthLimit === null
       ? normalizePath(requestedFolder || "").replace(/^\/+|\/+$/g, "")
       : enforceMaxDepthFolder(requestedFolder, folderDepthLimit);
-    const resolvedFolder = allowGeneratedFolder
-      ? resolveGeneratedNoteFolder(finalContent, selectedFolder)
-      : selectedFolder;
-    let folder = resolvedFolder ? normalizePath(resolvedFolder) : "";
-    if (folder === "." || folder === "/") folder = "";
+    let folder = resolveNewNoteFolder(
+      finalContent,
+      selectedFolder,
+      this.plugin.settings.defaultFolder,
+      allowGeneratedFolder,
+    );
 
-    if (folder) {
-      const existingFoldersByCaseFold = new Map(
-        this.app.vault
-          .getAllLoadedFiles()
-          .filter((entry): entry is TFolder => entry instanceof TFolder)
-          .map((entry) => [entry.path.toLocaleLowerCase(), entry.path]),
-      );
-      const segments = folder.split("/");
-      let currentPath = "";
-      for (const segment of segments) {
-        const requestedPath = currentPath ? `${currentPath}/${segment}` : segment;
-        const exactEntry = this.app.vault.getAbstractFileByPath(requestedPath);
-        const existingFolderPath = exactEntry instanceof TFolder
-          ? exactEntry.path
-          : existingFoldersByCaseFold.get(requestedPath.toLocaleLowerCase());
-        if (existingFolderPath) {
-          currentPath = existingFolderPath;
-          continue;
-        }
-        if (exactEntry) throw new Error(`The target folder path is already used by a file: ${requestedPath}`);
-
-        await this.app.vault.createFolder(requestedPath);
-        foldersCreated.push(requestedPath);
-        currentPath = requestedPath;
-        existingFoldersByCaseFold.set(currentPath.toLocaleLowerCase(), currentPath);
+    if (!folder) throw new Error("Generated notes cannot be created at vault root.");
+    const existingFoldersByCaseFold = new Map(
+      this.app.vault
+        .getAllLoadedFiles()
+        .filter((entry): entry is TFolder => entry instanceof TFolder)
+        .map((entry) => [entry.path.toLocaleLowerCase(), entry.path]),
+    );
+    const segments = folder.split("/");
+    let currentPath = "";
+    for (const segment of segments) {
+      const requestedPath = currentPath ? `${currentPath}/${segment}` : segment;
+      const exactEntry = this.app.vault.getAbstractFileByPath(requestedPath);
+      const existingFolderPath = exactEntry instanceof TFolder
+        ? exactEntry.path
+        : existingFoldersByCaseFold.get(requestedPath.toLocaleLowerCase());
+      if (existingFolderPath) {
+        currentPath = existingFolderPath;
+        continue;
       }
-      folder = currentPath;
-    }
+      if (exactEntry) throw new Error(`The target folder path is already used by a file: ${requestedPath}`);
 
-    let filePath = folder ? `${folder}/${safeTitle}.md` : `${safeTitle}.md`;
-    filePath = normalizePath(filePath);
+      await this.app.vault.createFolder(requestedPath);
+      foldersCreated.push(requestedPath);
+      currentPath = requestedPath;
+      existingFoldersByCaseFold.set(currentPath.toLocaleLowerCase(), currentPath);
+    }
+    folder = currentPath;
+
+    let filePath = normalizePath(`${folder}/${safeTitle}.md`);
 
     let counter = 1;
     while (this.app.vault.getAbstractFileByPath(filePath)) {
       const altTitle = `${safeTitle} (${counter})`;
-      filePath = folder ? `${folder}/${altTitle}.md` : `${altTitle}.md`;
-      filePath = normalizePath(filePath);
+      filePath = normalizePath(`${folder}/${altTitle}.md`);
       counter++;
     }
 
