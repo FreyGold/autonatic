@@ -23,6 +23,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
   - **Append to Current Note**: Adds the formatted section directly to the end of your active note.
   - **In-Place Replace**: Transform selected text right inside the active editor.
 - **Bare source-only style**: Cleans pasted browser chat history into Markdown without expanding, inferring, summarizing, or adding new material.
+- **Source-faithful writing styles**: Concise and Detailed preserve the supplied material, with headings, callouts, tables, and diagrams used only when useful. To include outside knowledge, explicitly request it in the custom instruction; additions are labeled **Additional context**. Bare always stays within the source.
 - **Shared conversation import**: Paste a Gemini, ChatGPT, or Claude share link into Note Crafter to load every visible turn into the source field. Review it before generating one or several notes. Images and other attachments remain linked to the original shared page.
 - **Automatic placement across long sources**: Match separate conversation topics against the local vault index so repeated early topics do not hide later ones. Before appending, compare the proposed addition with the current target note and skip material already covered.
 - **Folder choices in the generation request**: Multi-note generation decides folders alongside the notes. Placement validates paths locally without additional folder-planning model calls. Failed saves can retry the completed draft.
@@ -30,6 +31,7 @@ Transform raw, dense, or unorganized text into concise, beautifully structured n
 - **Organize notes**: Describe a folder structure in plain language, such as grouping by programming language and then OS, HTTP, or security. Review every proposed note move before applying it. Each arrangement saves a path snapshot that you can restore later.
 - **Interactive UI**:
   - Ribbon icon for one-click access.
+  - Bundled Inter typography, rounded controls, fine dashed dividers, and a restrained blue primary action. Surfaces and text follow the active Obsidian theme.
   - Source-first note and diagram workspaces with compact output controls, a persistent destination summary, and collapsible options in narrow windows. Create, Search, and Organize share navigation; returning from another tool preserves the open draft.
   - Rendered Markdown live preview with collapsible generated source and reasoning.
   - Optional folder scope for Smart Placement. Smart can create or append only in the selected folder and its subfolders.

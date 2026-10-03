@@ -6,8 +6,9 @@ import {
 } from "./settings";
 import { getGenerationApiKey, PROVIDERS } from "./providers";
 import { NemotronModal } from "./modal";
-import { generateNemotronNote } from "./api";
-import { buildSelectionEditPrompt, buildUserPrompt, SelectionEditAction } from "./prompts";
+import { generateSelectionEdit } from "./api";
+import type { SelectionEditAction } from "./prompts";
+import { migrateDefaultNotePrompts } from "./prompt-defaults";
 import {
   buildOrUpdateVaultIndex,
   LEGACY_VAULT_INDEX_FILENAME,
@@ -323,10 +324,10 @@ export default class NemotronPlugin extends Plugin {
     new Notice(`${actionLabel[action]} highlighted text...`, 5000);
 
     try {
-      const result = await generateNemotronNote(
+      const result = await generateSelectionEdit(
         this.settings,
-        buildSelectionEditPrompt(captured.text, action),
-        undefined,
+        captured.text,
+        action,
         this.settings.defaultNoteStyle || "concise",
       );
       const replacement = result.content.trim();
@@ -420,7 +421,7 @@ export default class NemotronPlugin extends Plugin {
     this.settings.visionModel = this.settings.providers.nvidia.visionModel;
     if (!this.settings.generationProvider) this.settings.generationProvider = "nvidia";
     if (!this.settings.embeddingProvider) this.settings.embeddingProvider = "nvidia";
-    let settingsChanged = false;
+    let settingsChanged = migrateDefaultNotePrompts(this.settings);
     if (savedSettings.visionModel && !savedSettings.providers?.nvidia?.visionModel) settingsChanged = true;
     if (savedSettings.propertiesOptInVersion !== DEFAULT_SETTINGS.propertiesOptInVersion) {
       this.settings.enableProperties = false;

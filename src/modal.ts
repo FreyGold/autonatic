@@ -94,6 +94,7 @@ export class NemotronModal extends Modal {
   private folderNavigators: FolderNavigator[] = [];
   private notePreview?: NotePreview;
   private interfaceEvents?: AbortController;
+  private outputResizeObservers: ResizeObserver[] = [];
   private updateModeUI?: (mode: DestinationMode) => Promise<void>;
   renderGalleryCallback?: () => void;
   renderExcalGalleryCallback?: () => void;
@@ -128,6 +129,7 @@ export class NemotronModal extends Modal {
     this.folderNavigators.forEach((navigator) => navigator.destroy());
     this.folderNavigators = [];
     this.notePreview?.destroy();
+    this.disconnectOutputObservers();
     this.interfaceEvents?.abort();
     this.interfaceEvents = new AbortController();
     contentEl.empty();
@@ -307,6 +309,7 @@ export class NemotronModal extends Modal {
 
     const generationSummary = workflow.createDiv({ cls: "nemotron-generation-summary" });
     let updateActionButton: () => void = () => {};
+    let updateOptionsSummary: () => void = () => {};
 
     const smartModeInfo = workflow.createDiv({ cls: "nemotron-smart-info-banner" });
 
@@ -391,7 +394,7 @@ export class NemotronModal extends Modal {
       placementPreference = choices.placement;
       creationSelect.setValue(creationIntent);
       placementSelect.setValue(placementPreference);
-      placementSection.style.display = creationIntent === "append" ? "none" : "block";
+      placementSection.hidden = creationIntent === "append";
       if (supportsPlacementFolderScope(mode)) {
         smartModeInfo.style.display = "flex";
         smartScopeOptionsDiv.style.display = "block";
@@ -422,6 +425,7 @@ export class NemotronModal extends Modal {
           : `One note may be created or updated${scopeSummary}.`,
       );
       updateActionButton();
+      updateOptionsSummary();
     };
     this.updateModeUI = updateModeUI;
     smartScopeCheckbox.addEventListener("change", () => { void updateModeUI(this.selectedMode); });
@@ -430,7 +434,7 @@ export class NemotronModal extends Modal {
 
     // 2. Note Output Style Selector
     const styleContainer = paneEl.createDiv({ cls: "nemotron-form-row" });
-    const styleLabel = styleContainer.createEl("label", { text: "Writing style", cls: "nemotron-label" });
+    const styleLabel = styleContainer.createEl("label", { text: "Style", cls: "nemotron-label" });
     styleLabel.id = "nemotron-note-style-label";
     styleLabel.htmlFor = "nemotron-note-style";
 
@@ -445,7 +449,7 @@ export class NemotronModal extends Modal {
         value: "detailed",
         label: "Detailed",
         icon: "list-tree",
-        description: "In-depth explanations, full architecture diagrams, trade-offs, and complete code walkthroughs.",
+        description: "Complete explanations and examples from the source, organized into clear sections.",
       },
       {
         value: "bare",
@@ -464,6 +468,7 @@ export class NemotronModal extends Modal {
       defaultStyle,
       (val) => {
         this.selectedStyle = val as NoteStyle;
+        updateOptionsSummary();
       },
       { controlId: "nemotron-note-style", labelId: styleLabel.id },
     );
@@ -1423,8 +1428,15 @@ export class NemotronModal extends Modal {
     instructions.createEl("summary", { text: "Additional instructions" });
     instructions.appendChild(customRow);
     const output = workspace.createEl("details", { cls: "autonatic-output-column" });
-    output.open = !window.matchMedia("(max-width: 800px)").matches;
+    const revealOutput = this.configureOutputDisclosure(output);
     const outputHeading = output.createEl("summary", { text: "Note options", cls: "nemotron-workflow-heading" });
+    const optionSummary = outputHeading.createSpan({ cls: "autonatic-option-summary" });
+    updateOptionsSummary = () => {
+      const intentLabel = creationIntent === "multiple" ? "Separate notes" : creationIntent === "append" ? "Add to active note" : "One note";
+      const writingStyle = styleOptions.find((option) => option.value === this.selectedStyle)?.label || "Concise";
+      optionSummary.setText(`${intentLabel}, ${writingStyle}`);
+    };
+    updateOptionsSummary();
     workflow.insertBefore(styleContainer, placementSection);
     for (const element of [workflow, smartScopeOptionsDiv, newNoteOptionsDiv]) output.appendChild(element);
     const options = output.createEl("details", { cls: "autonatic-advanced-options" });
@@ -1443,7 +1455,7 @@ export class NemotronModal extends Modal {
     const editOutput = destination.createEl("button", { text: "Change output", cls: "autonatic-edit-output" });
     editOutput.type = "button";
     editOutput.addEventListener("click", () => {
-      output.open = true;
+      revealOutput();
       outputHeading.scrollIntoView({ block: "nearest" });
       outputHeading.focus();
     });
@@ -1864,7 +1876,7 @@ export class NemotronModal extends Modal {
     const source = workspace.createDiv({ cls: "autonatic-source-column" });
     for (const element of [sourceContainer, infoCard, excalPromptRow]) source.appendChild(element);
     const output = workspace.createEl("details", { cls: "autonatic-output-column" });
-    output.open = !window.matchMedia("(max-width: 800px)").matches;
+    this.configureOutputDisclosure(output);
     output.createEl("summary", { text: "Diagram options", cls: "nemotron-workflow-heading" });
     for (const element of [standaloneOptionsDiv, diagramControls, linkBackRow]) output.appendChild(element);
     const activity = paneEl.createDiv({ cls: "autonatic-activity" });
@@ -1991,14 +2003,11 @@ export class NemotronModal extends Modal {
       this.customInputEl.value = item.customInstruction || "";
     }
 
-    if (item.mode) {
-      void this.updateModeUI?.(item.mode);
-    }
-
     if (item.style && this.styleSelectComponent) {
       this.selectedStyle = item.style;
       this.styleSelectComponent.setValue(item.style);
     }
+    void this.updateModeUI?.(item.mode || this.selectedMode);
 
     if (item.attachedImages && Array.isArray(item.attachedImages)) {
       this.attachedImages = [...item.attachedImages];
@@ -2081,10 +2090,36 @@ export class NemotronModal extends Modal {
     setup.addEventListener("click", () => openPluginSettings(this.app, this.plugin.manifest.id));
   }
 
+  private configureOutputDisclosure(output: HTMLDetailsElement): () => void {
+    let manuallyToggled = false;
+    let automaticOpen = this.modalEl.clientWidth > 800;
+    output.open = automaticOpen;
+    output.addEventListener("toggle", () => {
+      if (output.open !== automaticOpen) manuallyToggled = true;
+    }, { signal: this.interfaceEvents?.signal });
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry || manuallyToggled) return;
+      automaticOpen = entry.contentRect.width > 800;
+      output.open = automaticOpen;
+    });
+    observer.observe(this.modalEl);
+    this.outputResizeObservers.push(observer);
+    return () => {
+      manuallyToggled = true;
+      output.open = true;
+    };
+  }
+
+  private disconnectOutputObservers(): void {
+    this.outputResizeObservers.forEach((observer) => observer.disconnect());
+    this.outputResizeObservers = [];
+  }
+
   onClose() {
     this.plugin.workspaceNavigation.closeHost(this);
     this.plugin.workspaceNavigation.deactivate(this);
     this.notePreview?.destroy();
+    this.disconnectOutputObservers();
     this.interfaceEvents?.abort();
     this.importAbortController?.abort();
     if (this.isGenerating && this.abortController && !this.continueGenerationAfterClose) {
@@ -2105,6 +2140,7 @@ export class NemotronModal extends Modal {
   onWorkspacePageLeave(): void {
     this.notePreview?.destroy();
     this.notePreview = undefined;
+    this.disconnectOutputObservers();
     this.interfaceEvents?.abort();
     this.interfaceEvents = undefined;
     this.importAbortController?.abort();

@@ -1,7 +1,7 @@
 {
   "id": "nemotron-note-crafter",
   "name": "Autonatic",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "minAppVersion": "1.13.1",
   "description": "Turn text and shared AI conversations into structured Obsidian notes using your choice of AI provider.",
   "author": "Ahmed Tawfik",

@@ -56,10 +56,9 @@ export class CustomSelect {
       this.triggerEl.disabled = true;
       this.triggerEl.setAttribute("aria-disabled", "true");
     }
-    if (config.labelId) this.triggerEl.setAttribute("aria-labelledby", config.labelId);
-
     const triggerContent = this.triggerEl.createSpan({ cls: "nemotron-select-left" });
-    this.valueEl = triggerContent.createSpan({ cls: "nemotron-select-label" });
+    this.valueEl = triggerContent.createSpan({ cls: "nemotron-select-label", attr: { id: `${controlId}-value` } });
+    if (config.labelId) this.triggerEl.setAttribute("aria-labelledby", `${config.labelId} ${this.valueEl.id}`);
     const chevron = this.triggerEl.createSpan({ cls: "nemotron-select-chevron", attr: { "aria-hidden": "true" } });
     setIcon(chevron, "chevron-down");
 

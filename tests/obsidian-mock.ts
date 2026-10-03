@@ -71,6 +71,16 @@ export function normalizePath(input: string): string {
   return parts.join("/");
 }
 
-export async function requestUrl(): Promise<never> {
+type RequestUrlHandler = (request: Record<string, any>) => unknown | Promise<unknown>;
+let requestUrlHandler: RequestUrlHandler | undefined;
+
+export function mockRequestUrl(handler: RequestUrlHandler): () => void {
+  const previous = requestUrlHandler;
+  requestUrlHandler = handler;
+  return () => { requestUrlHandler = previous; };
+}
+
+export async function requestUrl(request: Record<string, any>): Promise<any> {
+  if (requestUrlHandler) return requestUrlHandler(request);
   throw new Error("Network requests are not available in tests.");
 }
