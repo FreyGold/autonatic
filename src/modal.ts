@@ -79,6 +79,7 @@ export class NemotronModal extends Modal {
   abortController: AbortController | null = null;
   private importAbortController: AbortController | null = null;
   isGenerating: boolean = false;
+  private continueGenerationAfterClose = false;
   attachedImages: AttachedImage[] = [];
   excalAttachedImages: AttachedImage[] = [];
   pasteListener!: (e: ClipboardEvent) => void;
@@ -868,11 +869,25 @@ export class NemotronModal extends Modal {
     const cancelBtn = buttonRow.createEl("button", {
       text: "Cancel",
     });
+    const backgroundBtn = buttonRow.createEl("button", {
+      cls: "autonatic-background-button",
+      attr: { type: "button" },
+    });
+    setIcon(backgroundBtn.createSpan({ attr: { "aria-hidden": "true" } }), "minimize-2");
+    backgroundBtn.createSpan({ text: "Continue in background" });
+    backgroundBtn.hidden = true;
 
     cancelBtn.addEventListener("click", () => {
       if (this.isGenerating && this.abortController) {
         this.abortController.abort();
       }
+      this.close();
+    });
+    backgroundBtn.addEventListener("click", () => {
+      if (!this.isGenerating) return;
+      this.continueGenerationAfterClose = true;
+      backgroundBtn.disabled = true;
+      new Notice("Generation is continuing in the background. Autonatic will notify you when it finishes.", 7000);
       this.close();
     });
 
@@ -953,10 +968,13 @@ export class NemotronModal extends Modal {
       generationProgress = new WorkflowProgress(generationProgressHost, progressStages);
       updateGenerationStage("Prepare source");
       this.isGenerating = true;
+      this.continueGenerationAfterClose = false;
+      this.abortController = new AbortController();
       setWorkspaceBusy(this.contentEl, true);
       retryPlacementBtn.disabled = true;
       generateBtn.disabled = true;
       generateBtn.setText("Preparing...");
+      backgroundBtn.hidden = false;
       let vaultKnowledgeTreeText: string | undefined = undefined;
       let vaultIndexForPlacement: VaultKnowledgeIndex | null = null;
       const allowedAutomaticAppendPaths = new Set<string>();
@@ -966,12 +984,20 @@ export class NemotronModal extends Modal {
         let vaultIndex: VaultKnowledgeIndex;
         try {
           vaultIndex = await buildOrUpdateVaultIndex(this.app, this.plugin.settings);
+          this.abortController?.signal.throwIfAborted();
         } catch (error) {
+          const cancelled = this.abortController?.signal.aborted
+            || (error instanceof Error && error.name === "AbortError");
           generationProgress.fail();
-          statusDiv.setText(error instanceof Error ? `Error: ${error.message}` : "Could not analyze the vault.");
+          const message = error instanceof Error ? error.message : "Could not analyze the vault.";
+          statusDiv.setText(cancelled ? "Generation cancelled." : `Error: ${message}`);
+          new Notice(cancelled ? "Generation cancelled." : `Could not analyze the vault: ${message}`);
           this.isGenerating = false;
+          this.continueGenerationAfterClose = false;
+          this.abortController = null;
           setWorkspaceBusy(this.contentEl, false);
           generateBtn.disabled = false;
+          backgroundBtn.hidden = true;
           updateActionButton();
           return;
         }
@@ -1024,7 +1050,6 @@ export class NemotronModal extends Modal {
         notePreview.update("", mode);
       }
 
-      this.abortController = new AbortController();
       const fileSnapshots: FileSnapshot[] = [];
       const foldersCreatedList: string[] = [];
       let generationRecorded = false;
@@ -1299,8 +1324,11 @@ export class NemotronModal extends Modal {
         }
       } finally {
         this.isGenerating = false;
+        this.continueGenerationAfterClose = false;
+        this.abortController = null;
         setWorkspaceBusy(this.contentEl, false);
         generateBtn.disabled = false;
+        backgroundBtn.hidden = true;
         updateActionButton();
       }
     };
@@ -1349,6 +1377,7 @@ export class NemotronModal extends Modal {
     });
     footer.appendChild(buttonRow);
     buttonRow.insertBefore(cancelBtn, generateBtn);
+    buttonRow.insertBefore(backgroundBtn, cancelBtn);
     const contextBar = source.createDiv({ cls: "autonatic-editor-context" });
     const providerButton = contextBar.createEl("button", { cls: "autonatic-provider-button", attr: { type: "button", title: "Change AI provider or model" } });
     setIcon(providerButton.createSpan({ attr: { "aria-hidden": "true" } }), "sliders-horizontal");
@@ -1549,11 +1578,25 @@ export class NemotronModal extends Modal {
     const cancelExcalBtn = excalButtonRow.createEl("button", {
       text: "Cancel",
     });
+    const backgroundExcalBtn = excalButtonRow.createEl("button", {
+      cls: "autonatic-background-button",
+      attr: { type: "button" },
+    });
+    setIcon(backgroundExcalBtn.createSpan({ attr: { "aria-hidden": "true" } }), "minimize-2");
+    backgroundExcalBtn.createSpan({ text: "Continue in background" });
+    backgroundExcalBtn.hidden = true;
 
     cancelExcalBtn.addEventListener("click", () => {
       if (this.isGenerating && this.abortController) {
         this.abortController.abort();
       }
+      this.close();
+    });
+    backgroundExcalBtn.addEventListener("click", () => {
+      if (!this.isGenerating) return;
+      this.continueGenerationAfterClose = true;
+      backgroundExcalBtn.disabled = true;
+      new Notice("Diagram generation is continuing in the background. Autonatic will notify you when it finishes.", 7000);
       this.close();
     });
 
@@ -1568,9 +1611,11 @@ export class NemotronModal extends Modal {
       }
 
       this.isGenerating = true;
+      this.continueGenerationAfterClose = false;
       setWorkspaceBusy(this.contentEl, true);
       generateExcalBtn.disabled = true;
       generateExcalBtn.setText("Designing diagram...");
+      backgroundExcalBtn.hidden = false;
       excalStatusDiv.style.display = "block";
       excalStatusDiv.setText("Extracting concepts and relationships with AI...");
 
@@ -1734,9 +1779,12 @@ export class NemotronModal extends Modal {
         }
       } finally {
         this.isGenerating = false;
+        this.continueGenerationAfterClose = false;
+        this.abortController = null;
         setWorkspaceBusy(this.contentEl, false);
         generateExcalBtn.disabled = false;
         generateExcalBtn.setText("Create diagram");
+        backgroundExcalBtn.hidden = true;
       }
     });
 
@@ -1754,6 +1802,7 @@ export class NemotronModal extends Modal {
     footer.createSpan({ text: "Saves an Excalidraw drawing in your vault.", cls: "nemotron-generation-summary" });
     footer.appendChild(excalButtonRow);
     excalButtonRow.insertBefore(cancelExcalBtn, generateExcalBtn);
+    excalButtonRow.insertBefore(backgroundExcalBtn, cancelExcalBtn);
     const savePreviousDraft = this.saveDraftBeforeNavigation;
     this.saveDraftBeforeNavigation = () => {
       savePreviousDraft?.();
@@ -1966,7 +2015,7 @@ export class NemotronModal extends Modal {
     this.notePreview?.destroy();
     this.interfaceEvents?.abort();
     this.importAbortController?.abort();
-    if (this.isGenerating && this.abortController) {
+    if (this.isGenerating && this.abortController && !this.continueGenerationAfterClose) {
       this.abortController.abort();
     }
     if (this.pasteListener) {

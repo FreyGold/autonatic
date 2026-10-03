@@ -2074,6 +2074,19 @@ button.autonatic-provider-button:hover {
   background: var(--an-pill-hover);
 }
 
+button.autonatic-background-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--an-muted);
+}
+
+button.autonatic-background-button svg {
+  width: 15px;
+  height: 15px;
+}
+
 .autonatic-shortcut-hint kbd {
   border-radius: 999px;
   padding: 2px 7px;
@@ -2333,13 +2346,17 @@ button.autonatic-provider-button:hover {
     padding-block: 12px;
   }
   .autonatic-action-bar .nemotron-button-row {
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
   .autonatic-action-bar .nemotron-button-row button {
     max-width: none;
   }
+  .autonatic-action-bar .nemotron-button-row .autonatic-background-button {
+    grid-column: 1 / -1;
+  }
   .autonatic-action-bar .nemotron-button-row button.mod-cta {
-    flex: 1;
+    width: 100%;
   }
   .autonatic-editor-context {
     padding-top: 12px;
