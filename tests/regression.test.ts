@@ -31,7 +31,7 @@ import { planVaultArrangement, resolveArrangementFolder, validateArrangementMove
 import { VaultArrangementManager } from "../src/arrangement-manager";
 import { DiagramEngine } from "../src/diagram-engine";
 import { BARE_OBSIDIAN_SKILL_PROMPT, buildSelectionEditPrompt, buildUserPrompt } from "../src/prompts";
-import { sanitizeMermaidDiagrams, streamChatCompletion } from "../src/api";
+import { createVisionApiError, generateNemotronNote, sanitizeMermaidDiagrams, streamChatCompletion } from "../src/api";
 import { replaceCapturedSelection } from "../src/selection-editor";
 import { UsefulDiagramPlanner } from "../src/useful-diagram-planner";
 import { DESTINATION_MODE_OPTIONS, supportsPlacementFolderScope } from "../src/destination-modes";
@@ -51,6 +51,7 @@ import {
   ensureNonRootNoteFolder,
   resolveNewNoteFolder,
 } from "../src/note-destination";
+import { getGenerationConfig } from "../src/providers";
 
 test("Gemini import accepts public conversation links and rejects other URLs", () => {
   assert.equal(parseGeminiShareUrl("https://g.co/gemini/share/435756f6ded5"),
@@ -187,6 +188,65 @@ test("models are unset until fetched from the selected provider", () => {
   assert.equal(resolveTextModel(), "");
   assert.equal(resolveTextModel("provider/model"), "provider/model");
   assert.equal(resolveTextModel("custom/model"), "custom/model");
+});
+
+test("legacy NVIDIA image model is used instead of the text generation model", () => {
+  const config = getGenerationConfig({
+    generationProvider: "nvidia",
+    apiKey: "test-key",
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    model: "nvidia/text-only",
+    visionModel: "meta/llama-3.2-11b-vision-instruct",
+    providers: {
+      nvidia: {
+        apiKey: "test-key",
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        model: "nvidia/text-only",
+        visionModel: "",
+        embeddingModel: "",
+        availableModels: ["nvidia/text-only", "meta/llama-3.2-11b-vision-instruct"],
+        availableEmbeddingModels: [],
+      },
+    },
+  } as never);
+
+  assert.equal(config.model, "nvidia/text-only");
+  assert.equal(config.visionModel, "meta/llama-3.2-11b-vision-instruct");
+});
+
+test("image attachments require an explicit image model before making a request", async () => {
+  await assert.rejects(() => generateNemotronNote({
+    generationProvider: "nvidia",
+    providers: {
+      nvidia: {
+        apiKey: "test-key",
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        model: "nvidia/text-only",
+        visionModel: "",
+        embeddingModel: "",
+        availableModels: ["nvidia/text-only"],
+        availableEmbeddingModels: [],
+      },
+    },
+    temperature: 1,
+    topP: 0.95,
+    maxTokens: 100,
+    enableThinking: true,
+  } as never, "Turn this into a note", ["data:image/png;base64,AA=="]), /Choose an Image model.*Settings/i);
+});
+
+test("multimodal capability errors are concise and actionable", () => {
+  const error = createVisionApiError(400, JSON.stringify({
+    error: {
+      message: "ValueError: Received multimodal data but multimodal processing is not enabled. Use --enable-multimodal flag.",
+      type: "Bad Request",
+      code: 400,
+    },
+  }), "nvidia", "nvidia/text-only");
+
+  assert.match(error.message, /cannot process images/i);
+  assert.match(error.message, /Choose another Image model/i);
+  assert.doesNotMatch(error.message, /ValueError|enable-multimodal|\{"error"/);
 });
 
 test("streaming retries one temporary read timeout", async () => {

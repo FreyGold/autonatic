@@ -4,7 +4,7 @@ import * as https from "https";
 import * as http from "http";
 import { StringDecoder } from "string_decoder";
 import { BARE_OBSIDIAN_SKILL_PROMPT, type NoteStyle } from "./prompts";
-import { getGenerationConfig } from "./providers";
+import { getGenerationConfig, PROVIDERS, type AIProvider } from "./providers";
 
 export interface StreamCallbacks {
   onReasoning?: (reasoningChunk: string) => void;
@@ -15,6 +15,29 @@ export interface StreamCallbacks {
 export interface StreamResult {
   content: string;
   reasoning: string;
+}
+
+function visionErrorDetail(responseBody: string): string {
+  try {
+    const parsed = JSON.parse(responseBody);
+    return String(parsed?.error?.message || parsed?.detail || parsed?.message || "").trim();
+  } catch {
+    return responseBody.trim();
+  }
+}
+
+export function createVisionApiError(
+  statusCode: number,
+  responseBody: string,
+  provider: AIProvider,
+  model: string,
+): Error {
+  const detail = visionErrorDetail(responseBody);
+  if (/multimodal processing is not enabled|does not support (?:image|vision)|image input is not supported/i.test(detail)) {
+    return new Error(`The image model “${model}” cannot process images through ${PROVIDERS[provider].label}. Choose another Image model in Settings → Autonatic → Providers, or remove the attachment.`);
+  }
+  const explanation = detail || "The image request was rejected.";
+  return new Error(`Image analysis failed on ${PROVIDERS[provider].label} (${statusCode}): ${explanation}`);
 }
 
 const MERMAID_DELIMITERS: Record<string, string> = { "[": "]", "{": "}", "(": ")" };
@@ -152,7 +175,13 @@ export async function extractContentFromImage(
   const config = getGenerationConfig(settings);
   const [meta, encoded] = dataUrl.split(",", 2);
   const mimeType = /data:([^;]+)/.exec(meta)?.[1] || "image/png";
-  const model = config.model;
+  const model = config.visionModel.trim();
+  if (!model) {
+    throw new Error(`Choose an Image model for ${PROVIDERS[config.provider].label} in Settings → Autonatic → Providers before attaching images.`);
+  }
+  if (config.availableModels.length > 0 && !config.availableModels.includes(model)) {
+    throw new Error(`The selected Image model is no longer in ${PROVIDERS[config.provider].label}'s model list. Fetch models again and choose an available Image model.`);
+  }
   const body: Record<string, any> = { model, max_tokens: 4096, temperature: 0.2 };
   let url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` };
@@ -178,7 +207,9 @@ export async function extractContentFromImage(
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
   const response = await requestUrl({ url, method: "POST", headers, body: JSON.stringify(body), throw: false });
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-  if (response.status < 200 || response.status >= 300) throw new Error(`Vision API error (${response.status}): ${response.text}`);
+  if (response.status < 200 || response.status >= 300) {
+    throw createVisionApiError(response.status, response.text, config.provider, model);
+  }
   const data = response.json;
   if (config.provider === "anthropic") return (data.content || []).filter((item: any) => item.type === "text").map((item: any) => item.text).join("");
   if (config.provider === "gemini") return (data.candidates?.[0]?.content?.parts || []).map((item: any) => item.text || "").join("");
@@ -212,6 +243,9 @@ export async function generateNemotronNote(
 
   // Extract from images if attached
   if (imageDataUrls && imageDataUrls.length > 0) {
+    if (!generationConfig.visionModel.trim()) {
+      throw new Error(`Choose an Image model for ${PROVIDERS[generationConfig.provider].label} in Settings → Autonatic → Providers before attaching images.`);
+    }
     const extractions: string[] = [];
     for (let i = 0; i < imageDataUrls.length; i++) {
       const text = await extractContentFromImage(

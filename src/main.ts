@@ -412,13 +412,16 @@ export default class NemotronPlugin extends Plugin {
       baseUrl: this.settings.providers.nvidia.baseUrl === DEFAULT_SETTINGS.providers.nvidia.baseUrl && savedSettings.baseUrl
         ? savedSettings.baseUrl : this.settings.providers.nvidia.baseUrl,
       model: this.settings.providers.nvidia.model || savedSettings.model || "",
+      visionModel: this.settings.providers.nvidia.visionModel || savedSettings.visionModel || "",
     };
     this.settings.apiKey = this.settings.providers.nvidia.apiKey;
     this.settings.baseUrl = this.settings.providers.nvidia.baseUrl;
     this.settings.model = this.settings.providers.nvidia.model;
+    this.settings.visionModel = this.settings.providers.nvidia.visionModel;
     if (!this.settings.generationProvider) this.settings.generationProvider = "nvidia";
     if (!this.settings.embeddingProvider) this.settings.embeddingProvider = "nvidia";
     let settingsChanged = false;
+    if (savedSettings.visionModel && !savedSettings.providers?.nvidia?.visionModel) settingsChanged = true;
     if (savedSettings.propertiesOptInVersion !== DEFAULT_SETTINGS.propertiesOptInVersion) {
       this.settings.enableProperties = false;
       this.settings.propertiesOptInVersion = DEFAULT_SETTINGS.propertiesOptInVersion;

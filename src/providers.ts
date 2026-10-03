@@ -7,6 +7,7 @@ export interface ProviderConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
+  visionModel: string;
   embeddingModel: string;
   availableModels: string[];
   availableEmbeddingModels: string[];
@@ -25,7 +26,7 @@ export const EMBEDDING_PROVIDERS: AIProvider[] = ["nvidia", "openai", "gemini", 
 
 export function defaultProviderConfigs(): Record<AIProvider, ProviderConfig> {
   return Object.fromEntries(Object.entries(PROVIDERS).map(([key, provider]) => [key, {
-    apiKey: "", baseUrl: provider.baseUrl, model: "", embeddingModel: "",
+    apiKey: "", baseUrl: provider.baseUrl, model: "", visionModel: "", embeddingModel: "",
     availableModels: [], availableEmbeddingModels: [],
   }])) as unknown as Record<AIProvider, ProviderConfig>;
 }
@@ -38,6 +39,7 @@ export function getProviderConfig(settings: NemotronPluginSettings, provider: AI
     apiKey: saved?.apiKey || (legacyNvidia ? settings.apiKey : ""),
     baseUrl: saved?.baseUrl || (legacyNvidia && settings.baseUrl) || defaults.baseUrl,
     model: saved?.model || (legacyNvidia && settings.model) || "",
+    visionModel: saved?.visionModel || (legacyNvidia && settings.visionModel) || "",
     embeddingModel: saved?.embeddingModel || "",
     availableModels: saved?.availableModels || [],
     availableEmbeddingModels: saved?.availableEmbeddingModels || [],

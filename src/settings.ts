@@ -12,7 +12,7 @@ import { GENERATED_NOTES_FALLBACK_FOLDER } from "./note-destination";
 export interface NemotronPluginSettings {
   generationProvider: AIProvider;
   embeddingProvider: AIProvider;
-  providers: Record<AIProvider, { apiKey: string; baseUrl: string; model: string; embeddingModel: string; availableModels: string[]; availableEmbeddingModels: string[] }>;
+  providers: Record<AIProvider, { apiKey: string; baseUrl: string; model: string; visionModel: string; embeddingModel: string; availableModels: string[]; availableEmbeddingModels: string[] }>;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -188,8 +188,12 @@ export class NemotronSettingTab extends PluginSettingTab {
         config.availableModels = [];
         config.availableEmbeddingModels = [];
         config.model = "";
+        config.visionModel = "";
         config.embeddingModel = "";
-        if (providerId === "nvidia") this.plugin.settings.model = "";
+        if (providerId === "nvidia") {
+          this.plugin.settings.model = "";
+          this.plugin.settings.visionModel = "";
+        }
         if (hadCatalog && this.plugin.settings.askNotesEnabled && this.plugin.settings.embeddingProvider === providerId) {
           await this.plugin.askNotesSearch.clear();
         }
@@ -238,6 +242,10 @@ export class NemotronSettingTab extends PluginSettingTab {
               config.model = "";
               if (providerId === "nvidia") this.plugin.settings.model = "";
             }
+            if (config.visionModel && !models.chat.includes(config.visionModel)) {
+              config.visionModel = "";
+              if (providerId === "nvidia") this.plugin.settings.visionModel = "";
+            }
             if (config.embeddingModel && !models.embeddings.includes(config.embeddingModel)) config.embeddingModel = "";
             await this.plugin.saveSettings();
             new Notice(`Key accepted. Found ${models.chat.length} chat models${EMBEDDING_PROVIDERS.includes(providerId) ? ` and ${models.embeddings.length} embedding models` : ""}.`);
@@ -254,6 +262,15 @@ export class NemotronSettingTab extends PluginSettingTab {
         return dropdown.setValue(config.availableModels.includes(config.model) ? config.model : "").onChange(async (value) => {
           config.model = value;
           if (providerId === "nvidia") this.plugin.settings.model = value;
+          await this.plugin.saveSettings();
+        });
+      });
+      new Setting(details).setName("Image model").setDesc("Used only to read attached screenshots and images. Choose a model that supports image input.").addDropdown((dropdown) => {
+        dropdown.addOption("", config.availableModels.length ? "Select an image-capable model" : "Fetch models first");
+        for (const model of config.availableModels) dropdown.addOption(model, model);
+        return dropdown.setValue(config.availableModels.includes(config.visionModel) ? config.visionModel : "").onChange(async (value) => {
+          config.visionModel = value;
+          if (providerId === "nvidia") this.plugin.settings.visionModel = value;
           await this.plugin.saveSettings();
         });
       });
