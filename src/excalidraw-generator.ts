@@ -3,6 +3,7 @@ import type { NemotronPluginSettings } from "./settings";
 import type { FileSnapshot } from "./history-manager";
 import { streamChatCompletion, StreamCallbacks } from "./api";
 import { DiagramEngine, DiagramOptions, DiagramSynthesisRequest } from "./diagram-engine";
+import { promptDataBlock, PROMPT_DATA_GUIDELINES, REASONING_EXPLANATION_GUIDELINES, STE_INSPIRED_WRITING_GUIDELINES } from "./prompts";
 import {
   DiagramPlan,
   SmartNoteChange,
@@ -34,7 +35,14 @@ Rules:
 - Priority is an integer from 1 to 5. Five is the highest value.
 - Prefer the newly added content. Use the final note only for context.
 - Approve only the highest-value structures. It is valid to approve zero candidates.
-- Return exactly one decision for every candidate id.`;
+- Return exactly one decision for every candidate id.
+- Use only structures and relationships supported by the supplied notes. Do not invent a process or missing dependency to justify a drawing.
+
+${PROMPT_DATA_GUIDELINES}
+
+${STE_INSPIRED_WRITING_GUIDELINES}
+
+${REASONING_EXPLANATION_GUIDELINES}`;
 
 function createDiagramEngine(settings: NemotronPluginSettings, callbacks?: StreamCallbacks): DiagramEngine {
   return new DiagramEngine({
@@ -66,7 +74,8 @@ Schema:
 
 Rules:
 - Explain the structure. Do not copy the complete note.
-- Use 6 to 10 nodes unless the source is very small.
+- Use only as many nodes as the source supports, usually 6 to 10 when justified. Never exceed Maximum nodes or add invented nodes to reach a target count.
+- Preserve the source's relationships, conditions, and uncertainty. Do not invent dependencies, chronology, outcomes, or conclusions.
 - Use one detail per node. Omit details that repeat the title.
 - Do not include code blocks or function bodies.
 - Give each node no more than two incoming and two outgoing edges.
@@ -77,9 +86,15 @@ Rules:
 - A comparison uses two or more groups.
 - A flowchart has a clear start and result. Each decision has labeled outcome branches.
 - Arrange a flowchart for a wide desktop canvas. Keep the main path concise.
-- Avoid generic labels such as Core Idea, Processing Pipeline, or Key Details.`;
-      const focus = request.focusQuestion ? `\nFocus question: ${request.focusQuestion}\n` : "";
-      const userPrompt = `Title: ${request.title}${focus}\nSource note:\n${request.content}`;
+- Avoid generic labels such as Core Idea, Processing Pipeline, or Key Details.
+
+${PROMPT_DATA_GUIDELINES}
+
+${STE_INSPIRED_WRITING_GUIDELINES}
+
+${REASONING_EXPLANATION_GUIDELINES}`;
+      const focus = request.focusQuestion ? `\nFocus question: ${promptDataBlock("focus-question", request.focusQuestion)}\n` : "";
+      const userPrompt = `Title: ${promptDataBlock("source-title", request.title)}${focus}\nSource note:\n${promptDataBlock("source-note", request.content)}`;
       const result = await streamChatCompletion(settings, systemPrompt, userPrompt, callbacks, signal);
       const match = result.content.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/);
       return JSON.parse((match?.[1] ?? result.content).trim());
@@ -100,7 +115,7 @@ export async function planUsefulDiagrams(
       const result = await streamChatCompletion(
         settings,
         USEFUL_DIAGRAM_SYSTEM_PROMPT,
-        JSON.stringify(request),
+        promptDataBlock("diagram-candidates", JSON.stringify(request)),
         { onStatus: callbacks?.onStatus },
         planningSignal,
       );

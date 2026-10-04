@@ -1,5 +1,6 @@
 import { App, Modal, TFolder, normalizePath, setIcon } from "obsidian";
 import { ensureNonRootNoteFolder } from "./note-destination";
+import { applyDesignSystem } from "./design-system";
 
 export interface NoteDestinationDraft {
   id: string;
@@ -66,6 +67,7 @@ export class PlacementReviewModal extends Modal {
 
   onOpen(): void {
     this.modalEl.addClass("autonatic-placement-shell");
+    applyDesignSystem(this.modalEl);
     this.contentEl.addClass("autonatic-placement-modal");
     this.existingFolders = new Set(
       this.app.vault.getAllLoadedFiles()
@@ -270,7 +272,7 @@ export class PlacementReviewModal extends Modal {
     });
 
     const actions = this.contentEl.createDiv({ cls: "autonatic-placement-actions" });
-    const cancel = actions.createEl("button", { text: "Cancel", attr: { type: "button" } });
+    const cancel = actions.createEl("button", { text: "Cancel", cls: "an-button-cancel mod-warning", attr: { type: "button" } });
     const confirm = actions.createEl("button", {
       text: `Create ${this.destinations.length} note${this.destinations.length === 1 ? "" : "s"}`,
       cls: "mod-cta",

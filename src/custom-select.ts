@@ -137,9 +137,13 @@ export class CustomSelect {
     this.menuEl.hidden = false;
     this.triggerEl.addClass("is-open");
     this.triggerEl.setAttribute("aria-expanded", "true");
+    this.positionMenu();
+    if (!this.isOpen) return;
     this.setActiveIndex(preferredIndex);
     document.addEventListener("pointerdown", this.onDocumentPointerDown, true);
     document.addEventListener("focusin", this.onDocumentFocusIn, true);
+    document.addEventListener("scroll", this.positionMenu, true);
+    window.addEventListener("resize", this.positionMenu);
     this.menuEl.focus({ preventScroll: true });
   }
 
@@ -152,6 +156,8 @@ export class CustomSelect {
     this.triggerEl.setAttribute("aria-expanded", "false");
     document.removeEventListener("pointerdown", this.onDocumentPointerDown, true);
     document.removeEventListener("focusin", this.onDocumentFocusIn, true);
+    document.removeEventListener("scroll", this.positionMenu, true);
+    window.removeEventListener("resize", this.positionMenu);
     if (restoreTriggerFocus) this.triggerEl.focus({ preventScroll: true });
   }
 
@@ -161,6 +167,30 @@ export class CustomSelect {
 
   private readonly onDocumentFocusIn = (event: FocusEvent): void => {
     if (!this.containerEl.contains(event.target as Node)) this.close(false);
+  };
+
+  /** Keep popup choices within the scrollable panel, above its sticky actions. */
+  private readonly positionMenu = (): void => {
+    if (!this.isOpen) return;
+    const trigger = this.triggerEl.getBoundingClientRect();
+    const panel = this.containerEl.closest<HTMLElement>(".modal-content");
+    const bounds = panel?.getBoundingClientRect();
+    const top = Math.max(8, (bounds?.top ?? 0) + 8);
+    let bottom = Math.min(window.innerHeight - 8, (bounds?.bottom ?? window.innerHeight) - 8);
+    const footer = panel?.querySelector(".autonatic-action-bar")?.getBoundingClientRect();
+    if (footer && footer.top >= trigger.bottom) bottom = Math.min(bottom, footer.top - 8);
+    if (trigger.bottom < top || trigger.top > bottom) {
+      this.close(false);
+      return;
+    }
+
+    const desiredHeight = Math.min(this.menuEl.scrollHeight + 2, 320, window.innerHeight / 2);
+    const above = Math.max(0, trigger.top - top - 4);
+    const below = Math.max(0, bottom - trigger.bottom - 4);
+    const openAbove = below < desiredHeight && above > below;
+    this.menuEl.style.top = openAbove ? "auto" : "calc(100% + 4px)";
+    this.menuEl.style.bottom = openAbove ? "calc(100% + 4px)" : "auto";
+    this.menuEl.style.maxHeight = `${Math.min(desiredHeight, openAbove ? above : below)}px`;
   };
 
   private onTriggerKeyDown(event: KeyboardEvent): void {
@@ -224,7 +254,12 @@ export class CustomSelect {
     const activeEl = this.optionEls[index];
     if (!activeEl) return;
     this.menuEl.setAttribute("aria-activedescendant", activeEl.id);
-    activeEl.scrollIntoView({ block: "nearest" });
+    const top = activeEl.offsetTop;
+    const bottom = top + activeEl.offsetHeight;
+    if (top < this.menuEl.scrollTop) this.menuEl.scrollTop = top;
+    else if (bottom > this.menuEl.scrollTop + this.menuEl.clientHeight) {
+      this.menuEl.scrollTop = bottom - this.menuEl.clientHeight;
+    }
   }
 
   private commit(index: number): void {

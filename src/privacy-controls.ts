@@ -132,7 +132,7 @@ export function resolveAtomicPlacementPlan(
     const rootTarget: AtomicPlacementTarget = { action: "create_new_note", targetFolder: scopeRoot };
     if (strategy === "root" || !candidateFolder || candidateFolder === scopeRoot) return rootTarget;
     if (existingFolderSet.has(candidateFolder)) return target;
-    if (strategy === "existing_subfolder") return rootTarget;
+    // A missing destination can be created even if the model labeled it existing.
     return target;
   });
 }

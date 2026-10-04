@@ -1,0 +1,198 @@
+/* Destination review shares the shell and controls; paths stay the focus. */
+.modal.autonatic-ui.autonatic-placement-shell {
+  width: min(820px, calc(100vw - 48px));
+}
+
+.autonatic-ui .autonatic-placement-modal {
+  padding-bottom: var(--an-space-4);
+}
+
+.autonatic-ui .autonatic-placement-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--an-space-3);
+  padding: var(--an-space-6) 28px var(--an-space-4) 0;
+  border-bottom: 1px dashed var(--an-rule);
+}
+
+.autonatic-ui .autonatic-placement-heading-icon {
+  display: flex;
+  margin-top: var(--an-space-1);
+  color: var(--an-brand);
+}
+
+.autonatic-ui .autonatic-placement-heading h2 {
+  margin: 0;
+  font-size: var(--an-text-title);
+}
+
+.autonatic-ui .autonatic-placement-heading p {
+  max-width: 64ch;
+  margin: var(--an-space-2) 0 0;
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui .autonatic-placement-toolbar {
+  padding: var(--an-space-4) 0;
+  border-bottom: 1px dashed var(--an-rule);
+}
+
+.autonatic-ui .autonatic-placement-toolbar > label {
+  display: block;
+  margin-bottom: var(--an-space-2);
+}
+
+.autonatic-ui .autonatic-placement-folder-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--an-space-2);
+}
+
+.autonatic-ui .autonatic-placement-folder-controls input {
+  flex: 1;
+}
+
+.autonatic-ui .autonatic-placement-folder-controls button {
+  flex-shrink: 0;
+}
+
+.autonatic-ui .autonatic-placement-status {
+  margin-top: var(--an-space-2);
+}
+
+.autonatic-ui .autonatic-placement-status:empty {
+  display: none;
+}
+
+.autonatic-ui .autonatic-placement-tree {
+  max-height: min(52dvh, 480px);
+  overflow: auto;
+  margin-top: var(--an-space-4);
+  border: 1px solid var(--an-rule);
+  border-radius: var(--an-radius-panel);
+}
+
+.autonatic-ui .autonatic-placement-folder-row {
+  display: flex;
+  align-items: center;
+  gap: var(--an-space-2);
+  min-height: var(--an-control-height);
+  padding: var(--an-space-2) var(--an-space-3);
+  border-bottom: 1px dashed var(--an-rule);
+  list-style: none;
+  cursor: pointer;
+}
+
+.autonatic-ui .autonatic-placement-folder-row::-webkit-details-marker {
+  display: none;
+}
+
+.autonatic-ui .autonatic-placement-folder-row:hover {
+  background: var(--an-hover);
+}
+
+.autonatic-ui :is(.autonatic-placement-chevron, .autonatic-placement-folder-icon, .autonatic-placement-grip) {
+  display: flex;
+  color: var(--an-muted);
+}
+
+.autonatic-ui .autonatic-placement-folder[open] > summary .autonatic-placement-chevron {
+  transform: rotate(90deg);
+}
+
+.autonatic-ui .autonatic-placement-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--an-weight-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autonatic-ui :is(.autonatic-placement-count, .autonatic-placement-new) {
+  color: var(--an-muted);
+  font-size: var(--an-text-caption);
+  flex-shrink: 0;
+}
+
+.autonatic-ui .autonatic-placement-move-here {
+  min-height: var(--an-control-compact);
+  margin-left: auto;
+  padding: var(--an-space-1) var(--an-space-2);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui .autonatic-placement-folder-row.is-drop-target {
+  background: color-mix(in srgb, var(--an-brand) 10%, var(--an-paper));
+  box-shadow: inset 3px 0 0 var(--an-brand);
+}
+
+.autonatic-ui .autonatic-placement-note {
+  display: flex;
+  align-items: center;
+  gap: var(--an-space-2);
+  min-height: 56px;
+  padding: var(--an-space-2) var(--an-space-3);
+  border-bottom: 1px dashed var(--an-rule);
+  cursor: grab;
+}
+
+.autonatic-ui .autonatic-placement-note:hover,
+.autonatic-ui .autonatic-placement-note.is-selected {
+  background: var(--an-hover);
+}
+
+.autonatic-ui .autonatic-placement-note.is-selected {
+  box-shadow: inset 3px 0 0 var(--an-brand);
+}
+
+.autonatic-ui .autonatic-placement-note.is-dragging {
+  opacity: 0.45;
+}
+
+.autonatic-ui .autonatic-placement-note-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--an-space-1);
+}
+
+.autonatic-ui .autonatic-placement-note-title {
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ui .autonatic-placement-note-path {
+  color: var(--an-ink);
+  font-size: var(--an-text-body);
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ui .autonatic-placement-summary {
+  padding: var(--an-space-3) 0;
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui .autonatic-placement-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--an-space-2);
+  padding-top: var(--an-space-4);
+  border-top: 1px dashed var(--an-rule);
+}
+
+@container autonatic-workspace (max-width: 560px) {
+  .autonatic-ui .autonatic-placement-folder-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .autonatic-ui .autonatic-placement-folder-controls button {
+    align-self: flex-start;
+  }
+  .autonatic-ui .autonatic-placement-actions button {
+    flex: 1;
+  }
+}

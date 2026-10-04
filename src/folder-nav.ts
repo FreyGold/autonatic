@@ -1,5 +1,7 @@
-import { App, TFolder, normalizePath } from "obsidian";
+import { App, TFolder, normalizePath, setIcon } from "obsidian";
 import { CustomSelect, SelectOption } from "./custom-select";
+import { FolderCreationModal } from "./folder-creation-modal";
+import { normalizeVaultFolderPath } from "./note-destination";
 
 let folderNavigatorId = 0;
 
@@ -16,6 +18,11 @@ export class FolderNavigator {
   private subfoldersSelect?: CustomSelect;
   private manualInput!: HTMLInputElement;
   private upButton!: HTMLButtonElement;
+  private createFolderButton!: HTMLButtonElement;
+  private createFolderLabel!: HTMLElement;
+  private folderStatus!: HTMLElement;
+  private creationModal?: FolderCreationModal;
+  private destroyed = false;
 
   constructor(
     app: App,
@@ -74,15 +81,34 @@ export class FolderNavigator {
     this.manualInput.value = this.currentPath;
 
     this.manualInput.addEventListener("input", () => {
-      this.currentPath = normalizePath(this.manualInput.value.trim()).replace(/^\/+|\/+$/g, "");
-      if (this.currentPath === ".") this.currentPath = "";
+      try {
+        this.currentPath = normalizeVaultFolderPath(this.manualInput.value);
+      } catch {
+        this.updateCreationState();
+        return;
+      }
       this.renderBreadcrumbs();
       this.renderSubfoldersDropdown();
       this.updateUpButton();
       this.onSelect(this.currentPath);
+      this.updateCreationState();
+    });
+    this.manualInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.ctrlKey || event.metaKey || !this.isMissingFolder()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.openFolderCreation();
     });
 
+    const actions = this.containerEl.createDiv({ cls: "nemotron-folder-actions" });
+    this.folderStatus = actions.createSpan({ cls: "nemotron-folder-status", attr: { role: "status", "aria-live": "polite" } });
+    this.createFolderButton = actions.createEl("button", { cls: "nemotron-folder-create-btn", attr: { type: "button" } });
+    setIcon(this.createFolderButton.createSpan({ attr: { "aria-hidden": "true" } }), "folder-plus");
+    this.createFolderLabel = this.createFolderButton.createSpan({ text: "New folder" });
+    this.createFolderButton.addEventListener("click", () => this.openFolderCreation());
+
     this.updateUpButton();
+    this.updateCreationState();
   }
 
   private renderBreadcrumbs() {
@@ -176,6 +202,7 @@ export class FolderNavigator {
     this.renderBreadcrumbs();
     this.renderSubfoldersDropdown();
     this.updateUpButton();
+    this.updateCreationState();
     this.onSelect(this.currentPath);
   }
 
@@ -198,6 +225,43 @@ export class FolderNavigator {
     }
   }
 
+  private isMissingFolder(): boolean {
+    return !!this.currentPath && !this.app.vault.getAbstractFileByPath(this.currentPath);
+  }
+
+  private updateCreationState(): void {
+    let message = "";
+    let valid = true;
+    try {
+      normalizeVaultFolderPath(this.manualInput.value);
+      const existing = this.currentPath ? this.app.vault.getAbstractFileByPath(this.currentPath) : this.app.vault.getRoot();
+      if (existing && !(existing instanceof TFolder)) {
+        message = "A file already uses this path.";
+        valid = false;
+      } else if (!existing) message = "Folder doesn’t exist.";
+    } catch {
+      message = "Choose a valid folder path.";
+      valid = false;
+    }
+    if (this.folderStatus.textContent !== message) this.folderStatus.setText(message);
+    this.folderStatus.hidden = !message;
+    this.createFolderLabel.setText(this.isMissingFolder() ? "Create folder" : "New folder");
+    this.createFolderButton.disabled = !valid;
+    this.manualInput.setAttribute("aria-invalid", String(!valid));
+  }
+
+  private openFolderCreation(): void {
+    if (this.destroyed || this.creationModal || this.createFolderButton.disabled) return;
+    const missingPath = this.isMissingFolder() ? normalizeVaultFolderPath(this.manualInput.value) : undefined;
+    this.creationModal = new FolderCreationModal(this.app, missingPath ? "" : this.currentPath, (path) => {
+      this.creationModal = undefined;
+      if (this.destroyed) return;
+      if (path) this.navigateTo(path);
+      this.createFolderButton.focus();
+    }, missingPath);
+    this.creationModal.open();
+  }
+
   public setPath(path: string) {
     this.navigateTo(path);
   }
@@ -207,6 +271,8 @@ export class FolderNavigator {
   }
 
   public destroy(): void {
+    this.destroyed = true;
+    this.creationModal?.close();
     this.subfoldersSelect?.destroy();
   }
 }

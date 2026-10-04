@@ -2,7 +2,7 @@ import { normalizeGeneratedNoteMarkdown, resolveGeneratedNoteFolder } from "./ge
 
 export const GENERATED_NOTES_FALLBACK_FOLDER = "Autonatic";
 
-function normalizeFolder(value: string | undefined): string {
+export function normalizeVaultFolderPath(value: string | undefined): string {
   const segments = (value ?? "").trim().replace(/\\/g, "/").split("/").filter(Boolean);
   if (segments.some((segment) => segment === "." || segment === ".." || segment.startsWith(".")
     || /[<>:"|?*\u0000-\u001f]/u.test(segment))) {
@@ -16,9 +16,9 @@ export function ensureNonRootNoteFolder(
   requestedFolder: string | undefined,
   configuredFallback: string | undefined = GENERATED_NOTES_FALLBACK_FOLDER,
 ): string {
-  const requested = normalizeFolder(requestedFolder);
+  const requested = normalizeVaultFolderPath(requestedFolder);
   if (requested) return requested;
-  const fallback = normalizeFolder(configuredFallback);
+  const fallback = normalizeVaultFolderPath(configuredFallback);
   return fallback || GENERATED_NOTES_FALLBACK_FOLDER;
 }
 
@@ -29,7 +29,7 @@ export function resolveNewNoteFolder(
   configuredFallback: string | undefined,
   allowGeneratedFolder: boolean,
 ): string {
-  const requested = normalizeFolder(requestedFolder);
+  const requested = normalizeVaultFolderPath(requestedFolder);
   const resolved = allowGeneratedFolder
     ? resolveGeneratedNoteFolder(markdown, requested)
     : requested;

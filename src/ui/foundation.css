@@ -1,0 +1,209 @@
+.autonatic-ui {
+  font-family: var(--an-font);
+  font-size: var(--an-text-body);
+  font-weight: var(--an-weight-body);
+  font-optical-sizing: auto;
+  font-synthesis: style;
+  line-height: var(--an-leading);
+  color: var(--an-ink);
+  background: var(--an-paper);
+}
+
+.autonatic-ui *, .autonatic-ui *::before, .autonatic-ui *::after {
+  box-sizing: border-box;
+  text-shadow: none;
+}
+
+.autonatic-ui [hidden], .autonatic-ui .is-hidden {
+  display: none !important;
+}
+
+.autonatic-ui :is(button, input, select, textarea) {
+  font-family: var(--an-font);
+  font-size: var(--an-text-body);
+  font-weight: var(--an-weight-body);
+  letter-spacing: normal;
+}
+
+.autonatic-ui :is(h2, h3, h4, h5, h6) {
+  font-family: var(--an-font);
+  font-weight: var(--an-weight-heading);
+  color: var(--an-ink);
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.autonatic-ui :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--an-brand);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.autonatic-ui :is(button, input, select, textarea, summary) {
+  scroll-margin-block: var(--an-space-6) 128px;
+}
+
+.autonatic-ui svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.7;
+  flex-shrink: 0;
+}
+
+.autonatic-ui a {
+  color: var(--an-brand);
+  text-underline-offset: 3px;
+}
+
+.autonatic-ui button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--an-space-2);
+  height: auto;
+  min-height: var(--an-control-height);
+  padding: var(--an-space-2) var(--an-space-4);
+  border: 1px solid var(--an-border);
+  border-radius: var(--an-radius-pill);
+  background: var(--an-paper);
+  background-image: none;
+  color: var(--an-ink);
+  font-weight: var(--an-weight-body);
+  line-height: 1.4;
+  box-shadow: var(--an-shadow-control);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--an-transition), border-color var(--an-transition), color var(--an-transition);
+}
+
+.autonatic-ui button:hover:not(:disabled) {
+  background: var(--an-hover);
+  border-color: var(--an-muted);
+}
+
+.autonatic-ui button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.autonatic-ui button.mod-cta {
+  border-color: var(--an-brand-bottom);
+  background: linear-gradient(180deg, var(--an-brand), var(--an-brand-bottom));
+  color: var(--an-brand-ink);
+  font-weight: var(--an-weight-label);
+  box-shadow: var(--an-shadow-primary);
+}
+
+.autonatic-ui button.mod-cta:hover:not(:disabled) {
+  border-color: #1c54ca;
+  background: linear-gradient(180deg, #2e66e5, #1c54ca);
+  color: var(--an-brand-ink);
+}
+
+.autonatic-ui button.an-button-cancel {
+  border-color: var(--an-cancel-bottom);
+  background: linear-gradient(180deg, var(--an-cancel), var(--an-cancel-bottom));
+  color: var(--an-brand-ink);
+  font-weight: var(--an-weight-label);
+  box-shadow: var(--an-shadow-cancel);
+}
+
+.autonatic-ui button.an-button-cancel:hover:not(:disabled) {
+  border-color: var(--an-cancel-hover-bottom);
+  background: linear-gradient(180deg, var(--an-cancel-hover), var(--an-cancel-hover-bottom));
+  color: var(--an-brand-ink);
+}
+
+.autonatic-ui :is(input, select, textarea):not(:where([type="checkbox"], [type="radio"], [type="range"], [type="file"])) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--an-control-height);
+  padding: var(--an-space-2) var(--an-space-3);
+  border: 1px solid var(--an-border);
+  border-radius: var(--an-radius-pill);
+  background-color: var(--an-paper);
+  color: var(--an-ink);
+  line-height: 1.45;
+  box-shadow: none;
+}
+
+/* Native Obsidian dropdowns provide background icons. Own every icon property
+   so theme images cannot tile over the selected value or change its width. */
+.autonatic-ui select,
+.autonatic-ui select.dropdown {
+  width: 100%;
+  padding-inline-end: 36px;
+  appearance: none;
+  background-color: var(--an-paper);
+  background-image: var(--an-select-arrow);
+  background-repeat: no-repeat;
+  background-position: right var(--an-space-3) center;
+  background-size: 16px 16px;
+  background-blend-mode: normal;
+  text-overflow: ellipsis;
+}
+
+.autonatic-ui select:hover:not(:disabled) {
+  background-color: var(--an-hover);
+}
+
+.autonatic-ui textarea {
+  border-radius: var(--an-radius-panel);
+  line-height: var(--an-leading-reading);
+  resize: vertical;
+}
+
+.autonatic-ui :is(input, textarea)::placeholder {
+  color: var(--an-muted);
+  opacity: 1;
+}
+
+.autonatic-ui :is(input[type="checkbox"], input[type="radio"]) {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 3px 0 0;
+  accent-color: var(--an-brand);
+  flex-shrink: 0;
+}
+
+.autonatic-ui input[type="range"] {
+  accent-color: var(--an-brand);
+}
+
+.autonatic-ui progress {
+  accent-color: var(--an-brand);
+}
+
+.autonatic-ui .markdown-rendered {
+  --font-text-size: var(--an-text-body);
+  --p-spacing: var(--an-space-3);
+  --h1-size: 1.5em;
+  --h2-size: 1.3em;
+  --h3-size: 1.15em;
+  font-family: var(--an-font);
+  font-size: var(--an-text-body);
+  line-height: var(--an-leading-reading);
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ui .markdown-rendered :is(code, pre) {
+  font-family: var(--an-mono);
+  font-size: var(--an-text-small);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .autonatic-ui *, .autonatic-ui *::before, .autonatic-ui *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .autonatic-ui {
+    --an-border: var(--an-muted);
+    --an-rule: var(--an-muted);
+  }
+}

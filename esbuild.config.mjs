@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
+import { readFile } from "node:fs/promises";
 
 const banner =
 `/*
@@ -41,9 +42,22 @@ const context = await esbuild.context({
 	minify: prod,
 });
 
+const fontLicense = await readFile("assets/fonts/Inter-OFL.txt", "utf8");
+const stylesContext = await esbuild.context({
+	entryPoints: ["src/ui/styles.css"],
+	outfile: "styles.css",
+	bundle: true,
+	loader: { ".woff2": "dataurl" },
+	charset: "utf8",
+	logLevel: "info",
+	banner: { css: `/* Generated from src/ui/styles.css. Inter font license:\n${fontLicense}\n*/` },
+});
+
 if (prod) {
 	await context.rebuild();
+	await stylesContext.rebuild();
 	process.exit(0);
 } else {
 	await context.watch();
+	await stylesContext.watch();
 }

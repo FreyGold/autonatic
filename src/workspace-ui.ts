@@ -132,8 +132,13 @@ export function setWorkspaceBusy(root: HTMLElement, busy: boolean): void {
   root.querySelectorAll<HTMLElement>(".autonatic-create-workspace").forEach((workspace) => {
     workspace.setAttribute("aria-busy", String(busy));
   });
-  root.querySelectorAll<HTMLButtonElement>("[data-workspace-navigation], .autonatic-workspace-header button, .nemotron-tab-btn, .autonatic-provider-button")
+  root.querySelectorAll<HTMLButtonElement>("[data-workspace-navigation], .autonatic-workspace-header > button, .nemotron-tab-btn, .autonatic-provider-button")
     .forEach((button) => { button.disabled = busy; });
+  const history = root.querySelector<HTMLDetailsElement>(".autonatic-history-details");
+  if (history) {
+    if (busy) history.open = false;
+    history.querySelector("summary")?.setAttribute("aria-disabled", String(busy));
+  }
 }
 
 export function shortcutHint(parent: HTMLElement, action: string): void {

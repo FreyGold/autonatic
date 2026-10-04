@@ -1,0 +1,581 @@
+/* Label/value rows are the shared options component for notes and diagrams. */
+.autonatic-ui .an-metadata-field {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: var(--an-space-3);
+  min-height: 56px;
+  padding: var(--an-space-3) 0;
+  margin: 0;
+  border-bottom: 1px dashed var(--an-rule);
+}
+
+.autonatic-ui .an-metadata-field > label {
+  margin: 0;
+  font-size: var(--an-text-body);
+  font-weight: var(--an-weight-body);
+  color: var(--an-ink);
+}
+
+.autonatic-ui .nemotron-form-row:not(.an-metadata-field) {
+  min-width: 0;
+  margin-bottom: var(--an-space-4);
+}
+
+.autonatic-ui :is(.nemotron-label, .nemotron-workflow-question) {
+  display: block;
+  margin: 0 0 var(--an-space-2);
+  font-size: var(--an-text-body);
+  font-weight: var(--an-weight-body);
+  line-height: var(--an-leading);
+  color: var(--an-ink);
+}
+
+/* Shared outlined action disclosures: native details keep keyboard semantics. */
+.autonatic-ui .an-disclosure {
+  min-width: 0;
+}
+
+.autonatic-ui .an-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--an-space-3);
+  min-height: var(--an-control-height);
+  padding: var(--an-space-2) var(--an-space-3);
+  border: 1px solid var(--an-border);
+  border-radius: var(--an-radius-pill);
+  background: var(--an-paper);
+  color: var(--an-ink);
+  font-size: var(--an-text-body);
+  font-weight: var(--an-weight-body);
+  box-shadow: var(--an-shadow-control);
+  cursor: pointer;
+  list-style: none;
+}
+
+.autonatic-ui .an-action-row::-webkit-details-marker {
+  display: none;
+}
+
+.autonatic-ui .an-action-row:hover {
+  background: var(--an-hover);
+  border-color: var(--an-muted);
+}
+
+.autonatic-ui .an-disclosure[open] > .an-action-row {
+  border-color: var(--an-brand);
+}
+
+.autonatic-ui .an-action-row-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--an-ink);
+}
+
+.autonatic-ui .an-disclosure > :not(summary) {
+  margin-top: var(--an-space-3);
+}
+
+/* Every custom select uses the same label, popup, selected state, and focus. */
+.autonatic-ui .nemotron-custom-select-container {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+.autonatic-ui .nemotron-custom-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+
+.autonatic-ui :is(.nemotron-select-left, .nemotron-select-label) {
+  display: flex;
+  align-items: center;
+  gap: var(--an-space-2);
+  min-width: 0;
+}
+
+.autonatic-ui .nemotron-select-label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autonatic-ui :is(.nemotron-select-icon, .nemotron-select-chevron, .nemotron-option-icon, .nemotron-option-check) {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--an-muted);
+}
+
+.autonatic-ui .nemotron-select-chevron {
+  margin-left: var(--an-space-2);
+}
+
+.autonatic-ui .nemotron-custom-select-trigger.is-open .nemotron-select-chevron {
+  transform: rotate(180deg);
+}
+
+.autonatic-ui .an-metadata-field .nemotron-custom-select-trigger {
+  min-height: var(--an-control-compact);
+  padding: var(--an-space-1) 0 var(--an-space-1) var(--an-space-1);
+  border: 0;
+  border-radius: var(--an-radius-small);
+  background: transparent;
+  color: var(--an-muted);
+  box-shadow: none;
+}
+
+.autonatic-ui .an-metadata-field .nemotron-custom-select-trigger:hover {
+  background: var(--an-hover);
+}
+
+.autonatic-ui .an-metadata-field :is(.nemotron-select-left, .nemotron-select-label) {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.autonatic-ui .an-metadata-field .nemotron-select-icon {
+  display: none;
+}
+
+.autonatic-ui .an-metadata-field .nemotron-select-label > span:last-child {
+  white-space: normal;
+  text-align: right;
+}
+
+.autonatic-ui .nemotron-custom-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: min(320px, 50dvh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--an-space-1);
+  border: 1px solid var(--an-border);
+  border-radius: var(--an-radius-panel);
+  background: var(--an-paper);
+  box-shadow: var(--an-shadow-menu);
+}
+
+.autonatic-ui .an-metadata-field .nemotron-custom-select-menu {
+  left: auto;
+  width: min(320px, calc(100vw - 64px));
+}
+
+.autonatic-ui .nemotron-select-option {
+  padding: var(--an-space-3);
+  border-radius: var(--an-radius-small);
+  cursor: pointer;
+}
+
+.autonatic-ui .nemotron-select-option.is-active,
+.autonatic-ui .nemotron-select-option:hover {
+  background: var(--an-hover);
+}
+
+.autonatic-ui .nemotron-select-option.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.autonatic-ui :is(.nemotron-option-header, .nemotron-option-title-group) {
+  display: flex;
+  align-items: center;
+  gap: var(--an-space-2);
+  min-width: 0;
+}
+
+.autonatic-ui .nemotron-option-header {
+  justify-content: space-between;
+}
+
+.autonatic-ui .nemotron-option-title {
+  font-size: var(--an-text-body);
+  font-weight: var(--an-weight-label);
+}
+
+.autonatic-ui .nemotron-option-desc {
+  margin-top: var(--an-space-1);
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+  line-height: var(--an-leading);
+}
+
+.autonatic-ui .nemotron-option-check {
+  visibility: hidden;
+  color: var(--an-brand);
+}
+
+.autonatic-ui .is-selected .nemotron-option-check {
+  visibility: visible;
+}
+
+.autonatic-ui .nemotron-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--an-space-2);
+}
+
+.autonatic-ui .nemotron-checkbox-label {
+  min-width: 0;
+  color: var(--an-ink);
+  font-size: var(--an-text-body);
+  line-height: var(--an-leading);
+  cursor: pointer;
+}
+
+.autonatic-ui .nemotron-checkbox-title {
+  font-weight: var(--an-weight-body);
+}
+
+.autonatic-ui :is(.nemotron-checkbox-desc, .nemotron-folder-scope-help) {
+  display: block;
+  margin-top: var(--an-space-1);
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+}
+
+/* Folder selection is a compact path control, with no separate card theme. */
+.autonatic-ui .nemotron-folder-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--an-space-3);
+  padding: var(--an-space-3);
+  border: 1px solid var(--an-rule);
+  border-radius: var(--an-radius-panel);
+  background: var(--an-paper);
+}
+
+.autonatic-ui :is(.nemotron-folder-top-row, .nemotron-folder-mid-row, .nemotron-folder-bottom-row) {
+  display: flex;
+  align-items: center;
+  gap: var(--an-space-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.autonatic-ui .nemotron-folder-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--an-space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.autonatic-ui .nemotron-folder-nav :is(.nemotron-folder-up-btn, .nemotron-breadcrumb-chip, .nemotron-folder-create-btn) {
+  min-height: var(--an-control-compact);
+  padding: var(--an-space-1) var(--an-space-2);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui .nemotron-breadcrumb-chip {
+  border-color: transparent;
+  border-radius: var(--an-radius-small);
+  box-shadow: none;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ui .nemotron-breadcrumb-chip.is-active {
+  color: var(--an-brand);
+  background: var(--an-paper-raised);
+}
+
+.autonatic-ui :is(.nemotron-breadcrumb-sep, .nemotron-folder-sub-label, .nemotron-folder-input-label) {
+  font-size: var(--an-text-small);
+  color: var(--an-muted);
+}
+
+.autonatic-ui .nemotron-folder-nav .nemotron-custom-select-container {
+  flex: 1;
+  min-width: 100px;
+}
+
+.autonatic-ui .nemotron-folder-input {
+  flex: 1;
+  min-width: 100px;
+}
+
+.autonatic-ui .nemotron-folder-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--an-space-2);
+}
+
+.autonatic-ui .nemotron-folder-status {
+  flex: 1;
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui .nemotron-folder-create-btn {
+  flex-shrink: 0;
+}
+
+.modal.autonatic-ui.autonatic-folder-create-shell {
+  width: min(440px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+}
+
+.autonatic-folder-create-shell .modal-content.autonatic-folder-create-modal {
+  padding: var(--an-space-6);
+}
+
+.autonatic-ui .autonatic-folder-create-modal h3 {
+  margin: 0 0 var(--an-space-2);
+  font-size: var(--an-text-title);
+}
+
+.autonatic-ui :is(.autonatic-folder-create-description, .autonatic-folder-create-preview) {
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ui .autonatic-folder-create-description {
+  margin: 0 0 var(--an-space-5);
+}
+
+.autonatic-ui .autonatic-folder-create-modal label {
+  display: block;
+  margin-bottom: var(--an-space-2);
+}
+
+.autonatic-ui .autonatic-folder-create-modal input {
+  width: 100%;
+}
+
+.autonatic-ui .autonatic-folder-create-preview {
+  margin-top: var(--an-space-2);
+}
+
+.autonatic-ui .autonatic-folder-create-error {
+  margin-top: var(--an-space-3);
+  color: var(--an-error);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui .autonatic-folder-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--an-space-2);
+  margin-top: var(--an-space-5);
+}
+
+/* Image attachments stay part of the source tools. */
+.autonatic-ui .nemotron-image-dropzone {
+  padding: var(--an-space-4);
+  border: 1px dashed var(--an-border);
+  border-radius: var(--an-radius-panel);
+  background: var(--an-paper-raised);
+}
+
+.autonatic-ui .nemotron-image-dropzone.is-dragover {
+  border-color: var(--an-brand);
+}
+
+.autonatic-ui .nemotron-dropzone-prompt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--an-space-2);
+  font-size: var(--an-text-body);
+}
+
+.autonatic-ui .nemotron-image-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--an-space-2);
+}
+
+.autonatic-ui .nemotron-image-badge {
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui :is(.nemotron-hidden-file-input, .nemotron-dropzone-sep) {
+  display: none;
+}
+
+.autonatic-ui .nemotron-image-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--an-space-3);
+  margin-top: var(--an-space-3);
+}
+
+.autonatic-ui .nemotron-gallery-topbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--an-space-2);
+  justify-content: space-between;
+}
+
+.autonatic-ui :is(.nemotron-gallery-title, .nemotron-card-num) {
+  font-size: var(--an-text-small);
+  color: var(--an-muted);
+}
+
+.autonatic-ui .nemotron-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--an-space-2);
+}
+
+.autonatic-ui .nemotron-image-card {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: var(--an-space-2);
+  min-width: 0;
+  padding: var(--an-space-3);
+  border: 1px solid var(--an-rule);
+  border-radius: var(--an-radius-panel);
+}
+
+.autonatic-ui .nemotron-card-thumb {
+  grid-row: span 2;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--an-radius-small);
+  object-fit: cover;
+}
+
+.autonatic-ui .nemotron-card-info {
+  min-width: 0;
+}
+
+.autonatic-ui .nemotron-card-name {
+  overflow: hidden;
+  font-size: var(--an-text-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autonatic-ui :is(.nemotron-browse-link, .nemotron-paste-clipboard-btn, .nemotron-clear-all-btn, .nemotron-card-remove) {
+  min-height: var(--an-control-compact);
+  padding: var(--an-space-1) var(--an-space-3);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui .nemotron-card-remove {
+  grid-column: 2;
+  justify-self: start;
+}
+
+/* The same reading and status treatment is used by all operations. */
+.autonatic-ui :is(.nemotron-status, .autonatic-ask-status, .autonatic-arrange-status, .autonatic-placement-status) {
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+  line-height: var(--an-leading);
+  overflow-wrap: anywhere;
+}
+
+.autonatic-ui :is(.nemotron-status, .autonatic-ask-status, .autonatic-arrange-status):empty {
+  display: none;
+}
+
+.autonatic-ui :is(.nemotron-status-success, .is-success) {
+  color: var(--an-success);
+}
+
+.autonatic-ui :is(.nemotron-status-error, .has-error, .is-error) {
+  color: var(--an-error);
+}
+
+.autonatic-ui .nemotron-preview-container {
+  margin-top: var(--an-space-6);
+}
+
+.autonatic-ui .nemotron-content-box {
+  padding: var(--an-space-4);
+  border: 1px solid var(--an-rule);
+  border-radius: var(--an-radius-panel);
+  background: var(--an-paper);
+}
+
+.autonatic-ui .nemotron-content-box h4 {
+  margin: 0 0 var(--an-space-3);
+  font-size: var(--an-text-section);
+  font-weight: var(--an-weight-label);
+}
+
+.autonatic-ui .autonatic-rendered-draft {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.autonatic-ui .autonatic-rendered-draft > div > :first-child {
+  margin-top: 0;
+}
+
+.autonatic-ui :is(.autonatic-draft-source, .nemotron-reasoning-box) {
+  margin-top: var(--an-space-4);
+  padding-top: var(--an-space-3);
+  border-top: 1px dashed var(--an-rule);
+}
+
+.autonatic-ui :is(.autonatic-draft-source, .nemotron-reasoning-box) > summary {
+  font-size: var(--an-text-small);
+  color: var(--an-muted);
+  cursor: pointer;
+}
+
+.autonatic-ui :is(.nemotron-preview-content, .nemotron-reasoning-content) {
+  margin: var(--an-space-3) 0 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--an-mono);
+  font-size: var(--an-text-small);
+  line-height: var(--an-leading-reading);
+}
+
+.autonatic-ui .autonatic-workflow-progress {
+  margin-top: var(--an-space-4);
+  color: var(--an-muted);
+  font-size: var(--an-text-small);
+}
+
+.autonatic-ui .autonatic-workflow-progress-heading {
+  margin-bottom: var(--an-space-2);
+  color: var(--an-ink);
+}
+
+.autonatic-ui :is(.autonatic-workflow-progress-bar, .autonatic-arrange-progress) {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin: 0 0 var(--an-space-2);
+}
+
+.autonatic-ui .autonatic-workflow-progress-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--an-space-1) var(--an-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.autonatic-ui .autonatic-workflow-progress-steps .is-current {
+  color: var(--an-ink);
+  font-weight: var(--an-weight-label);
+}
+
+.autonatic-ui .autonatic-workflow-progress.has-error .autonatic-workflow-progress-heading {
+  color: var(--an-error);
+}

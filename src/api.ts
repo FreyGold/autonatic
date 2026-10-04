@@ -279,7 +279,8 @@ export async function generateNemotronNote(
     noteStyle === "detailed" ? (settings.detailedPrompt || settings.systemPrompt) : settings.systemPrompt,
   );
 
-  return streamChatCompletion(settings, systemPrompt, combinedPrompt, callbacks, signal);
+  const result = await streamChatCompletion(settings, systemPrompt, combinedPrompt, callbacks, signal);
+  return noteStyle === "bare" ? result : { ...result, content: sanitizeMermaidDiagrams(result.content) };
 }
 
 /**
@@ -306,17 +307,18 @@ export async function streamChatCompletion(
 }
 
 /** Selection edits use a fragment contract rather than the full-note prompts. */
-export function generateSelectionEdit(
+export async function generateSelectionEdit(
   settings: NemotronPluginSettings,
   selection: string,
   action: SelectionEditAction,
   noteStyle: NoteStyle = "concise",
 ): Promise<StreamResult> {
-  return streamChatCompletion(
+  const result = await streamChatCompletion(
     settings,
     SELECTION_EDIT_SYSTEM_PROMPT,
     buildSelectionEditPrompt(selection, action, noteStyle),
   );
+  return noteStyle === "bare" ? result : { ...result, content: sanitizeMermaidDiagrams(result.content) };
 }
 
 async function generateWithProviderRequestUrl(
@@ -356,7 +358,7 @@ async function generateWithProviderRequestUrl(
     : (data.candidates?.[0]?.content?.parts || []).map((item: any) => item.text || "").join("");
   if (!content) throw new Error("The provider returned an empty response.");
   callbacks?.onContent?.(content);
-  return { content: sanitizeMermaidDiagrams(content.trim()), reasoning: "" };
+  return { content: content.trim(), reasoning: "" };
 }
 
 async function streamWithTimeoutRetry(
@@ -492,7 +494,7 @@ function streamChatCompletionAttempt(
       if (settled) return;
       settled = true;
       cleanup();
-      resolve({ content: sanitizeMermaidDiagrams(fullContent.trim()), reasoning: fullReasoning.trim() });
+      resolve({ content: fullContent.trim(), reasoning: fullReasoning.trim() });
       // SSE completion is authoritative even if the server keeps its HTTP body open.
       req?.destroy();
     };
@@ -691,9 +693,8 @@ async function generateWithObsidianRequestUrl(
     callbacks?.onReasoning?.(reasoning);
   }
 
-  const sanitizedContent = sanitizeMermaidDiagrams(content.trim());
   return {
-    content: sanitizedContent,
+    content: content.trim(),
     reasoning: reasoning.trim(),
   };
 }

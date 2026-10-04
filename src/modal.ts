@@ -44,6 +44,7 @@ import { workspaceHeader, openPluginSettings, setWorkspaceBusy, shortcutHint, ty
 import { NotePreview } from "./note-preview";
 import { deriveSafeNoteTitle, GENERATED_NOTES_FALLBACK_FOLDER, resolveNewNoteFolder } from "./note-destination";
 import { reviewNoteDestinations, type NoteDestinationDraft } from "./placement-review-modal";
+import { actionDisclosure, applyDesignSystem, metadataField } from "./design-system";
 
 interface AttachedImage {
   id: string;
@@ -82,6 +83,7 @@ export class NemotronModal extends Modal {
   private importAbortController: AbortController | null = null;
   isGenerating: boolean = false;
   private continueGenerationAfterClose = false;
+  private backgroundContent?: DocumentFragment;
   attachedImages: AttachedImage[] = [];
   excalAttachedImages: AttachedImage[] = [];
   pasteListener!: (e: ClipboardEvent) => void;
@@ -122,8 +124,20 @@ export class NemotronModal extends Modal {
 
   async onOpen() {
     const { contentEl } = this;
+    if (this.backgroundContent) {
+      contentEl.appendChild(this.backgroundContent);
+      this.backgroundContent = undefined;
+      this.continueGenerationAfterClose = false;
+      this.contentEl.querySelectorAll<HTMLButtonElement>(".autonatic-background-button").forEach((button) => { button.disabled = false; });
+      this.plugin.workspaceNavigation.activate("create", this);
+      setWorkspaceBusy(contentEl, this.isGenerating);
+      if (this.pasteListener) window.addEventListener("paste", this.pasteListener, true);
+      if (!this.isGenerating) this.releaseGenerationWorkspace();
+      return;
+    }
     this.activeTab = this.savedDraft?.activeTab ?? this.activeTab;
     this.modalEl.addClass("autonatic-crafter-shell");
+    applyDesignSystem(this.modalEl);
     this.selectComponents.forEach((select) => select.destroy());
     this.selectComponents = [];
     this.folderNavigators.forEach((navigator) => navigator.destroy());
@@ -143,10 +157,10 @@ export class NemotronModal extends Modal {
       return;
     }
 
-    workspaceHeader(contentEl, "create", (page) => {
+    const header = workspaceHeader(contentEl, "create", (page) => {
       this.saveDraftBeforeNavigation?.();
       this.plugin.workspaceNavigation.navigate(page, this);
-    }, () => openPluginSettings(this.app, this.plugin.manifest.id));
+    }, () => openPluginSettings(this.app, this.plugin.manifest.id), this.plugin.manifest.version);
 
     const heading = contentEl.createDiv({ cls: "autonatic-page-heading" });
     const headingCopy = heading.createDiv();
@@ -154,9 +168,33 @@ export class NemotronModal extends Modal {
     const pageDescription = headingCopy.createEl("p", { text: "Turn text, conversations, and images into notes." });
 
     // History Toolbar Row (Undo / Redo up to 3 generations & Recent Prompts up to 5)
-    const historyDetails = contentEl.createEl("details", { cls: "autonatic-history-details" });
-    historyDetails.createEl("summary", { text: "History" });
-    this.historyRowEl = historyDetails.createDiv({ cls: "nemotron-history-toolbar" });
+    const historyDetails = actionDisclosure(header, "History", "history", "autonatic-history-details");
+    header.insertBefore(historyDetails, header.querySelector(".autonatic-quiet-button"));
+    const historySummary = historyDetails.querySelector("summary")!;
+    historySummary.title = "History";
+    historySummary.setAttribute("role", "button");
+    historySummary.setAttribute("aria-label", "History");
+    historySummary.setAttribute("aria-expanded", "false");
+    historySummary.setAttribute("aria-controls", "autonatic-history-panel");
+    historyDetails.addEventListener("toggle", () => {
+      historySummary.setAttribute("aria-expanded", String(historyDetails.open));
+    }, { signal: this.interfaceEvents.signal });
+    historySummary.addEventListener("click", (event) => {
+      if (this.isGenerating) event.preventDefault();
+    }, { signal: this.interfaceEvents.signal });
+    historyDetails.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !historyDetails.open) return;
+      event.preventDefault();
+      event.stopPropagation();
+      historyDetails.open = false;
+      historySummary.focus();
+    }, { signal: this.interfaceEvents.signal });
+    const closeHistoryOutside = (event: Event) => {
+      if (!historyDetails.contains(event.target as Node)) historyDetails.open = false;
+    };
+    document.addEventListener("pointerdown", closeHistoryOutside, { signal: this.interfaceEvents.signal });
+    document.addEventListener("focusin", closeHistoryOutside, { signal: this.interfaceEvents.signal });
+    this.historyRowEl = historyDetails.createDiv({ cls: "nemotron-history-toolbar", attr: { id: "autonatic-history-panel" } });
     this.renderHistoryToolbar();
 
     // Inline API Key Management Bar
@@ -220,8 +258,6 @@ export class NemotronModal extends Modal {
 
     // TAB 2: Excalidraw Diagram Pane
     this.renderExcalidrawPane(excalPane, activeView, hasActiveNote);
-    const sourceTools = notePane.querySelector(".autonatic-source-toolbar");
-    sourceTools?.appendChild(historyDetails);
     document.addEventListener("autonatic:settings-updated", () => {
       this.renderApiKeySection(apiKeyBar);
       const config = getGenerationConfig(this.plugin.settings);
@@ -280,10 +316,8 @@ export class NemotronModal extends Modal {
       this.selectedMode = "smart";
     }
 
-    const creationSection = workflow.createDiv({ cls: "nemotron-workflow-section" });
-    const creationLabel = creationSection.createEl("label", {
-      text: "Output", cls: "nemotron-label", attr: { id: "autonatic-output-label", for: "autonatic-output" },
-    });
+    const creationSection = metadataField(workflow, "Output", "autonatic-output", "nemotron-workflow-section");
+    const creationLabel = creationSection.querySelector("label")!;
     const creationSelect = new CustomSelect(creationSection, [
       { value: "single", label: "One note", icon: "file-text", description: "Keep the source together in one note." },
       { value: "multiple", label: "Separate notes", icon: "files", description: "Split the source into focused notes by topic." },
@@ -294,10 +328,8 @@ export class NemotronModal extends Modal {
     }, { controlId: "autonatic-output", labelId: creationLabel.id });
     this.selectComponents.push(creationSelect);
 
-    const placementSection = workflow.createDiv({ cls: "nemotron-workflow-section nemotron-placement-section" });
-    const placementLabel = placementSection.createEl("label", {
-      text: "Save to", cls: "nemotron-label", attr: { id: "autonatic-placement-label", for: "autonatic-placement" },
-    });
+    const placementSection = metadataField(workflow, "Save to", "autonatic-placement", "nemotron-workflow-section nemotron-placement-section");
+    const placementLabel = placementSection.querySelector("label")!;
     const placementSelect = new CustomSelect(placementSection, [
       { value: "automatic", label: "Automatic placement", icon: "route", description: "Match an existing note or create one in a suitable folder." },
       { value: "folder", label: "Choose a folder", icon: "folder", description: "Create new notes in one folder. Existing notes stay unchanged." },
@@ -433,10 +465,8 @@ export class NemotronModal extends Modal {
     void updateModeUI(this.selectedMode);
 
     // 2. Note Output Style Selector
-    const styleContainer = paneEl.createDiv({ cls: "nemotron-form-row" });
-    const styleLabel = styleContainer.createEl("label", { text: "Style", cls: "nemotron-label" });
-    styleLabel.id = "nemotron-note-style-label";
-    styleLabel.htmlFor = "nemotron-note-style";
+    const styleContainer = metadataField(paneEl, "Style", "nemotron-note-style", "nemotron-form-row");
+    const styleLabel = styleContainer.querySelector("label")!;
 
     const styleOptions: SelectOption[] = [
       {
@@ -876,6 +906,8 @@ export class NemotronModal extends Modal {
     updateActionButton();
     const cancelBtn = buttonRow.createEl("button", {
       text: "Cancel",
+      cls: "an-button-cancel mod-warning",
+      attr: { type: "button" },
     });
     const backgroundBtn = buttonRow.createEl("button", {
       cls: "autonatic-background-button",
@@ -977,6 +1009,7 @@ export class NemotronModal extends Modal {
       generationProgress = new WorkflowProgress(generationProgressHost, progressStages);
       updateGenerationStage("Prepare source");
       this.isGenerating = true;
+      this.plugin.generationWorkspace = this;
       this.continueGenerationAfterClose = false;
       this.abortController = new AbortController();
       setWorkspaceBusy(this.contentEl, true);
@@ -1007,6 +1040,8 @@ export class NemotronModal extends Modal {
           setWorkspaceBusy(this.contentEl, false);
           generateBtn.disabled = false;
           backgroundBtn.hidden = true;
+          backgroundBtn.disabled = false;
+          if (!this.backgroundContent) this.releaseGenerationWorkspace();
           updateActionButton();
           return;
         }
@@ -1378,7 +1413,7 @@ export class NemotronModal extends Modal {
 
         savedDraft = null;
         generationProgress?.finish();
-        this.close();
+        this.closeGeneration();
       } catch (err: any) {
         if (!generationRecorded && fileSnapshots.length > 0) {
           try {
@@ -1406,6 +1441,8 @@ export class NemotronModal extends Modal {
         setWorkspaceBusy(this.contentEl, false);
         generateBtn.disabled = false;
         backgroundBtn.hidden = true;
+        backgroundBtn.disabled = false;
+        if (!this.backgroundContent) this.releaseGenerationWorkspace();
         updateActionButton();
       }
     };
@@ -1416,16 +1453,13 @@ export class NemotronModal extends Modal {
     const source = workspace.createDiv({ cls: "autonatic-source-column" });
     source.appendChild(inputAreaRow);
     inputAreaRow.addClass("autonatic-composer");
-    const sourceToolbar = source.createDiv({ cls: "autonatic-source-toolbar" });
-    const imports = sourceToolbar.createEl("details", { cls: "autonatic-source-tools" });
-    imports.createEl("summary", { text: "Import conversation" });
+    const sourceToolbar = source.createDiv({ cls: "autonatic-source-toolbar", attr: { role: "group", "aria-label": "Source tools" } });
+    const imports = actionDisclosure(sourceToolbar, "Import conversation", "link", "autonatic-source-tools");
     imports.appendChild(importRow);
-    const attachments = sourceToolbar.createEl("details", { cls: "autonatic-source-tools autonatic-attachments" });
-    attachments.createEl("summary", { text: "Attach images" });
+    const attachments = actionDisclosure(sourceToolbar, "Attach images", "image-plus", "autonatic-source-tools autonatic-attachments");
     attachments.appendChild(imageRow);
     source.appendChild(imageGallery);
-    const instructions = source.createEl("details", { cls: "autonatic-instructions" });
-    instructions.createEl("summary", { text: "Additional instructions" });
+    const instructions = actionDisclosure(sourceToolbar, "Additional instructions", "sliders-horizontal", "autonatic-instructions");
     instructions.appendChild(customRow);
     const output = workspace.createEl("details", { cls: "autonatic-output-column" });
     const revealOutput = this.configureOutputDisclosure(output);
@@ -1598,10 +1632,8 @@ export class NemotronModal extends Modal {
     const diagramControls = paneEl.createEl("fieldset", { cls: "nemotron-diagram-controls" });
     diagramControls.createEl("legend", { text: "Diagram design" });
     const addSelect = (id: string, labelText: string, choices: [string, string][], initial: string, change: (value: string) => void) => {
-      const row = diagramControls.createDiv({ cls: "nemotron-form-row" });
-      const label = row.createEl("label", { text: labelText, cls: "nemotron-label" });
-      label.id = `${id}-label`;
-      label.htmlFor = id;
+      const row = metadataField(diagramControls, labelText, id, "nemotron-form-row");
+      const label = row.querySelector("label")!;
       const select = new CustomSelect(
         row,
         choices.map(([value, optionLabel]) => ({ value, label: optionLabel })),
@@ -1661,6 +1693,8 @@ export class NemotronModal extends Modal {
     });
     const cancelExcalBtn = excalButtonRow.createEl("button", {
       text: "Cancel",
+      cls: "an-button-cancel mod-warning",
+      attr: { type: "button" },
     });
     const backgroundExcalBtn = excalButtonRow.createEl("button", {
       cls: "autonatic-background-button",
@@ -1695,6 +1729,7 @@ export class NemotronModal extends Modal {
       }
 
       this.isGenerating = true;
+      this.plugin.generationWorkspace = this;
       this.continueGenerationAfterClose = false;
       setWorkspaceBusy(this.contentEl, true);
       generateExcalBtn.disabled = true;
@@ -1844,7 +1879,7 @@ export class NemotronModal extends Modal {
         generationRecorded = true;
 
         this.renderHistoryToolbar();
-        this.close();
+        this.closeGeneration();
       } catch (err: any) {
         if (!generationRecorded && fileSnapshots.length > 0) {
           try {
@@ -1869,6 +1904,8 @@ export class NemotronModal extends Modal {
         generateExcalBtn.disabled = false;
         generateExcalBtn.setText("Create diagram");
         backgroundExcalBtn.hidden = true;
+        backgroundExcalBtn.disabled = false;
+        if (!this.backgroundContent) this.releaseGenerationWorkspace();
       }
     });
 
@@ -1907,6 +1944,7 @@ export class NemotronModal extends Modal {
   }
 
   private renderHistoryToolbar() {
+    const restoreHistoryFocus = this.historyRowEl.contains(document.activeElement);
     this.historyRowEl.empty();
 
     const undoCount = this.plugin.historyManager.getUndoCount();
@@ -1916,6 +1954,8 @@ export class NemotronModal extends Modal {
     if (undoCount === 0 && redoCount === 0 && promptHistory.length === 0) {
       this.historyRowEl.style.display = "none";
       (this.historyRowEl.parentElement as HTMLElement).style.display = "none";
+      (this.historyRowEl.parentElement as HTMLDetailsElement).open = false;
+      if (restoreHistoryFocus) this.contentEl.querySelector<HTMLButtonElement>(".autonatic-workspace-nav-button.is-active")?.focus();
       return;
     }
 
@@ -1992,6 +2032,7 @@ export class NemotronModal extends Modal {
         menu.showAtPosition({ x: rect.right, y: rect.bottom + 4, left: true });
       });
     }
+    if (restoreHistoryFocus) this.historyRowEl.parentElement?.querySelector("summary")?.focus();
   }
 
   private loadPromptIntoModal(item: PromptHistoryItem) {
@@ -2115,18 +2156,44 @@ export class NemotronModal extends Modal {
     this.outputResizeObservers = [];
   }
 
+  public reopenGeneration(): void {
+    if (this.backgroundContent) this.open();
+    else this.contentEl.querySelector<HTMLButtonElement>(".autonatic-background-button:not([hidden])")?.focus();
+  }
+
+  public disposeGeneration(): void {
+    this.abortController?.abort();
+    this.closeGeneration();
+  }
+
+  private closeGeneration(): void {
+    this.continueGenerationAfterClose = false;
+    // A hidden Obsidian modal is already closed; clean up its retained view directly.
+    if (this.backgroundContent) this.onClose();
+    else this.close();
+  }
+
+  private releaseGenerationWorkspace(): void {
+    if (this.plugin.generationWorkspace === this) this.plugin.generationWorkspace = undefined;
+  }
+
   onClose() {
     this.plugin.workspaceNavigation.closeHost(this);
     this.plugin.workspaceNavigation.deactivate(this);
+    this.importAbortController?.abort();
+    if (this.pasteListener) window.removeEventListener("paste", this.pasteListener, true);
+    if (this.isGenerating && this.continueGenerationAfterClose) {
+      this.backgroundContent ??= document.createDocumentFragment();
+      while (this.contentEl.firstChild) this.backgroundContent.appendChild(this.contentEl.firstChild);
+      return;
+    }
+    this.releaseGenerationWorkspace();
+    this.backgroundContent = undefined;
     this.notePreview?.destroy();
     this.disconnectOutputObservers();
     this.interfaceEvents?.abort();
-    this.importAbortController?.abort();
     if (this.isGenerating && this.abortController && !this.continueGenerationAfterClose) {
       this.abortController.abort();
-    }
-    if (this.pasteListener) {
-      window.removeEventListener("paste", this.pasteListener, true);
     }
     this.selectComponents.forEach((select) => select.destroy());
     this.selectComponents = [];
@@ -2301,11 +2368,12 @@ export class NemotronModal extends Modal {
     folderDepthLimit: number | null = null,
     allowGeneratedFolder: boolean = true,
   ): Promise<{ snaps: FileSnapshot[]; foldersCreated: string[] }> {
-    let finalContent = sanitizeMermaidDiagrams(normalizeGeneratedNoteMarkdown(content));
+    const isBare = this.selectedStyle === "bare";
+    let finalContent = isBare ? content.trim() : sanitizeMermaidDiagrams(normalizeGeneratedNoteMarkdown(content));
     const snaps: FileSnapshot[] = [];
     const foldersCreated: string[] = [];
 
-    if (!enableProperties) {
+    if (!enableProperties && !isBare) {
       finalContent = finalContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
     }
 
@@ -2397,14 +2465,15 @@ export class NemotronModal extends Modal {
       throw new Error(`"${file.path}" changed while its append was being reviewed. Try again.`);
     }
     let finalExistingContent = existingContent;
-    const sanitizedIncomingContent = sanitizeMermaidDiagrams(content);
+    const isBare = this.selectedStyle === "bare";
+    const sanitizedIncomingContent = isBare ? content : sanitizeMermaidDiagrams(content);
     const snaps: FileSnapshot[] = [];
     const foldersCreated: string[] = [];
 
     // Keep a note together when the planner chose to append. A word count
     // cannot determine whether the material belongs in a separate note.
     const hasFrontmatter = /^---\r?\n[\s\S]*?\r?\n---/.test(existingContent);
-    if (enableProperties && !hasFrontmatter) {
+    if (enableProperties && !isBare && !hasFrontmatter) {
       const currentDate = new Date().toISOString().split("T")[0];
       const frontmatterBlock = `---
 title: "${file.basename}"
@@ -2419,7 +2488,9 @@ summary: "Note covering ${file.basename}"
       finalExistingContent = frontmatterBlock + existingContent.trimStart();
     }
 
-    const bodyToAppend = sanitizedIncomingContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
+    const bodyToAppend = isBare
+      ? sanitizedIncomingContent.trim()
+      : sanitizedIncomingContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "").trim();
 
     const now = new Date();
     const dateStr = now.toISOString().split("T")[0];
@@ -2428,7 +2499,7 @@ summary: "Note covering ${file.basename}"
     const timestampFormatted = `${dateStr} ${hours}:${minutes}`;
 
     const reasonLine = reason && reason.trim() ? `\n> **Reason:** ${reason.trim()}` : "";
-    const updateHeader = `\n\n---\n> [!info] Appended on ${timestampFormatted}${reasonLine}\n\n`;
+    const updateHeader = isBare ? "\n\n" : `\n\n---\n> [!info] Appended on ${timestampFormatted}${reasonLine}\n\n`;
 
     const updatedContent = finalExistingContent.trimEnd() + updateHeader + bodyToAppend + "\n";
     await this.app.vault.process(file, (current) => {
@@ -2473,7 +2544,7 @@ summary: "Note covering ${file.basename}"
         this.abortController?.signal,
       );
       return result.content;
-    });
+    }, this.selectedStyle);
     return { content, existingContent };
   }
 

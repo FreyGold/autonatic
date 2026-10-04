@@ -3,6 +3,7 @@ import type NemotronPlugin from "./main";
 import { planVaultArrangement, type ArrangementPlan } from "./arrangement-planner";
 import { isExcludedPath, parseExcludedFolders } from "./privacy-controls";
 import { workspaceHeader, openPluginSettings, setWorkspaceBusy } from "./workspace-ui";
+import { applyDesignSystem } from "./design-system";
 
 export class VaultArrangementModal extends Modal {
   private plan: ArrangementPlan | null = null;
@@ -14,6 +15,7 @@ export class VaultArrangementModal extends Modal {
 
   onOpen(): void {
     this.modalEl.addClass("autonatic-arrange-shell");
+    applyDesignSystem(this.modalEl);
     const root = this.contentEl;
     root.empty();
     root.addClass("autonatic-arrange-modal");
@@ -21,7 +23,7 @@ export class VaultArrangementModal extends Modal {
     workspaceHeader(root, "organize", (page) => this.plugin.workspaceNavigation.navigate(page, this), () => {
       this.close();
       openPluginSettings(this.app, this.plugin.manifest.id);
-    });
+    }, this.plugin.manifest.version);
     const heading = root.createDiv({ cls: "autonatic-page-heading" });
     const headingCopy = heading.createDiv();
     headingCopy.createEl("h3", { text: "Organize your vault" });
@@ -61,7 +63,7 @@ export class VaultArrangementModal extends Modal {
     const actions = root.createDiv({ cls: "autonatic-arrange-actions" });
     const planButton = actions.createEl("button", { text: "Plan arrangement", cls: "mod-cta" });
     planButton.type = "button";
-    const cancelButton = actions.createEl("button", { text: "Cancel planning" });
+    const cancelButton = actions.createEl("button", { text: "Cancel planning", cls: "an-button-cancel mod-warning" });
     cancelButton.type = "button";
     cancelButton.hidden = true;
     const status = root.createDiv({ cls: "autonatic-arrange-status" });

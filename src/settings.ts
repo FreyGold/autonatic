@@ -8,6 +8,7 @@ import { defaultProviderConfigs, EMBEDDING_PROVIDERS, fetchProviderModels, PROVI
 import type { SettingsSection } from "./workspace-ui";
 import { renderAutonaticBrand } from "./brand";
 import { GENERATED_NOTES_FALLBACK_FOLDER } from "./note-destination";
+import { applyDesignSystem } from "./design-system";
 
 export interface NemotronPluginSettings {
   generationProvider: AIProvider;
@@ -99,6 +100,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     this.navigationController = new AbortController();
     root.empty();
     root.addClass("autonatic-settings");
+    applyDesignSystem(root);
     const heading = root.createDiv({ cls: "autonatic-settings-heading" });
     renderAutonaticBrand(heading, this.plugin.manifest.version);
     heading.createEl("p", { text: "Providers, note preferences, and vault permissions." });
@@ -348,7 +350,7 @@ export class NemotronSettingTab extends PluginSettingTab {
         renderIncluded();
       }
     });
-    const askIndexStatus = containerEl.createDiv({ cls: "autonatic-settings-muted" });
+    const askIndexStatus = containerEl.createDiv({ cls: "autonatic-settings-muted autonatic-search-index-status" });
     this.unsubscribeAskStatus = this.plugin.askNotesSearch.subscribe((message) => {
       askIndexStatus.setText(message);
       if (message.startsWith("Ready:")) void this.plugin.askNotesSearch.status().then((status) => {

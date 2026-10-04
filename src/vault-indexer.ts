@@ -3,6 +3,7 @@ import type { NemotronPluginSettings } from "./settings";
 import { isExcludedPath, parseExcludedFolders } from "./privacy-controls";
 import { streamChatCompletion } from "./api";
 import { getGenerationApiKey, getGenerationConfig } from "./providers";
+import { promptDataBlock, PROMPT_DATA_GUIDELINES, REASONING_EXPLANATION_GUIDELINES, STE_INSPIRED_WRITING_GUIDELINES } from "./prompts";
 
 export interface NoteItem {
   title: string;
@@ -266,19 +267,26 @@ export async function buildOrUpdateVaultIndex(
         excerpt: item.structure.rawExcerpt.slice(0, 300),
       }));
 
-      const systemPrompt = `You are an expert knowledge graph analyzer. Analyze the provided list of notes from an Obsidian vault.
+      const systemPrompt = `Summarize the supplied note metadata from an Obsidian vault.
+Use only the provided title, headings, and excerpt. Do not invent a note's contents, examples, or scope. Describe partial evidence without implying that the complete note was read.
 For EACH note, return a JSON array containing:
 - "path": exact note path
 - "about": concise, 1-2 sentence semantic summary of what this note discusses, its technical scope, and core knowledge
 - "topics": array of 2-5 core concept tags/topics (e.g. ["error-handling", "control-flow", "go"])
 
-Output ONLY a JSON array of objects.`;
+Output ONLY a JSON array of objects.
+
+${PROMPT_DATA_GUIDELINES}
+
+${STE_INSPIRED_WRITING_GUIDELINES}
+
+${REASONING_EXPLANATION_GUIDELINES}`;
 
       try {
         const responseData = await callNemotronJson(
           settings,
           systemPrompt,
-          JSON.stringify(promptPayload)
+          promptDataBlock("note-metadata", JSON.stringify(promptPayload))
         );
 
         if (Array.isArray(responseData)) {

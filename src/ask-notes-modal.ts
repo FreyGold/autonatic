@@ -2,6 +2,7 @@ import { App, Component, MarkdownRenderer, Modal, Notice, setIcon } from "obsidi
 import type NemotronPlugin from "./main";
 import type { SearchChunk } from "./ask-notes-search";
 import { workspaceHeader, openPluginSettings } from "./workspace-ui";
+import { applyDesignSystem } from "./design-system";
 
 export class AskNotesModal extends Modal {
   private asking = false;
@@ -16,13 +17,14 @@ export class AskNotesModal extends Modal {
     this.closed = false;
     const { contentEl } = this;
     this.modalEl.addClass("autonatic-ask-shell");
+    applyDesignSystem(this.modalEl);
     contentEl.empty();
     contentEl.addClass("autonatic-ask-modal");
     this.plugin.workspaceNavigation.activate("search", this);
     workspaceHeader(contentEl, "search", (page) => this.plugin.workspaceNavigation.navigate(page, this), () => {
       this.close();
       openPluginSettings(this.app, this.plugin.manifest.id, "search");
-    });
+    }, this.plugin.manifest.version);
     const header = contentEl.createDiv({ cls: "autonatic-page-heading" });
     const headingCopy = header.createDiv();
     headingCopy.createEl("h3", { text: "Search your notes" });

@@ -1,0 +1,7 @@
+/* Autonatic design system. Build this file; styles.css is the plugin artifact. */
+@import "./tokens.css";
+@import "./foundation.css";
+@import "./components.css";
+@import "./workspaces.css";
+@import "./settings.css";
+@import "./placement.css";

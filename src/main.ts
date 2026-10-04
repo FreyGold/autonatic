@@ -33,6 +33,7 @@ export default class NemotronPlugin extends Plugin {
   arrangementManager!: VaultArrangementManager;
   arrangementError: string | null = null;
   workspaceNavigation = new WorkspaceNavigation();
+  generationWorkspace?: NemotronModal;
   private updateDebounceTimer: any = null;
   private askNotesDebounceTimer: any = null;
   private selectionEditInProgress = false;
@@ -63,14 +64,14 @@ export default class NemotronPlugin extends Plugin {
     );
 
     this.addRibbonIcon(AUTONATIC_MARK_ICON, "Open Autonatic", () => {
-      new NemotronModal(this.app, this).open();
+      this.openWorkspace();
     });
 
     this.addCommand({
       id: "open-nemotron-modal",
       name: "Open Note Crafter Modal",
       callback: () => {
-        new NemotronModal(this.app, this).open();
+        this.openWorkspace();
       },
     });
 
@@ -78,7 +79,7 @@ export default class NemotronPlugin extends Plugin {
       id: "open-excalidraw-diagram-tab",
       name: "Open Excalidraw Diagram Generator",
       callback: () => {
-        new NemotronModal(this.app, this, "", "excalidraw").open();
+        this.openWorkspace("excalidraw");
       },
     });
 
@@ -86,13 +87,13 @@ export default class NemotronPlugin extends Plugin {
       id: "ask-notes",
       name: "Ask Notes",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "h" }],
-      callback: () => new NemotronModal(this.app, this, "", "notes", "search").open(),
+      callback: () => this.openWorkspace("notes", "search"),
     });
 
     this.addCommand({
       id: "organize-vault-notes",
       name: "Organize Notes and Manage Arrangement Snapshots",
-      callback: () => new NemotronModal(this.app, this, "", "notes", "organize").open(),
+      callback: () => this.openWorkspace("notes", "organize"),
     });
 
     this.addCommand({
@@ -292,6 +293,14 @@ export default class NemotronPlugin extends Plugin {
     this.addSettingTab(new NemotronSettingTab(this.app, this));
   }
 
+  public openWorkspace(tab: "notes" | "excalidraw" = "notes", page: "create" | "search" | "organize" = "create"): void {
+    if (this.generationWorkspace) {
+      this.generationWorkspace.reopenGeneration();
+      return;
+    }
+    new NemotronModal(this.app, this, "", tab, page).open();
+  }
+
   private captureSelection(editor: Editor): CapturedSelection | null {
     return captureEditorSelection(editor);
   }
@@ -393,6 +402,7 @@ export default class NemotronPlugin extends Plugin {
   }
 
   onunload() {
+    this.generationWorkspace?.disposeGeneration();
     if (this.updateDebounceTimer) {
       clearTimeout(this.updateDebounceTimer);
     }

@@ -1,0 +1,112 @@
+@font-face {
+  font-family: "Autonatic Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../../assets/fonts/Inter-Latin-Variable.woff2") format("woff2");
+}
+
+/* Neutral paper, regular sans text, fine rules, and a single blue action.
+   These values are scoped to the plugin, including native Obsidian controls. */
+.autonatic-ui {
+  --an-font: "Autonatic Inter", ui-sans-serif, system-ui, sans-serif;
+  --an-mono: var(--font-monospace, ui-monospace, monospace);
+  --an-paper: #ffffff;
+  --an-paper-raised: #f7f7f8;
+  --an-hover: #f0f0f3;
+  --an-ink: #242429;
+  --an-muted: #72727e;
+  --an-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2372727e' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --an-rule: #dedee4;
+  --an-border: #c8c8d0;
+  --an-brand: #326cee;
+  --an-brand-bottom: #215edb;
+  --an-brand-ink: #ffffff;
+  --an-cancel: #cf3342;
+  --an-cancel-bottom: #b52634;
+  --an-cancel-hover: #c52a39;
+  --an-cancel-hover-bottom: #a9212d;
+  --an-error: #c0393f;
+  --an-success: #2f7d58;
+  --an-shadow-control: 0 1px 2px rgb(25 25 35 / 7%);
+  --an-shadow-menu: 0 3px 10px rgb(25 25 35 / 12%);
+  --an-shadow-shell: 0 6px 18px rgb(25 25 35 / 10%);
+  --an-shadow-primary: inset 0 1px 0 rgb(255 255 255 / 26%), 0 1px 2px rgb(33 94 219 / 20%);
+  --an-shadow-cancel: inset 0 1px 0 rgb(255 255 255 / 26%), 0 1px 2px rgb(181 38 52 / 20%);
+  --an-space-1: 4px;
+  --an-space-2: 8px;
+  --an-space-3: 12px;
+  --an-space-4: 16px;
+  --an-space-6: 24px;
+  --an-space-8: 32px;
+  --an-text-caption: 12px;
+  --an-text-small: 13px;
+  --an-text-body: 14px;
+  --an-text-section: 16px;
+  --an-text-title: 22px;
+  --an-weight-body: 400;
+  --an-weight-label: 500;
+  --an-weight-heading: 600;
+  --an-leading: 1.55;
+  --an-leading-reading: 1.7;
+  --an-radius-small: 6px;
+  --an-radius-panel: 12px;
+  --an-radius-shell: 16px;
+  --an-radius-pill: 999px;
+  --an-control-height: 40px;
+  --an-control-compact: 32px;
+  --an-gutter: var(--an-space-6);
+  --an-transition: 120ms ease;
+  color-scheme: light;
+
+  /* Integrate built-in settings, Markdown, dropdowns, and progress controls. */
+  --font-interface: var(--an-font);
+  --font-text: var(--an-font);
+  --font-ui-medium: var(--an-text-body);
+  --font-ui-small: var(--an-text-small);
+  --font-ui-smaller: var(--an-text-caption);
+  --text-normal: var(--an-ink);
+  --text-muted: var(--an-muted);
+  --text-faint: var(--an-muted);
+  --text-accent: var(--an-brand);
+  --text-on-accent: var(--an-brand-ink);
+  --text-error: var(--an-error);
+  --background-primary: var(--an-paper);
+  --background-secondary: var(--an-paper-raised);
+  --background-secondary-alt: var(--an-paper-raised);
+  --background-modifier-border: var(--an-rule);
+  --background-modifier-hover: var(--an-hover);
+  --background-modifier-error: color-mix(in srgb, var(--an-error) 25%, var(--an-paper));
+  --interactive-normal: var(--an-paper);
+  --interactive-hover: var(--an-hover);
+  --interactive-accent: var(--an-brand);
+  --interactive-accent-hover: var(--an-brand-bottom);
+  --input-shadow: none;
+  --input-shadow-hover: none;
+  --shadow-xs: none;
+  --shadow-s: none;
+  --shadow-l: none;
+  --h1-color: var(--an-ink);
+  --h2-color: var(--an-ink);
+  --h3-color: var(--an-ink);
+  --h4-color: var(--an-ink);
+  --h5-color: var(--an-ink);
+  --h6-color: var(--an-ink);
+}
+
+.theme-dark .autonatic-ui {
+  --an-paper: #202023;
+  --an-paper-raised: #29292e;
+  --an-hover: #303036;
+  --an-ink: #ededf0;
+  --an-muted: #aaaab5;
+  --an-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23aaaab5' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --an-rule: #414148;
+  --an-border: #5c5c67;
+  --an-error: #f09095;
+  --an-success: #83c9a2;
+  --an-shadow-control: 0 1px 2px rgb(0 0 0 / 15%);
+  --an-shadow-menu: 0 3px 10px rgb(0 0 0 / 24%);
+  --an-shadow-shell: 0 6px 18px rgb(0 0 0 / 20%);
+  color-scheme: dark;
+}
