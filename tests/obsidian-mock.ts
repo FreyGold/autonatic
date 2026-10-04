@@ -61,6 +61,11 @@ export class MarkdownView {}
 export class Menu {}
 export class App {}
 
+export const Platform = {
+  isMacOS: false,
+  isIosApp: false,
+};
+
 export function normalizePath(input: string): string {
   const parts: string[] = [];
   for (const part of input.replace(/\\/g, "/").split("/")) {

@@ -151,7 +151,7 @@ export class PlacementReviewModal extends Modal {
           cls: "autonatic-placement-folder-row",
           attr: { role: "treeitem", "aria-label": `Folder ${node.path}` },
         });
-        folderSummary.style.paddingLeft = `${10 + depth * 18}px`;
+        folderSummary.setCssProps({ paddingLeft: `${10 + depth * 18}px` });
         const chevron = folderSummary.createSpan({ cls: "autonatic-placement-chevron", attr: { "aria-hidden": "true" } });
         setIcon(chevron, "chevron-right");
         const icon = folderSummary.createSpan({ cls: "autonatic-placement-folder-icon", attr: { "aria-hidden": "true" } });
@@ -204,7 +204,7 @@ export class PlacementReviewModal extends Modal {
             cls: `autonatic-placement-note${this.selectedNoteId === note.id ? " is-selected" : ""}`,
             attr: { draggable: "true", role: "treeitem", tabindex: "0", "aria-selected": String(this.selectedNoteId === note.id) },
           });
-          row.style.marginLeft = `${28 + depth * 18}px`;
+          row.setCssProps({ marginLeft: `${28 + depth * 18}px` });
           const grip = row.createSpan({ cls: "autonatic-placement-grip", attr: { "aria-hidden": "true" } });
           setIcon(grip, "grip-vertical");
           const noteCopy = row.createDiv({ cls: "autonatic-placement-note-copy" });

@@ -1,4 +1,4 @@
-import { App, setIcon } from "obsidian";
+import { App, Platform, setIcon } from "obsidian";
 import type { Modal } from "obsidian";
 import { renderAutonaticBrand } from "./brand";
 
@@ -56,7 +56,7 @@ export class WorkspaceNavigation {
       target.contentEl = host.contentEl;
       target.close = () => host.close();
     }
-    target.onOpen?.();
+    void target.onOpen?.();
     this.switching = false;
   }
 
@@ -143,7 +143,7 @@ export function setWorkspaceBusy(root: HTMLElement, busy: boolean): void {
 
 export function shortcutHint(parent: HTMLElement, action: string): void {
   const hint = parent.createSpan({ cls: "autonatic-shortcut-hint" });
-  const modifier = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+  const modifier = Platform.isMacOS || Platform.isIosApp ? "⌘" : "Ctrl";
   hint.createEl("kbd", { text: `${modifier} + Enter` });
   hint.createSpan({ text: ` to ${action}` });
 }

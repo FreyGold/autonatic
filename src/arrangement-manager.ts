@@ -1,6 +1,7 @@
 import { App, TFile, TFolder } from "obsidian";
 import type { ArrangementMove, ArrangementPlan } from "./arrangement-planner";
 import { validateArrangementMoves } from "./arrangement-planner";
+import { isRecord } from "./type-guards";
 
 export interface ArrangementSnapshot {
   id: string;
@@ -9,6 +10,15 @@ export interface ArrangementSnapshot {
   scope: string;
   entries: { originalPath: string; currentPath: string }[];
   createdFolders: string[];
+}
+
+function isArrangementSnapshot(value: unknown): value is ArrangementSnapshot {
+  if (!isRecord(value) || !Array.isArray(value.entries) || !Array.isArray(value.createdFolders)) return false;
+  return typeof value.id === "string" && typeof value.createdAt === "number"
+    && typeof value.instruction === "string" && typeof value.scope === "string"
+    && value.entries.every((entry: unknown) => isRecord(entry)
+      && typeof entry.originalPath === "string" && typeof entry.currentPath === "string")
+    && value.createdFolders.every((path: unknown) => typeof path === "string");
 }
 
 type MoveProgress = (completed: number, total: number, stage: string) => void;
@@ -26,21 +36,14 @@ export class VaultArrangementManager {
   async load(): Promise<void> {
     const adapter = this.app.vault.adapter;
     if (!await adapter.exists(this.storagePath)) return;
-    const raw = JSON.parse(await adapter.read(this.storagePath)) as { version?: number; snapshots?: unknown };
+    const raw = JSON.parse(await adapter.read(this.storagePath)) as { version?: unknown; snapshots?: unknown };
     if (raw.version !== 1 || !Array.isArray(raw.snapshots)) {
       throw new Error("Arrangement snapshots have an unsupported format.");
     }
-    const valid = raw.snapshots.every((item) =>
-      !!item && typeof item.id === "string" && typeof item.createdAt === "number"
-      && typeof item.instruction === "string" && typeof item.scope === "string"
-      && Array.isArray(item.entries)
-      && item.entries.every((entry: unknown) => !!entry && typeof entry === "object"
-        && typeof (entry as { originalPath?: unknown }).originalPath === "string"
-        && typeof (entry as { currentPath?: unknown }).currentPath === "string")
-      && Array.isArray(item.createdFolders)
-      && item.createdFolders.every((path: unknown) => typeof path === "string"));
-    if (!valid) throw new Error("Arrangement snapshots are damaged. No snapshots were overwritten.");
-    this.snapshots = raw.snapshots as ArrangementSnapshot[];
+    if (!raw.snapshots.every(isArrangementSnapshot)) {
+      throw new Error("Arrangement snapshots are damaged. No snapshots were overwritten.");
+    }
+    this.snapshots = raw.snapshots;
   }
 
   list(): ArrangementSnapshot[] {
@@ -97,7 +100,7 @@ export class VaultArrangementManager {
     for (const path of [...new Set(paths)].sort((a, b) => b.split("/").length - a.split("/").length)) {
       const folder = this.app.vault.getAbstractFileByPath(path);
       if (folder instanceof TFolder && folder.children.length === 0) {
-        await this.app.vault.delete(folder);
+        await this.app.fileManager.trashFile(folder);
       }
     }
   }

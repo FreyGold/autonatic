@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import http from "node:http";
 import test from "node:test";
+
+(globalThis as typeof globalThis & { window: typeof globalThis }).window = globalThis;
 import legacyNotePrompts from "./fixtures/legacy-note-prompts.json";
 import sourceFaithfulNotePrompts from "./fixtures/source-faithful-note-prompts.json";
 import { mockRequestUrl } from "./obsidian-mock";
@@ -1462,9 +1464,7 @@ function fakeApp(vault: FakeVault) {
     vault,
     fileManager: {
       renameFile: async (file: TFile, target: string) => vault.rename(file, target),
-      trashFile: async (file: TFile) => {
-        vault.files.delete(file.path);
-      },
+      trashFile: async (entry: TFile | TFolder) => vault.delete(entry),
     },
     workspace: {
       getActiveViewOfType: () => null,

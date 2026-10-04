@@ -6,7 +6,7 @@ import { extractAtomicDecompositionPlan, extractSmartDecision } from "./vault-in
 export class NotePreview {
   private readonly rendered: HTMLElement;
   private readonly source: HTMLElement;
-  private timer?: ReturnType<typeof setTimeout>;
+  private timer?: number;
   private revision = 0;
   private component?: Component;
   private pending = new Set<Component>();
@@ -25,7 +25,7 @@ export class NotePreview {
     const revision = ++this.revision;
     this.latest = { content, mode, revision };
     if (!content) {
-      clearTimeout(this.timer);
+      window.clearTimeout(this.timer);
       this.timer = undefined;
       this.component?.unload();
       this.rendered.setText("Writing your notes…");
@@ -35,8 +35,8 @@ export class NotePreview {
       this.rendered.setText("Writing separate notes. Completed drafts will appear here.");
       return;
     }
-    if (complete) { clearTimeout(this.timer); this.timer = undefined; }
-    if (this.timer === undefined) this.timer = setTimeout(() => {
+    if (complete) { window.clearTimeout(this.timer); this.timer = undefined; }
+    if (this.timer === undefined) this.timer = window.setTimeout(() => {
       this.timer = undefined;
       const latest = this.latest;
       if (latest) void this.render(latest.content, latest.mode, latest.revision);
@@ -54,7 +54,7 @@ export class NotePreview {
     const component = new Component();
     component.load();
     this.pending.add(component);
-    const next = document.createElement("div");
+    const next = createDiv();
     try {
       await MarkdownRenderer.render(this.app, markdown, next, "", component);
       if (!this.host.isConnected || revision !== this.revision) { component.unload(); return; }
@@ -67,7 +67,7 @@ export class NotePreview {
   }
 
   destroy(): void {
-    clearTimeout(this.timer);
+    window.clearTimeout(this.timer);
     this.revision++;
     this.component?.unload();
     this.pending.forEach((component) => component.unload());

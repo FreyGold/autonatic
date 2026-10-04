@@ -83,7 +83,7 @@ export class AskNotesModal extends Modal {
       status.setText(message);
       empty.hidden = true;
       results.hidden = false;
-      const setup = answer.createEl("button", { text: "Open Ask Notes settings" });
+      const setup = answer.createEl("button", { text: "Open ask notes settings" });
       setup.type = "button";
       setup.addEventListener("click", openSettings);
     };
@@ -99,7 +99,7 @@ export class AskNotesModal extends Modal {
       }).catch((error: Error) => status.setText(error.message));
     }
 
-    form.addEventListener("submit", async (event) => {
+    form.addEventListener("submit", (event) => { void (async () => {
       event.preventDefault();
       const question = input.value.trim();
       if (!question || this.asking || askButton.disabled) return;
@@ -169,20 +169,21 @@ export class AskNotesModal extends Modal {
         status.setText(message);
         new Notice(message, 6000);
       } finally {
-        if (this.closed) return;
-        this.asking = false;
-        askButton.hidden = false;
-        stopButton.hidden = true;
-        input.disabled = false;
-        form.setAttribute("aria-busy", "false");
-        input.focus();
-        this.abortController = undefined;
-        void this.plugin.askNotesSearch.status().then((index) => {
-          askButton.disabled = !this.plugin.settings.askNotesEnabled || index.chunks === 0;
-        }).catch(() => { askButton.disabled = true; });
+        if (!this.closed) {
+          this.asking = false;
+          askButton.hidden = false;
+          stopButton.hidden = true;
+          input.disabled = false;
+          form.setAttribute("aria-busy", "false");
+          input.focus();
+          this.abortController = undefined;
+          void this.plugin.askNotesSearch.status().then((index) => {
+            askButton.disabled = !this.plugin.settings.askNotesEnabled || index.chunks === 0;
+          }).catch(() => { askButton.disabled = true; });
+        }
       }
-    });
-    setTimeout(() => input.focus(), 0);
+    })(); });
+    window.setTimeout(() => input.focus(), 0);
   }
 
   onClose(): void {

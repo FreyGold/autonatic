@@ -5,6 +5,7 @@ import { getGenerationApiKey, PROVIDERS } from "./providers";
 import { buildOrUpdateVaultIndex, type FolderNode, type NoteItem, type VaultKnowledgeIndex } from "./vault-indexer";
 import { isExcludedPath, isPathInFolder, parseExcludedFolders } from "./privacy-controls";
 import { promptDataBlock, PROMPT_DATA_GUIDELINES, REASONING_EXPLANATION_GUIDELINES, STE_INSPIRED_WRITING_GUIDELINES } from "./prompts";
+import { isRecord } from "./type-guards";
 
 export interface ArrangementMove {
   from: string;
@@ -60,7 +61,8 @@ export function resolveArrangementFolder(value: string, scope: string, excluded:
     : raw;
   const segments = relative ? relative.split("/") : [];
   if (segments.length > 4 || segments.some((segment) => !segment || segment === "." || segment === ".."
-    || segment.startsWith(".") || segment.length > 80 || /[<>:"|?*\u0000-\u001f]/u.test(segment))) {
+    || segment.startsWith(".") || segment.length > 80 || /[<>:"|?*]/u.test(segment)
+    || [...segment].some((character) => character.charCodeAt(0) <= 31))) {
     throw new Error(`The organizer suggested an unsafe folder: ${value}`);
   }
   const folder = relative ? `${prefix}${relative}` : scope;
@@ -164,7 +166,7 @@ Return only {"principle":"short explanation","folders":[{"path":"relative/folder
   const rawFolders = taxonomyResponse.folders;
   if (!Array.isArray(rawFolders) || rawFolders.length > 60) throw new Error("The organizer returned an invalid folder structure.");
   const taxonomy = rawFolders.map((value) => {
-    if (!value || typeof value !== "object" || typeof value.path !== "string") {
+    if (!isRecord(value) || typeof value.path !== "string") {
       throw new Error("The organizer returned an invalid folder path.");
     }
     return {
@@ -192,7 +194,7 @@ Return only {"placements":[{"path":"exact input note path","folder":"relative/fo
     }
     const batchPaths = new Set(batch.map((note) => note.path));
     for (const placement of placements) {
-      if (!placement || typeof placement !== "object" || typeof placement.path !== "string"
+      if (!isRecord(placement) || typeof placement.path !== "string"
         || typeof placement.folder !== "string" || !batchPaths.has(placement.path)
         || decisions.has(placement.path)) {
         throw new Error(`The organizer returned an invalid note placement in batch ${batchIndex + 1}. No notes were moved.`);

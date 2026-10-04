@@ -1,11 +1,3 @@
-import { execFile } from "child_process";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
-import { promisify } from "util";
-
-const execFileAsync = promisify(execFile);
-
 export type ConversationProvider = "gemini" | "chatgpt" | "claude";
 export type ConversationRole = "user" | "assistant";
 
@@ -105,7 +97,7 @@ export function formatSharedConversation(conversation: SharedConversation): stri
 
 function renderNode(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
-  if (!(node instanceof Element)) return "";
+  if (!node.instanceOf(Element)) return "";
   const tag = node.tagName.toLowerCase();
   if (["button", "script", "style", "svg", "mat-icon", "noscript"].includes(tag)
     || node.getAttribute("aria-hidden") === "true"
@@ -170,7 +162,7 @@ async function readGeminiPage(
     });
     if ((index + 1) % 10 === 0 || index + 1 === turnElements.length) {
       onProgress?.({ stage: "reading", completed: index + 1, total: turnElements.length });
-      if (index + 1 < turnElements.length) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (index + 1 < turnElements.length) await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     }
   }
   return {
@@ -216,30 +208,124 @@ async function readMessageElements(
     });
     if ((index + 1) % 10 === 0 || index + 1 === elements.length) {
       onProgress?.({ stage: "reading", completed: index + 1, total: elements.length });
-      if (index + 1 < elements.length) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (index + 1 < elements.length) await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     }
   }
   const label = providerLabel(provider);
   return { provider, title: pageTitle(document, `${label} conversation`), messages };
 }
 
-function browserCandidates(): string[] {
-  if (process.platform === "darwin") return [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-  ];
-  if (process.platform === "win32") {
-    const programFiles = [process.env.PROGRAMFILES, process.env["PROGRAMFILES(X86)"], process.env.LOCALAPPDATA]
-      .filter((path): path is string => !!path);
-    return ["chrome.exe", "msedge.exe", "brave.exe", ...programFiles.flatMap((root) => [
-      join(root, "Google", "Chrome", "Application", "chrome.exe"),
-      join(root, "Microsoft", "Edge", "Application", "msedge.exe"),
-      join(root, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
-    ])];
+interface ElectronWebContents {
+  executeJavaScript<T>(code: string): Promise<T>;
+  getURL(): string;
+  setWindowOpenHandler(handler: () => { action: "deny" }): void;
+}
+
+interface ElectronBrowserWindow {
+  readonly webContents: ElectronWebContents;
+  loadURL(url: string): Promise<void>;
+  isDestroyed(): boolean;
+  destroy(): void;
+}
+
+interface ElectronRemoteModule {
+  BrowserWindow: new (options: {
+    show: boolean;
+    webPreferences: {
+      contextIsolation: boolean;
+      nodeIntegration: boolean;
+      sandbox: boolean;
+    };
+  }) => ElectronBrowserWindow;
+}
+
+function getElectronRemote(): ElectronRemoteModule {
+  const hostWindow = window as Window & { require?: (moduleId: string) => ElectronRemoteModule };
+  if (!hostWindow.require) throw new Error("Conversation link import is available in the desktop app.");
+  return hostWindow.require("@electron/remote");
+}
+
+function allowedNavigation(provider: ConversationProvider, value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return false;
+    const allowedHosts: Record<ConversationProvider, string[]> = {
+      gemini: ["gemini.google.com", "share.gemini.google"],
+      chatgpt: ["chatgpt.com", "www.chatgpt.com"],
+      claude: ["claude.ai", "www.claude.ai"],
+    };
+    return allowedHosts[provider].includes(url.hostname.toLowerCase());
+  } catch {
+    return false;
   }
-  return ["chromium", "chromium-browser", "google-chrome", "microsoft-edge", "brave-browser", "brave"];
+}
+
+function waitForDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Import cancelled.", "AbortError"));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, milliseconds);
+    const handleAbort = (): void => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Import cancelled.", "AbortError"));
+    };
+    signal?.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
+async function loadConversationHtml(parsed: ParsedConversationUrl, signal?: AbortSignal): Promise<string> {
+  const electron = getElectronRemote();
+  const { BrowserWindow } = electron;
+  const browser = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  browser.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+
+  const abortBrowser = (): void => {
+    if (!browser.isDestroyed()) browser.destroy();
+  };
+  signal?.addEventListener("abort", abortBrowser, { once: true });
+  try {
+    const timeout = waitForDelay(60_000, signal).then(() => {
+      throw new Error("The shared conversation took too long to load.");
+    });
+    await Promise.race([browser.loadURL(parsed.url), timeout]);
+    if (!allowedNavigation(parsed.provider, browser.webContents.getURL())) {
+      throw new Error("The shared conversation redirected to an unexpected site.");
+    }
+    const selector = parsed.provider === "gemini"
+      ? "share-turn-viewer"
+      : parsed.provider === "chatgpt"
+      ? '[data-message-author-role="user"], [data-message-author-role="assistant"]'
+      : '[data-testid="user-message"], [data-testid="assistant-message"]';
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (signal?.aborted) throw new DOMException("Import cancelled.", "AbortError");
+      if (!allowedNavigation(parsed.provider, browser.webContents.getURL())) {
+        throw new Error("The shared conversation redirected to an unexpected site.");
+      }
+      const found = await browser.webContents.executeJavaScript<boolean>(
+        `document.querySelector(${JSON.stringify(selector)}) !== null`,
+      );
+      if (found) break;
+      await waitForDelay(500, signal);
+    }
+    const html = await browser.webContents.executeJavaScript<unknown>("document.documentElement.outerHTML");
+    if (typeof html !== "string") throw new Error("The shared conversation returned an invalid page.");
+    return html;
+  } finally {
+    signal?.removeEventListener("abort", abortBrowser);
+    if (!browser.isDestroyed()) browser.destroy();
+  }
 }
 
 export async function importSharedConversation(
@@ -250,32 +336,9 @@ export async function importSharedConversation(
   const parsed = parseConversationShareUrl(input);
   if (signal?.aborted) throw new DOMException("Import cancelled.", "AbortError");
   onProgress?.({ stage: "opening" });
-  const profile = await mkdtemp(join(tmpdir(), "autonatic-conversation-"));
   const label = providerLabel(parsed.provider);
   try {
-    const args = [
-      "--headless=new", "--disable-gpu", "--disable-dev-shm-usage", "--disable-extensions",
-      "--disable-blink-features=AutomationControlled", "--no-first-run",
-      "--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-      `--user-data-dir=${profile}`, "--virtual-time-budget=30000", "--dump-dom", parsed.url,
-    ];
-    let html = "";
-    let foundBrowser = false;
-    for (const browser of browserCandidates()) {
-      try {
-        const result = await execFileAsync(browser, args, { maxBuffer: 50 * 1024 * 1024, timeout: 60000, signal });
-        html = result.stdout;
-        foundBrowser = true;
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-        if (signal?.aborted) throw new DOMException("Import cancelled.", "AbortError");
-        throw new Error(`Could not open the shared ${label} page. It may be restricted or unavailable. Open it in your browser and copy the conversation text instead.`);
-      }
-    }
-    if (!foundBrowser) {
-      throw new Error(`${label} link import needs Chrome, Chromium, Edge, or Brave on this computer. You can copy the conversation text instead.`);
-    }
+    const html = await loadConversationHtml(parsed, signal);
     const document = new DOMParser().parseFromString(html, "text/html");
     const page = parsed.provider === "gemini"
       ? await readGeminiPage(document, signal, onProgress)
@@ -289,8 +352,12 @@ export async function importSharedConversation(
       throw new Error("This conversation exceeds the 1 million character import limit.");
     }
     return conversation;
-  } finally {
-    await rm(profile, { recursive: true, force: true });
+  } catch (error) {
+    if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      throw new DOMException("Import cancelled.", "AbortError");
+    }
+    const detail = error instanceof Error ? error.message : "The shared page could not be opened.";
+    throw new Error(`Could not import the shared ${label} conversation. ${detail} Open it in your browser and copy the conversation text instead.`);
   }
 }
 

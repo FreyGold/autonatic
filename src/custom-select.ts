@@ -188,9 +188,11 @@ export class CustomSelect {
     const above = Math.max(0, trigger.top - top - 4);
     const below = Math.max(0, bottom - trigger.bottom - 4);
     const openAbove = below < desiredHeight && above > below;
-    this.menuEl.style.top = openAbove ? "auto" : "calc(100% + 4px)";
-    this.menuEl.style.bottom = openAbove ? "calc(100% + 4px)" : "auto";
-    this.menuEl.style.maxHeight = `${Math.min(desiredHeight, openAbove ? above : below)}px`;
+    this.menuEl.setCssProps({
+      top: openAbove ? "auto" : "calc(100% + 4px)",
+      bottom: openAbove ? "calc(100% + 4px)" : "auto",
+      maxHeight: `${Math.min(desiredHeight, openAbove ? above : below)}px`,
+    });
   };
 
   private onTriggerKeyDown(event: KeyboardEvent): void {

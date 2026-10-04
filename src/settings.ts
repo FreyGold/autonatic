@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice, TFolder } from "obsidian";
+import { App, PluginSettingTab, Setting, Notice, TFolder, type SettingDefinitionItem } from "obsidian";
 import type NemotronPlugin from "./main";
 import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT, type NoteStyle } from "./prompts";
 import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
@@ -91,8 +91,21 @@ export class NemotronSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
-  async display(): Promise<void> {
-    const root = this.containerEl;
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [{
+      name: "Autonatic preferences",
+      render: (setting) => {
+        void this.renderSettings(setting.settingEl);
+        return () => {
+          this.askFolderNavigator?.destroy();
+          this.unsubscribeAskStatus?.();
+          this.navigationController?.abort();
+        };
+      },
+    }];
+  }
+
+  private async renderSettings(root: HTMLElement): Promise<void> {
     const renderVersion = ++this.renderVersion;
     this.askFolderNavigator?.destroy();
     this.unsubscribeAskStatus?.();
@@ -135,16 +148,16 @@ export class NemotronSettingTab extends PluginSettingTab {
       if (buttons.has(event.detail)) selectSection(event.detail);
     }) as EventListener, { signal: this.navigationController.signal });
     let containerEl = sections.privacy;
-    containerEl.createEl("h3", { text: "Privacy and cost" });
+    new Setting(containerEl).setName("Privacy and cost").setHeading();
     new Setting(containerEl).setName("Automatic index updates").setDesc("Update the local vault index after a file changes.").addToggle((c) => c.setValue(this.plugin.settings.enableAutomaticIndexing).onChange(async (v) => { this.plugin.settings.enableAutomaticIndexing = v; await this.plugin.saveSettings(); }));
-    new Setting(containerEl).setName("AI summaries for placement index").setDesc("Send short excerpts to the selected generation provider to summarize the local index. Automatic appends separately send the target note, or excerpts from a long target, for duplicate review. Search has separate consent in the Search settings.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("AI summaries for placement index").setDesc("Send short excerpts to the selected generation provider to summarize the local index. Automatic appends separately send the target note, or excerpts from a long target, for duplicate review. Search has separate consent in the search settings.").addToggle((c) => c.setValue(this.plugin.settings.allowRemoteVaultIndexing).onChange(async (v) => { this.plugin.settings.allowRemoteVaultIndexing = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Excluded folders").setDesc("Comma-separated folder paths that indexing must ignore.").addText((c) => c.setValue(this.plugin.settings.excludedFolders).onChange(async (v) => { this.plugin.settings.excludedFolders = v; await this.plugin.saveSettings(); this.plugin.scheduleAskNotesUpdate(); }));
-    new Setting(containerEl).setName("Maximum context notes").setDesc("Limit the note summaries sent with one generation request.").addSlider((c) => c.setLimits(5, 100, 5).setValue(this.plugin.settings.maxVaultContextNotes).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxVaultContextNotes = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Maximum context notes").setDesc("Limit the note summaries sent with one generation request.").addSlider((c) => c.setLimits(5, 100, 5).setValue(this.plugin.settings.maxVaultContextNotes).onChange(async (v) => { this.plugin.settings.maxVaultContextNotes = v; await this.plugin.saveSettings(); }));
     new Setting(containerEl).setName("Confirm multi-file changes").setDesc("Show the planned file count before a multi-note write.").addToggle((c) => c.setValue(this.plugin.settings.confirmMultiFileChanges).onChange(async (v) => { this.plugin.settings.confirmMultiFileChanges = v; await this.plugin.saveSettings(); }));
-    new Setting(containerEl).setName("Maximum automatic diagrams").setDesc("Limit useful diagrams created or updated after one note operation. Zero disables automatic diagrams.").addSlider((c) => c.setLimits(0, 10, 1).setValue(this.plugin.settings.maxAutomaticDiagrams).setDynamicTooltip().onChange(async (v) => { this.plugin.settings.maxAutomaticDiagrams = v; await this.plugin.saveSettings(); }));
+    new Setting(containerEl).setName("Maximum automatic diagrams").setDesc("Limit useful diagrams created or updated after one note operation. Zero disables automatic diagrams.").addSlider((c) => c.setLimits(0, 10, 1).setValue(this.plugin.settings.maxAutomaticDiagrams).onChange(async (v) => { this.plugin.settings.maxAutomaticDiagrams = v; await this.plugin.saveSettings(); }));
 
     containerEl = sections.providers;
-    containerEl.createEl("h3", { text: "AI providers" });
+    new Setting(containerEl).setName("AI providers").setHeading();
     new Setting(containerEl)
       .setName("Generation provider")
       .setDesc("Provider used for note generation, planning, diagrams, and image transcription.")
@@ -153,12 +166,12 @@ export class NemotronSettingTab extends PluginSettingTab {
         return dropdown.setValue(this.plugin.settings.generationProvider || "nvidia").onChange(async (value) => {
           this.plugin.settings.generationProvider = value as AIProvider;
           await this.plugin.saveSettings();
-          this.display();
+          this.update();
         });
       });
     new Setting(containerEl)
       .setName("Embedding provider")
-      .setDesc("Used for Ask Notes semantic search. Claude and Groq do not provide compatible embedding APIs.")
+      .setDesc("Used for ask notes semantic search. Claude and groq do not provide compatible embedding endpoints.")
       .addDropdown((dropdown) => {
         for (const provider of EMBEDDING_PROVIDERS) dropdown.addOption(provider, PROVIDERS[provider].label);
         return dropdown.setValue(this.plugin.settings.embeddingProvider || "nvidia").onChange(async (value) => {
@@ -172,11 +185,11 @@ export class NemotronSettingTab extends PluginSettingTab {
               this.plugin.scheduleAskNotesUpdate();
             }
           }
-          this.display();
+          this.update();
         });
       });
 
-    containerEl.createEl("h4", { text: "Provider credentials and models" });
+    new Setting(containerEl).setName("Provider credentials and models").setHeading();
     const providerEntries = Object.entries(PROVIDERS) as [AIProvider, typeof PROVIDERS[AIProvider]][];
     const providerOrder = (id: AIProvider) => id === this.plugin.settings.generationProvider ? 0 : id === this.plugin.settings.embeddingProvider ? 1 : 2;
     providerEntries.sort(([a], [b]) => providerOrder(a) - providerOrder(b));
@@ -210,13 +223,12 @@ export class NemotronSettingTab extends PluginSettingTab {
         });
         keyInput = text.inputEl;
         keyInput.type = "password";
-      }).addButton((button) => button.setButtonText("Show/Hide").onClick(() => {
+      }).addButton((button) => button.setButtonText("Show/hide").onClick(() => {
         keyInput.type = keyInput.type === "password" ? "text" : "password";
       })).addButton((button) => button.setButtonText("Get key").onClick(() => window.open(provider.keyUrl, "_blank")))
         .addButton((button) => button.setButtonText("Paste").onClick(async () => {
           try {
-            const electron = (window as any).require?.("electron");
-            const value = electron?.clipboard?.readText?.() || await navigator.clipboard?.readText?.() || "";
+            const value = await navigator.clipboard.readText();
             if (value.trim()) {
               if (value.trim() !== config.apiKey) await invalidateProviderModels();
               config.apiKey = value.trim();
@@ -251,7 +263,7 @@ export class NemotronSettingTab extends PluginSettingTab {
             if (config.embeddingModel && !models.embeddings.includes(config.embeddingModel)) config.embeddingModel = "";
             await this.plugin.saveSettings();
             new Notice(`Key accepted. Found ${models.chat.length} chat models${EMBEDDING_PROVIDERS.includes(providerId) ? ` and ${models.embeddings.length} embedding models` : ""}.`);
-            await this.display();
+            this.update();
           } catch (error) {
             new Notice(error instanceof Error ? error.message : "Could not fetch provider models.", 7000);
             button.setDisabled(false);
@@ -302,7 +314,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     }
 
     containerEl = sections.search;
-    containerEl.createEl("h3", { text: "Search your notes" });
+    new Setting(containerEl).setName("Search your notes").setHeading();
     containerEl.createEl("p", {
       text: "Choose folders before enabling search. Indexing sends their Markdown text to your selected embedding provider. Matching passages are shown unchanged. Exact term lookups can use the local index; natural-language questions also send your query to that provider for semantic matching. API usage may incur charges. Vectors and excerpts stay in local device storage, outside the vault.",
       cls: "autonatic-settings-help",
@@ -318,7 +330,7 @@ export class NemotronSettingTab extends PluginSettingTab {
         row.createSpan({ text: folder || "Vault root (all folders)" });
         const remove = row.createEl("button", { text: "Remove" });
         remove.type = "button";
-        remove.addEventListener("click", async () => {
+        remove.addEventListener("click", () => { void (async () => {
           this.plugin.settings.askNotesFolders = this.plugin.settings.askNotesFolders.filter((path) => path !== folder);
           if (!this.plugin.settings.askNotesFolders.length) this.plugin.settings.askNotesEnabled = false;
           await this.plugin.saveSettings();
@@ -328,7 +340,7 @@ export class NemotronSettingTab extends PluginSettingTab {
           }
           else this.plugin.scheduleAskNotesUpdate();
           renderIncluded();
-        });
+        })(); });
       }
     };
     renderIncluded();
@@ -338,7 +350,7 @@ export class NemotronSettingTab extends PluginSettingTab {
     this.askFolderNavigator = new FolderNavigator(this.app, folderPicker, "", (path) => { selectedFolder = path; });
     const addFolder = folderPicker.createEl("button", { text: "Include folder" });
     addFolder.type = "button";
-    addFolder.addEventListener("click", async () => {
+    addFolder.addEventListener("click", () => { void (async () => {
       if (selectedFolder && !(this.app.vault.getAbstractFileByPath(selectedFolder) instanceof TFolder)) {
         new Notice("Choose an existing folder.");
         return;
@@ -349,7 +361,7 @@ export class NemotronSettingTab extends PluginSettingTab {
         this.plugin.scheduleAskNotesUpdate();
         renderIncluded();
       }
-    });
+    })(); });
     const askIndexStatus = containerEl.createDiv({ cls: "autonatic-settings-muted autonatic-search-index-status" });
     this.unsubscribeAskStatus = this.plugin.askNotesSearch.subscribe((message) => {
       askIndexStatus.setText(message);
@@ -361,7 +373,7 @@ export class NemotronSettingTab extends PluginSettingTab {
       askIndexStatus.setText(`On this device: ${status.notes} notes, ${status.chunks} passages. ${status.message}`);
     }).catch((error: Error) => askIndexStatus.setText(error.message));
     new Setting(containerEl)
-      .setName("Enable Ask Notes")
+      .setName("Enable ask notes")
       .setDesc("Enable passage search. Selected notes are sent for indexing embeddings; semantic search sends only the query. No answer is generated.")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.askNotesEnabled).onChange(async (enabled) => {
         const embeddingConfig = this.plugin.settings.providers[this.plugin.settings.embeddingProvider];
@@ -377,7 +389,7 @@ export class NemotronSettingTab extends PluginSettingTab {
           try { await this.plugin.askNotesSearch.clear(); }
           catch (error) { new Notice(error instanceof Error ? error.message : "Could not clear local search data."); }
         }
-        await this.display();
+        this.update();
       }));
     new Setting(containerEl)
       .setName("Pause background indexing")
@@ -391,12 +403,12 @@ export class NemotronSettingTab extends PluginSettingTab {
       .setName("Local search index")
       .setDesc("Rebuild after a model or indexing problem, or clear all stored passages and vectors.")
       .addButton((button) => button.setButtonText("Rebuild").onClick(async () => {
-        if (!this.plugin.settings.askNotesEnabled) { new Notice("Enable Ask Notes first."); return; }
+        if (!this.plugin.settings.askNotesEnabled) { new Notice("Enable ask notes first."); return; }
         if (this.plugin.settings.askNotesPaused) { new Notice("Resume background indexing before rebuilding."); return; }
         button.setDisabled(true);
         try {
           await this.plugin.askNotesSearch.rebuild((message) => askIndexStatus.setText(message));
-          await this.display();
+          this.update();
         } catch (error) {
           new Notice(error instanceof Error ? error.message : "Indexing failed.", 7000);
           button.setDisabled(false);
@@ -407,15 +419,15 @@ export class NemotronSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
         try { await this.plugin.askNotesSearch.clear(); }
         catch (error) { new Notice(error instanceof Error ? error.message : "Could not clear local search data."); }
-        await this.display();
+        this.update();
       }));
 
     containerEl = sections.creation;
-    containerEl.createEl("h3", { text: "Note creation" });
+    new Setting(containerEl).setName("Note creation").setHeading();
     // Default Destination Mode
     new Setting(containerEl)
       .setName("Default note creation")
-      .setDesc("Choose the starting creation and placement behavior when opening the Note Crafter.")
+      .setDesc("Choose the starting creation and placement behavior when opening the note crafter.")
       .addDropdown((dropdown) => {
         for (const option of DESTINATION_MODE_OPTIONS) {
           dropdown.addOption(option.value, option.label);
@@ -450,9 +462,9 @@ export class NemotronSettingTab extends PluginSettingTab {
               btn.setButtonText(status.slice(0, 35) + "...");
             });
             new Notice(`Hierarchical Knowledge Tree indexed: ${updated.totalNotes} notes across ${updated.totalFolders} folders.`);
-            await this.display();
-          } catch (e: any) {
-            new Notice(`Error during deep indexing: ${e.message}`);
+            this.update();
+          } catch (e: unknown) {
+            new Notice(`Error during deep indexing: ${e instanceof Error ? e.message : String(e)}`);
             btn.setDisabled(false);
             btn.setButtonText("Rebuild index");
           }
@@ -460,7 +472,7 @@ export class NemotronSettingTab extends PluginSettingTab {
       });
 
     // Useful Excalidraw diagram settings
-    containerEl.createEl("h3", { text: "Diagrams and formatting" });
+    new Setting(containerEl).setName("Diagrams and formatting").setHeading();
 
     new Setting(containerEl)
       .setName("Create useful diagrams after note placement")
@@ -475,7 +487,7 @@ export class NemotronSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Excalidraw Mirrored Root Folder")
+      .setName("Excalidraw mirrored root folder")
       .setDesc("Root folder where mirrored Excalidraw diagrams are saved.")
       .addText((text) =>
         text
@@ -489,7 +501,7 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // YAML Properties Generation Toggle
     new Setting(containerEl)
-      .setName("Generate YAML Properties / Frontmatter")
+      .setName("Generate YAML properties / frontmatter")
       .setDesc("Opt in to generated YAML properties (title, tags, aliases, created, summary) at the top of notes. Off creates plain notes without frontmatter.")
       .addToggle((toggle) =>
         toggle
@@ -502,7 +514,7 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // Default Note Style
     new Setting(containerEl)
-      .setName("Default Note Style")
+      .setName("Default note style")
       .setDesc("Choose the default output style. Bare is source-locked for pasted chat histories.")
       .addDropdown((dropdown) =>
         dropdown
@@ -517,10 +529,10 @@ export class NemotronSettingTab extends PluginSettingTab {
       );
 
     containerEl = sections.advanced;
-    containerEl.createEl("h3", { text: "Advanced AI settings" });
+    new Setting(containerEl).setName("Advanced AI").setHeading();
     // Enable Thinking / Reasoning
     new Setting(containerEl)
-      .setName("Enable Thinking (Reasoning)")
+      .setName("Enable thinking (reasoning)")
       .setDesc("Enable deep reasoning tokens before generating structured notes.")
       .addToggle((toggle) =>
         toggle
@@ -539,7 +551,6 @@ export class NemotronSettingTab extends PluginSettingTab {
         slider
           .setLimits(0.0, 2.0, 0.05)
           .setValue(this.plugin.settings.temperature)
-          .setDynamicTooltip()
           .onChange(async (value) => {
             this.plugin.settings.temperature = value;
             await this.plugin.saveSettings();
@@ -548,13 +559,12 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // Top P
     new Setting(containerEl)
-      .setName("Top P")
+      .setName("Top p")
       .setDesc("Nucleus sampling probability (0.0 - 1.0).")
       .addSlider((slider) =>
         slider
           .setLimits(0.0, 1.0, 0.01)
           .setValue(this.plugin.settings.topP)
-          .setDynamicTooltip()
           .onChange(async (value) => {
             this.plugin.settings.topP = value;
             await this.plugin.saveSettings();
@@ -563,7 +573,7 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // Max Tokens
     new Setting(containerEl)
-      .setName("Max Generation Tokens")
+      .setName("Max generation tokens")
       .setDesc("Maximum tokens for total generation.")
       .addText((text) =>
         text
@@ -617,8 +627,8 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // Concise Skill System Prompt
     new Setting(containerEl)
-      .setName("Concise Skill Prompt")
-      .setDesc("System instructions used for Concise mode.")
+      .setName("Concise skill prompt")
+      .setDesc("System instructions used for concise mode.")
       .addTextArea((textArea) => {
         textArea
           .setValue(this.plugin.settings.systemPrompt)
@@ -632,8 +642,8 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // Detailed Skill System Prompt
     new Setting(containerEl)
-      .setName("Detailed Skill Prompt")
-      .setDesc("System instructions used for Detailed mode.")
+      .setName("Detailed skill prompt")
+      .setDesc("System instructions used for detailed mode.")
       .addTextArea((textArea) => {
         textArea
           .setValue(this.plugin.settings.detailedPrompt || DETAILED_OBSIDIAN_SKILL_PROMPT)
@@ -647,14 +657,14 @@ export class NemotronSettingTab extends PluginSettingTab {
 
     // Reset prompt button
     new Setting(containerEl)
-      .setName("Reset Prompts to Default")
-      .setDesc("Restore default Concise and Detailed Obsidian formatting prompts.")
+      .setName("Reset prompts to default")
+      .setDesc("Restore default concise and detailed Obsidian formatting prompts.")
       .addButton((btn) =>
-        btn.setButtonText("Reset to Default").onClick(async () => {
+        btn.setButtonText("Reset to default").onClick(async () => {
           this.plugin.settings.systemPrompt = CONCISE_OBSIDIAN_SKILL_PROMPT;
           this.plugin.settings.detailedPrompt = DETAILED_OBSIDIAN_SKILL_PROMPT;
           await this.plugin.saveSettings();
-          this.display();
+          this.update();
         })
       );
   }

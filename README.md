@@ -4,7 +4,7 @@
 
 Turn text, shared AI conversations, and images into structured Markdown notes. Search original passages and organize your vault from the same workspace.
 
-**Current version:** 1.7.12 · **Requires:** Obsidian 1.13.1 or newer on desktop.
+**Current version:** 1.7.13 · **Requires:** Obsidian 1.13.1 or newer on desktop.
 
 ## AI providers
 

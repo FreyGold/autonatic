@@ -16,7 +16,8 @@ import {
   VAULT_INDEX_FILENAME,
   vaultIndexPath,
 } from "./vault-indexer";
-import { FileSnapshot, HistoryManager, revertFileSnapshots } from "./history-manager";
+import { FileSnapshot, HistoryManager, revertFileSnapshots, type GenerationHistoryRecord, type PromptHistoryItem } from "./history-manager";
+import { isRecord } from "./type-guards";
 import { createMirroredExcalidrawDrawing } from "./excalidraw-generator";
 import { CapturedSelection, captureEditorSelection, replaceCapturedSelection } from "./selection-editor";
 import { AskNotesSearch } from "./ask-notes-search";
@@ -34,8 +35,8 @@ export default class NemotronPlugin extends Plugin {
   arrangementError: string | null = null;
   workspaceNavigation = new WorkspaceNavigation();
   generationWorkspace?: NemotronModal;
-  private updateDebounceTimer: any = null;
-  private askNotesDebounceTimer: any = null;
+  private updateDebounceTimer: number | null = null;
+  private askNotesDebounceTimer: number | null = null;
   private selectionEditInProgress = false;
 
   async onload() {
@@ -54,22 +55,27 @@ export default class NemotronPlugin extends Plugin {
       console.error("Could not load arrangement snapshots:", error);
     }
 
-    const storedHistory = (await this.loadData())?.history || { undo: [], redo: [], prompts: [] };
+    const storedData = (await this.loadData()) as unknown;
+    const storedHistory = isRecord(storedData) && isRecord(storedData.history)
+      ? storedData.history : {};
+    const undo = Array.isArray(storedHistory.undo) ? storedHistory.undo as GenerationHistoryRecord[] : [];
+    const redo = Array.isArray(storedHistory.redo) ? storedHistory.redo as GenerationHistoryRecord[] : [];
+    const prompts = Array.isArray(storedHistory.prompts) ? storedHistory.prompts as PromptHistoryItem[] : [];
     this.historyManager = new HistoryManager(
       this.app,
-      storedHistory.undo || [],
-      storedHistory.redo || [],
-      storedHistory.prompts || [],
-      () => this.saveHistory()
+      undo,
+      redo,
+      prompts,
+      () => { void this.saveHistory(); }
     );
 
-    this.addRibbonIcon(AUTONATIC_MARK_ICON, "Open Autonatic", () => {
+    this.addRibbonIcon(AUTONATIC_MARK_ICON, "Open autonatic", () => {
       this.openWorkspace();
     });
 
     this.addCommand({
       id: "open-nemotron-modal",
-      name: "Open Note Crafter Modal",
+      name: "Open note crafter modal",
       callback: () => {
         this.openWorkspace();
       },
@@ -77,7 +83,7 @@ export default class NemotronPlugin extends Plugin {
 
     this.addCommand({
       id: "open-excalidraw-diagram-tab",
-      name: "Open Excalidraw Diagram Generator",
+      name: "Open Excalidraw diagram generator",
       callback: () => {
         this.openWorkspace("excalidraw");
       },
@@ -85,24 +91,23 @@ export default class NemotronPlugin extends Plugin {
 
     this.addCommand({
       id: "ask-notes",
-      name: "Ask Notes",
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "h" }],
+      name: "Ask notes",
       callback: () => this.openWorkspace("notes", "search"),
     });
 
     this.addCommand({
       id: "organize-vault-notes",
-      name: "Organize Notes and Manage Arrangement Snapshots",
+      name: "Organize notes and manage arrangement snapshots",
       callback: () => this.openWorkspace("notes", "organize"),
     });
 
     this.addCommand({
       id: "generate-rich-excalidraw-diagram",
-      name: "Generate Rich Excalidraw Architecture Diagram for Active Note",
+      name: "Generate rich Excalidraw architecture diagram for active note",
       callback: async () => {
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!activeView || !activeView.file) {
-          new Notice("Please open a markdown note in the editor first.");
+          new Notice("Please open a Markdown note in the editor first.");
           return;
         }
 
@@ -118,7 +123,7 @@ export default class NemotronPlugin extends Plugin {
         let foldersCreated: string[] = [];
         let generationRecorded = false;
 
-        new Notice("AI Synthesizing Rich Excalidraw Architecture Diagram...", 8000);
+        new Notice("AI synthesizing rich Excalidraw architecture diagram...", 8000);
 
         try {
           const res = await createMirroredExcalidrawDrawing(
@@ -180,8 +185,8 @@ export default class NemotronPlugin extends Plugin {
             console.warn(`Created "${res.drawingPath}" but could not open it:`, openError);
           }
           new Notice(`Rich Excalidraw diagram generated in ${res.drawingPath}!`, 7000);
-          this.scheduleIndexUpdate();
-        } catch (err: any) {
+          void this.scheduleIndexUpdate();
+        } catch (err: unknown) {
           if (!generationRecorded && fileSnapshots.length > 0) {
             try {
               await revertFileSnapshots(this.app, fileSnapshots, foldersCreated);
@@ -190,43 +195,43 @@ export default class NemotronPlugin extends Plugin {
             }
           }
           console.error("Excalidraw generation error:", err);
-          new Notice(`Error generating diagram: ${err.message}`);
+          new Notice(`Error generating diagram: ${err instanceof Error ? err.message : String(err)}`);
         }
       },
     });
 
     this.addCommand({
       id: "undo-last-generation",
-      name: "Undo Last Generation",
+      name: "Undo last generation",
       callback: async () => {
         try {
           const record = await this.historyManager.undo();
           if (record) {
             new Notice(`Undid generation: ${record.description}`);
-            this.scheduleIndexUpdate();
+            void this.scheduleIndexUpdate();
           } else {
             new Notice("No generations to undo.");
           }
-        } catch (err: any) {
-          new Notice(err.message || "The generation cannot be undone safely.", 8000);
+        } catch (err: unknown) {
+          new Notice(err instanceof Error ? err.message : "The generation cannot be undone safely.", 8000);
         }
       },
     });
 
     this.addCommand({
       id: "redo-last-generation",
-      name: "Redo Last Generation",
+      name: "Redo last generation",
       callback: async () => {
         try {
           const record = await this.historyManager.redo();
           if (record) {
             new Notice(`Redid generation: ${record.description}`);
-            this.scheduleIndexUpdate();
+            void this.scheduleIndexUpdate();
           } else {
             new Notice("No generations to redo.");
           }
-        } catch (err: any) {
-          new Notice(err.message || "The generation cannot be redone safely.", 8000);
+        } catch (err: unknown) {
+          new Notice(err instanceof Error ? err.message : "The generation cannot be redone safely.", 8000);
         }
       },
     });
@@ -259,7 +264,7 @@ export default class NemotronPlugin extends Plugin {
 
     this.addCommand({
       id: "rebuild-vault-knowledge-index",
-      name: "Deep Analyze & Rebuild Knowledge Tree Index",
+      name: "Deep analyze & rebuild knowledge tree index",
       callback: async () => {
         new Notice("Deep analyzing vault knowledge tree...");
         const index = await buildOrUpdateVaultIndex(this.app, this.settings);
@@ -312,7 +317,7 @@ export default class NemotronPlugin extends Plugin {
     captured: CapturedSelection | null = this.captureSelection(editor),
   ): Promise<void> {
     if (!captured) {
-      new Notice("Highlight text before you use an Autonatic action.");
+      new Notice("Highlight text before you use an autonatic action.");
       return;
     }
     if (!getGenerationApiKey(this.settings).trim()) {
@@ -358,10 +363,10 @@ export default class NemotronPlugin extends Plugin {
         });
       }
       new Notice("Highlighted text updated.");
-      this.scheduleIndexUpdate();
-    } catch (error: any) {
+      void this.scheduleIndexUpdate();
+    } catch (error: unknown) {
           console.error("AI highlighted-text edit error:", error);
-      new Notice(error.message || "The highlighted text could not be updated.", 8000);
+      new Notice(error instanceof Error ? error.message : "The highlighted text could not be updated.", 8000);
     } finally {
       this.selectionEditInProgress = false;
     }
@@ -374,21 +379,23 @@ export default class NemotronPlugin extends Plugin {
       if (!exists) return;
 
       if (this.updateDebounceTimer) {
-        clearTimeout(this.updateDebounceTimer);
+        window.clearTimeout(this.updateDebounceTimer);
       }
 
-      this.updateDebounceTimer = setTimeout(() => {
+      this.updateDebounceTimer = window.setTimeout(() => {
         buildOrUpdateVaultIndex(this.app, this.settings).catch((e) => {
           console.warn("Background vault index sync error:", e);
         });
       }, 1500);
-    } catch {}
+    } catch {
+      // Automatic indexing is best-effort and will retry on the next vault change.
+    }
   }
 
   public scheduleAskNotesUpdate() {
     if (!this.settings.askNotesEnabled || this.settings.askNotesPaused) return;
-    if (this.askNotesDebounceTimer) clearTimeout(this.askNotesDebounceTimer);
-    this.askNotesDebounceTimer = setTimeout(() => {
+    if (this.askNotesDebounceTimer) window.clearTimeout(this.askNotesDebounceTimer);
+    this.askNotesDebounceTimer = window.setTimeout(() => {
       void this.askNotesSearch.sync().catch((error) => {
         console.warn("Ask Notes index update failed:", error);
       });
@@ -396,7 +403,8 @@ export default class NemotronPlugin extends Plugin {
   }
 
   private async saveHistory() {
-    const currentData = (await this.loadData()) || {};
+    const loaded = (await this.loadData()) as unknown;
+    const currentData: Record<string, unknown> = isRecord(loaded) ? loaded : {};
     currentData.history = this.historyManager.serialize();
     await this.saveData(currentData);
   }
@@ -404,14 +412,14 @@ export default class NemotronPlugin extends Plugin {
   onunload() {
     this.generationWorkspace?.disposeGeneration();
     if (this.updateDebounceTimer) {
-      clearTimeout(this.updateDebounceTimer);
+      window.clearTimeout(this.updateDebounceTimer);
     }
-    if (this.askNotesDebounceTimer) clearTimeout(this.askNotesDebounceTimer);
+    if (this.askNotesDebounceTimer) window.clearTimeout(this.askNotesDebounceTimer);
     this.askNotesSearch?.dispose();
   }
 
   async loadSettings() {
-    const savedSettings = (await this.loadData()) || {};
+    const savedSettings = ((await this.loadData()) as Partial<NemotronPluginSettings> | null) ?? {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
     this.settings.providers = Object.assign({}, DEFAULT_SETTINGS.providers,
       Object.fromEntries(Object.entries(savedSettings.providers || {}).map(([provider, config]) => [
@@ -446,7 +454,8 @@ export default class NemotronPlugin extends Plugin {
   }
 
   async saveSettings() {
-    const currentData = (await this.loadData()) || {};
+    const loaded = (await this.loadData()) as unknown;
+    const currentData: Record<string, unknown> = isRecord(loaded) ? loaded : {};
     Object.assign(currentData, this.settings);
     await this.saveData(currentData);
   }

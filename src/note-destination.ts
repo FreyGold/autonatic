@@ -5,7 +5,7 @@ export const GENERATED_NOTES_FALLBACK_FOLDER = "Autonatic";
 export function normalizeVaultFolderPath(value: string | undefined): string {
   const segments = (value ?? "").trim().replace(/\\/g, "/").split("/").filter(Boolean);
   if (segments.some((segment) => segment === "." || segment === ".." || segment.startsWith(".")
-    || /[<>:"|?*\u0000-\u001f]/u.test(segment))) {
+    || /[<>:"|?*]/u.test(segment) || [...segment].some((character) => character.charCodeAt(0) <= 31))) {
     throw new Error("The target folder contains an unsafe path segment.");
   }
   return segments.join("/");

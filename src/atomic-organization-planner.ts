@@ -1,4 +1,5 @@
 import type { AtomicNoteItem } from "./vault-indexer";
+import { isRecord } from "./type-guards";
 import { extractGeneratedNoteFolder } from "./generated-markdown";
 import { promptDataBlock, PROMPT_DATA_GUIDELINES, REASONING_EXPLANATION_GUIDELINES, STE_INSPIRED_WRITING_GUIDELINES } from "./prompts";
 
@@ -163,22 +164,22 @@ function parseDecisions(raw: string): AtomicOrganizationDecision[] {
     throw new Error("The folder review did not return a JSON decision list.");
   }
 
-  const parsed = JSON.parse(withoutFence.slice(arrayStart, arrayEnd + 1));
+  const parsed = JSON.parse(withoutFence.slice(arrayStart, arrayEnd + 1)) as unknown;
   if (!Array.isArray(parsed)) {
     throw new Error("The folder review returned an invalid decision list.");
   }
 
   return parsed.flatMap((value): AtomicOrganizationDecision[] => {
-    if (!value || typeof value !== "object") return [];
+    if (!isRecord(value)) return [];
     const id = typeof value.id === "string" ? value.id.trim() : "";
     const placement = value.placement;
     const reason = typeof value.reason === "string" ? value.reason.trim() : "";
     const categoryKind = value.categoryKind;
-    if (!id || !["root", "existing_subfolder", "new_subfolder"].includes(placement)) return [];
+    if (!id || (placement !== "root" && placement !== "existing_subfolder" && placement !== "new_subfolder")) return [];
     return [{
       id,
       category: typeof value.category === "string" ? normalizePath(value.category) : undefined,
-      categoryKind: ["durable_category", "narrow_topic"].includes(categoryKind) ? categoryKind : undefined,
+      categoryKind: categoryKind === "durable_category" || categoryKind === "narrow_topic" ? categoryKind : undefined,
       placement,
       targetFolder: typeof value.targetFolder === "string" ? normalizePath(value.targetFolder) : undefined,
       reason,

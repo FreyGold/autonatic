@@ -7,10 +7,8 @@ import { FolderNavigator } from "./folder-nav";
 import { getGenerationApiKey, getGenerationConfig, PROVIDERS } from "./providers";
 import {
   buildOrUpdateVaultIndex,
-  formatVaultTreeForAI,
   extractSmartDecision,
   extractAtomicDecompositionPlan,
-  loadVaultIndex,
   enforceMaxDepthFolder,
   vaultIndexPath,
 } from "./vault-indexer";
@@ -366,7 +364,7 @@ export class NemotronModal extends Modal {
     smartScopeFolderOptions.id = "nemotron-smart-folder-scope-options";
     const smartScopeFolderRow = smartScopeFolderOptions.createDiv({ cls: "nemotron-form-row" });
     smartScopeFolderRow.createEl("label", { text: "Folder", cls: "nemotron-label" });
-    smartScopeFolderRow.createEl("div", {
+    smartScopeFolderRow.createDiv({
       text: "The limit includes all notes and folders below the selected folder.",
       cls: "nemotron-folder-scope-help",
     });
@@ -384,7 +382,7 @@ export class NemotronModal extends Modal {
     const updateSmartScopeVisibility = () => {
       limitPlacementToFolder = smartScopeCheckbox.checked;
       smartScopeCheckbox.setAttribute("aria-expanded", limitPlacementToFolder ? "true" : "false");
-      smartScopeFolderOptions.style.display = limitPlacementToFolder ? "block" : "none";
+      smartScopeFolderOptions.setCssProps({ display: limitPlacementToFolder ? "block" : "none" });
     };
     smartScopeCheckbox.addEventListener("change", updateSmartScopeVisibility);
     updateSmartScopeVisibility();
@@ -428,19 +426,19 @@ export class NemotronModal extends Modal {
       placementSelect.setValue(placementPreference);
       placementSection.hidden = creationIntent === "append";
       if (supportsPlacementFolderScope(mode)) {
-        smartModeInfo.style.display = "flex";
-        smartScopeOptionsDiv.style.display = "block";
+        smartModeInfo.setCssProps({ display: "flex" });
+        smartScopeOptionsDiv.setCssProps({ display: "block" });
         void this.renderSmartBanner(smartModeInfo).catch(() => smartModeInfo.setText("Could not read the placement index. Try again when the vault is available."));
-        newNoteOptionsDiv.style.display = "none";
+        newNoteOptionsDiv.setCssProps({ display: "none" });
       } else if (mode === "new_file" || mode === "multi_note_folder") {
-        smartModeInfo.style.display = "none";
-        smartScopeOptionsDiv.style.display = "none";
-        newNoteOptionsDiv.style.display = "block";
-        titleRow.style.display = mode === "new_file" ? "block" : "none";
+        smartModeInfo.setCssProps({ display: "none" });
+        smartScopeOptionsDiv.setCssProps({ display: "none" });
+        newNoteOptionsDiv.setCssProps({ display: "block" });
+        titleRow.setCssProps({ display: mode === "new_file" ? "block" : "none" });
       } else {
-        smartModeInfo.style.display = "none";
-        smartScopeOptionsDiv.style.display = "none";
-        newNoteOptionsDiv.style.display = "none";
+        smartModeInfo.setCssProps({ display: "none" });
+        smartScopeOptionsDiv.setCssProps({ display: "none" });
+        newNoteOptionsDiv.setCssProps({ display: "none" });
       }
       const scopeSummary = limitPlacementToFolder
         ? ` within ${currentPlacementScopeFolder || GENERATED_NOTES_FALLBACK_FOLDER} and its subfolders`
@@ -526,7 +524,7 @@ export class NemotronModal extends Modal {
     const imageHeaderRow = imageRow.createDiv({ cls: "nemotron-image-header" });
     imageHeaderRow.createEl("label", { text: "Images", cls: "nemotron-label" });
     const imageCountBadge = imageHeaderRow.createSpan({ cls: "nemotron-image-badge", text: "0 attached" });
-    imageCountBadge.style.display = "none";
+    imageCountBadge.setCssProps({ display: "none" });
 
     const dropzone = imageRow.createDiv({ cls: "nemotron-image-dropzone" });
     const dropzonePrompt = dropzone.createDiv({ cls: "nemotron-dropzone-prompt" });
@@ -554,24 +552,24 @@ export class NemotronModal extends Modal {
     });
 
     const imageGallery = imageRow.createDiv({ cls: "nemotron-image-gallery" });
-    imageGallery.style.display = "none";
+    imageGallery.setCssProps({ display: "none" });
 
     const renderGallery = () => {
       imageGallery.empty();
       if (this.attachedImages.length === 0) {
-        imageGallery.style.display = "none";
-        imageCountBadge.style.display = "none";
+        imageGallery.setCssProps({ display: "none" });
+        imageCountBadge.setCssProps({ display: "none" });
         return;
       }
 
-      imageGallery.style.display = "flex";
-      imageCountBadge.style.display = "inline-block";
+      imageGallery.setCssProps({ display: "flex" });
+      imageCountBadge.setCssProps({ display: "inline-block" });
       imageCountBadge.setText(`${this.attachedImages.length} attached`);
 
       const topBar = imageGallery.createDiv({ cls: "nemotron-gallery-topbar" });
       topBar.createSpan({ text: `Attached Images (${this.attachedImages.length}):`, cls: "nemotron-gallery-title" });
       
-      const clearAllBtn = topBar.createEl("button", { text: "Clear All", cls: "nemotron-clear-all-btn" });
+    const clearAllBtn = topBar.createEl("button", { text: "Clear all", cls: "nemotron-clear-all-btn" });
       clearAllBtn.setAttribute("type", "button");
       clearAllBtn.addEventListener("click", () => {
         this.attachedImages = [];
@@ -629,20 +627,6 @@ export class NemotronModal extends Modal {
 
     const tryReadSystemClipboard = async (): Promise<boolean> => {
       try {
-        const electron = (window as any).require ? (window as any).require("electron") : null;
-        if (electron && electron.clipboard) {
-          const nativeImage = electron.clipboard.readImage();
-          if (nativeImage && !nativeImage.isEmpty()) {
-            const dataUrl = nativeImage.toDataURL();
-            const timeStr = new Date().toISOString().slice(11, 19).replace(/:/g, "-");
-            addImage(dataUrl, `Screenshot-${timeStr}.png`);
-            new Notice("Image pasted from system clipboard!");
-            return true;
-          }
-        }
-      } catch {}
-
-      try {
         if (navigator.clipboard && navigator.clipboard.read) {
           const items = await navigator.clipboard.read();
           for (const item of items) {
@@ -655,18 +639,20 @@ export class NemotronModal extends Modal {
             }
           }
         }
-      } catch {}
+      } catch {
+        // Clipboard access can be unavailable or denied by the host platform.
+      }
 
       return false;
     };
 
-    pasteBtn.addEventListener("click", async (e) => {
+    pasteBtn.addEventListener("click", (e) => { void (async () => {
       e.preventDefault();
       const success = await tryReadSystemClipboard();
       if (!success) {
         new Notice("No image found in clipboard. Copy an image or screenshot first.");
       }
-    });
+    })(); });
 
     hiddenFileInput.addEventListener("change", () => {
       if (hiddenFileInput.files && hiddenFileInput.files.length > 0) {
@@ -696,7 +682,7 @@ export class NemotronModal extends Modal {
       }
     });
 
-    this.pasteListener = async (e: ClipboardEvent) => {
+    this.pasteListener = (e: ClipboardEvent) => { void (async () => {
       if (this.activeTab !== "notes" || !paneEl.contains(e.target as Node)) return;
       if (e.target instanceof HTMLInputElement) return;
       let handled = false;
@@ -732,7 +718,7 @@ export class NemotronModal extends Modal {
           e.preventDefault();
         }
       }
-    };
+    })(); };
 
     window.addEventListener("paste", this.pasteListener, true);
 
@@ -845,18 +831,18 @@ export class NemotronModal extends Modal {
     const statusDiv = paneEl.createDiv({ cls: "nemotron-status autonatic-generation-detail" });
     statusDiv.setAttribute("role", "status");
     statusDiv.setAttribute("aria-live", "polite");
-    statusDiv.style.display = "none";
+    statusDiv.setCssProps({ display: "none" });
     let generationProgress: WorkflowProgress | null = null;
 
     // Streaming Preview Area
     const previewContainer = paneEl.createDiv({ cls: "nemotron-preview-container" });
-    previewContainer.style.display = "none";
+    previewContainer.setCssProps({ display: "none" });
     
     const reasoningDetails = previewContainer.createEl("details", { cls: "nemotron-reasoning-box" });
     reasoningDetails.createEl("summary", { text: "Reasoning" });
     const reasoningPre = reasoningDetails.createEl("pre", { cls: "nemotron-reasoning-content" });
 
-    const contentPreviewBox = previewContainer.createEl("div", { cls: "nemotron-content-box" });
+    const contentPreviewBox = previewContainer.createDiv({ cls: "nemotron-content-box" });
     const notePreview = new NotePreview(this.app, contentPreviewBox);
     this.notePreview = notePreview;
     let previewMarkdown = "";
@@ -939,7 +925,7 @@ export class NemotronModal extends Modal {
       if (this.isGenerating) return;
       if (!getGenerationApiKey(this.plugin.settings).trim()) {
         new Notice(`Please enter your ${PROVIDERS[this.plugin.settings.generationProvider].label} API key first.`);
-        statusDiv.style.display = "block";
+        statusDiv.setCssProps({ display: "block" });
         statusDiv.setText(`Connect ${PROVIDERS[this.plugin.settings.generationProvider].label} in Settings to create notes.`);
         return;
       }
@@ -1021,7 +1007,7 @@ export class NemotronModal extends Modal {
       let vaultIndexForPlacement: VaultKnowledgeIndex | null = null;
       const allowedAutomaticAppendPaths = new Set<string>();
       if (mode === "smart" || mode === "multi_note") {
-        statusDiv.style.display = "block";
+        statusDiv.setCssProps({ display: "block" });
         statusDiv.setText("Finding relevant notes across the source...");
         let vaultIndex: VaultKnowledgeIndex;
         try {
@@ -1075,7 +1061,7 @@ export class NemotronModal extends Modal {
       updateGenerationStage("Generate notes");
       generateBtn.disabled = true;
       generateBtn.setText("Generating...");
-      statusDiv.style.display = "block";
+      statusDiv.setCssProps({ display: "block" });
       statusDiv.setText(
         mode === "multi_note_folder"
           ? "Decomposing input into new notes for the selected folder..."
@@ -1087,7 +1073,7 @@ export class NemotronModal extends Modal {
             : "Matching existing notes and generating..."
           : "Starting note generation..."
       );
-      previewContainer.style.display = "block";
+      previewContainer.setCssProps({ display: "block" });
       if (!retryPlacement) {
         reasoningPre.setText("");
         previewMarkdown = "";
@@ -1251,8 +1237,8 @@ export class NemotronModal extends Modal {
                 }
               }
               updateGenerationStage("Place notes", itemIndex + 1, plan.length);
-            } catch (itemErr: any) {
-              throw new Error(`Failed to process "${item.title}": ${itemErr.message}`, { cause: itemErr });
+            } catch (itemErr: unknown) {
+              throw new Error(`Failed to process "${item.title}": ${itemErr instanceof Error ? itemErr.message : String(itemErr)}`, { cause: itemErr });
             }
           }
 
@@ -1278,7 +1264,7 @@ export class NemotronModal extends Modal {
             });
             generationRecorded = true;
             this.renderHistoryToolbar();
-            this.plugin.scheduleIndexUpdate();
+            void this.plugin.scheduleIndexUpdate();
           }
 
           new Notice(mode === "multi_note_folder"
@@ -1357,7 +1343,7 @@ export class NemotronModal extends Modal {
             });
             generationRecorded = true;
             this.renderHistoryToolbar();
-            this.plugin.scheduleIndexUpdate();
+            void this.plugin.scheduleIndexUpdate();
           }
         } else if (mode === "new_file") {
           const targetFolder = currentSelectedFolder;
@@ -1386,7 +1372,7 @@ export class NemotronModal extends Modal {
 
           new Notice("Obsidian note created successfully!");
           this.renderHistoryToolbar();
-          this.plugin.scheduleIndexUpdate();
+          void this.plugin.scheduleIndexUpdate();
         } else {
           updateGenerationStage("Place notes", 0, 1);
           const { snaps, foldersCreated } = await this.appendToActiveNote(result.content, enableProperties, customInstruction || "Appended section via AI");
@@ -1408,13 +1394,13 @@ export class NemotronModal extends Modal {
 
           new Notice("Appended note section successfully!");
           this.renderHistoryToolbar();
-          this.plugin.scheduleIndexUpdate();
+          void this.plugin.scheduleIndexUpdate();
         }
 
         savedDraft = null;
         generationProgress?.finish();
         this.closeGeneration();
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!generationRecorded && fileSnapshots.length > 0) {
           try {
             await revertFileSnapshots(this.app, fileSnapshots, Array.from(new Set(foldersCreatedList)));
@@ -1424,15 +1410,16 @@ export class NemotronModal extends Modal {
             new Notice("Generation failed. Some files could not be restored. Review the error log.", 10000);
           }
         }
-        if (err.name === "AbortError") {
+        if (err instanceof Error && err.name === "AbortError") {
           new Notice("Generation cancelled.");
         } else {
           generationProgress?.fail();
           console.error("autonatic Error:", err);
+          const message = err instanceof Error ? err.message : String(err);
           statusDiv.setText(savedDraft
-            ? `Could not save notes: ${err.message} Your generated draft is kept in this window. Retry saving notes to continue.`
-            : `Error: ${err.message}`);
-          new Notice(`Error generating note: ${err.message}`);
+            ? `Could not save notes: ${message} Your generated draft is kept in this window. Retry saving notes to continue.`
+            : `Error: ${message}`);
+          new Notice(`Error generating note: ${message}`);
         }
       } finally {
         this.isGenerating = false;
@@ -1527,7 +1514,7 @@ export class NemotronModal extends Modal {
         limitToFolder: smartScopeCheckbox.checked,
       };
     };
-    if (!this.initialText && this.activeTab === "notes") setTimeout(() => inputTextArea.focus(), 0);
+    if (!this.initialText && this.activeTab === "notes") window.setTimeout(() => inputTextArea.focus(), 0);
   }
 
   // ==========================================
@@ -1566,7 +1553,7 @@ export class NemotronModal extends Modal {
 
     // Standalone Options (Title & Subfolder)
     const standaloneOptionsDiv = paneEl.createDiv({ cls: "nemotron-standalone-excal-options" });
-    standaloneOptionsDiv.style.display = selectedSource === "standalone" ? "block" : "none";
+    standaloneOptionsDiv.setCssProps({ display: selectedSource === "standalone" ? "block" : "none" });
     infoCard.setText(selectedSource === "active_note"
       ? `Using ${activeView?.file?.basename} as the source`
       : "Create a diagram from the description below.");
@@ -1616,11 +1603,11 @@ export class NemotronModal extends Modal {
           ? `Using ${activeView?.file?.basename} as the source`
           : "Create a diagram from the description below.");
         if (selectedSource === "standalone") {
-          standaloneOptionsDiv.style.display = "block";
+          standaloneOptionsDiv.setCssProps({ display: "block" });
           linkBackCheckbox.disabled = true;
           linkBackCheckbox.checked = false;
         } else {
-          standaloneOptionsDiv.style.display = "none";
+          standaloneOptionsDiv.setCssProps({ display: "none" });
           linkBackCheckbox.disabled = false;
           linkBackCheckbox.checked = true;
         }
@@ -1671,17 +1658,17 @@ export class NemotronModal extends Modal {
     const excalStatusDiv = paneEl.createDiv({ cls: "nemotron-status" });
     excalStatusDiv.setAttribute("role", "status");
     excalStatusDiv.setAttribute("aria-live", "polite");
-    excalStatusDiv.style.display = "none";
+    excalStatusDiv.setCssProps({ display: "none" });
 
     // Streaming Preview Area for Tab 2 (Thinking Process & Live Schema Preview)
     const excalPreviewContainer = paneEl.createDiv({ cls: "nemotron-preview-container" });
-    excalPreviewContainer.style.display = "none";
+    excalPreviewContainer.setCssProps({ display: "none" });
     
     const excalReasoningDetails = excalPreviewContainer.createEl("details", { cls: "nemotron-reasoning-box" });
     excalReasoningDetails.createEl("summary", { text: "Reasoning" });
     const excalReasoningPre = excalReasoningDetails.createEl("pre", { cls: "nemotron-reasoning-content" });
 
-    const excalContentPreviewBox = excalPreviewContainer.createEl("div", { cls: "nemotron-content-box" });
+    const excalContentPreviewBox = excalPreviewContainer.createDiv({ cls: "nemotron-content-box" });
     excalContentPreviewBox.createEl("h4", { text: "Diagram plan" });
     const excalContentPre = excalContentPreviewBox.createEl("pre", { cls: "nemotron-preview-content" });
 
@@ -1718,12 +1705,12 @@ export class NemotronModal extends Modal {
       this.close();
     });
 
-    generateExcalBtn.addEventListener("click", async () => {
+    generateExcalBtn.addEventListener("click", () => { void (async () => {
       if (this.isGenerating) return;
       if (!getGenerationApiKey(this.plugin.settings).trim()) {
         const providerName = PROVIDERS[this.plugin.settings.generationProvider].label;
         new Notice(`Please enter your ${providerName} API key first.`);
-        excalStatusDiv.style.display = "block";
+        excalStatusDiv.setCssProps({ display: "block" });
         excalStatusDiv.setText(`Error: ${providerName} API key is required. Please set it in Settings.`);
         return;
       }
@@ -1735,10 +1722,10 @@ export class NemotronModal extends Modal {
       generateExcalBtn.disabled = true;
       generateExcalBtn.setText("Designing diagram...");
       backgroundExcalBtn.hidden = false;
-      excalStatusDiv.style.display = "block";
+      excalStatusDiv.setCssProps({ display: "block" });
       excalStatusDiv.setText("Extracting concepts and relationships with AI...");
 
-      excalPreviewContainer.style.display = "block";
+      excalPreviewContainer.setCssProps({ display: "block" });
       excalReasoningPre.setText("");
       excalContentPre.setText("");
 
@@ -1880,7 +1867,7 @@ export class NemotronModal extends Modal {
 
         this.renderHistoryToolbar();
         this.closeGeneration();
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!generationRecorded && fileSnapshots.length > 0) {
           try {
             await revertFileSnapshots(this.app, fileSnapshots, Array.from(new Set(foldersCreatedList)));
@@ -1889,12 +1876,13 @@ export class NemotronModal extends Modal {
             new Notice("Diagram generation failed. Some files could not be restored. Review the error log.", 10000);
           }
         }
-        if (err.name === "AbortError") {
+        if (err instanceof Error && err.name === "AbortError") {
           new Notice("Excalidraw generation cancelled.");
         } else {
           console.error("Excalidraw generation error:", err);
-          excalStatusDiv.setText(`Error: ${err.message}`);
-          new Notice(`Error: ${err.message}`);
+          const message = err instanceof Error ? err.message : String(err);
+          excalStatusDiv.setText(`Error: ${message}`);
+          new Notice(`Error: ${message}`);
         }
       } finally {
         this.isGenerating = false;
@@ -1907,7 +1895,7 @@ export class NemotronModal extends Modal {
         backgroundExcalBtn.disabled = false;
         if (!this.backgroundContent) this.releaseGenerationWorkspace();
       }
-    });
+    })(); });
 
     const workspace = paneEl.createDiv({ cls: "autonatic-create-workspace" });
     const source = workspace.createDiv({ cls: "autonatic-source-column" });
@@ -1952,15 +1940,15 @@ export class NemotronModal extends Modal {
     const promptHistory = this.plugin.historyManager.getPromptHistory();
 
     if (undoCount === 0 && redoCount === 0 && promptHistory.length === 0) {
-      this.historyRowEl.style.display = "none";
-      (this.historyRowEl.parentElement as HTMLElement).style.display = "none";
+      this.historyRowEl.setCssProps({ display: "none" });
+      (this.historyRowEl.parentElement as HTMLElement).setCssProps({ display: "none" });
       (this.historyRowEl.parentElement as HTMLDetailsElement).open = false;
       if (restoreHistoryFocus) this.contentEl.querySelector<HTMLButtonElement>(".autonatic-workspace-nav-button.is-active")?.focus();
       return;
     }
 
-    this.historyRowEl.style.display = "flex";
-    (this.historyRowEl.parentElement as HTMLElement).style.display = "block";
+    this.historyRowEl.setCssProps({ display: "flex" });
+    (this.historyRowEl.parentElement as HTMLElement).setCssProps({ display: "block" });
 
     const genGroup = this.historyRowEl.createDiv({ cls: "nemotron-history-group" });
     genGroup.createSpan({ text: "Generations:", cls: "nemotron-history-label" });
@@ -1971,18 +1959,18 @@ export class NemotronModal extends Modal {
     });
     undoBtn.disabled = undoCount === 0;
     undoBtn.setAttribute("type", "button");
-    undoBtn.addEventListener("click", async () => {
+    undoBtn.addEventListener("click", () => { void (async () => {
       try {
         const record = await this.plugin.historyManager.undo();
         if (record) {
           new Notice(`Undid: ${record.description}`);
           this.renderHistoryToolbar();
-          this.plugin.scheduleIndexUpdate();
+          void this.plugin.scheduleIndexUpdate();
         }
-      } catch (err: any) {
-        new Notice(err.message || "The generation cannot be undone safely.", 8000);
+      } catch (err: unknown) {
+        new Notice(err instanceof Error ? err.message : "The generation cannot be undone safely.", 8000);
       }
-    });
+    })(); });
 
     const redoBtn = genGroup.createEl("button", {
       text: `Redo (${redoCount})`,
@@ -1990,18 +1978,18 @@ export class NemotronModal extends Modal {
     });
     redoBtn.disabled = redoCount === 0;
     redoBtn.setAttribute("type", "button");
-    redoBtn.addEventListener("click", async () => {
+    redoBtn.addEventListener("click", () => { void (async () => {
       try {
         const record = await this.plugin.historyManager.redo();
         if (record) {
           new Notice(`Redid: ${record.description}`);
           this.renderHistoryToolbar();
-          this.plugin.scheduleIndexUpdate();
+          void this.plugin.scheduleIndexUpdate();
         }
-      } catch (err: any) {
-        new Notice(err.message || "The generation cannot be redone safely.", 8000);
+      } catch (err: unknown) {
+        new Notice(err instanceof Error ? err.message : "The generation cannot be redone safely.", 8000);
       }
-    });
+    })(); });
 
     if (promptHistory.length > 0) {
       const promptGroup = this.historyRowEl.createDiv({ cls: "nemotron-history-group nemotron-prompt-history-group" });
@@ -2076,7 +2064,7 @@ export class NemotronModal extends Modal {
       populateBtn.setAttribute("type", "button");
 
       const progressBox = containerEl.createDiv({ cls: "nemotron-index-progress-box" });
-      progressBox.style.display = "none";
+      progressBox.setCssProps({ display: "none" });
 
       const progressHeader = progressBox.createDiv({ cls: "nemotron-index-progress-header" });
       const phaseTitle = progressHeader.createSpan({ text: "Vault Semantic Analysis Progress" });
@@ -2088,10 +2076,10 @@ export class NemotronModal extends Modal {
       const statusTextDiv = progressBox.createDiv({ cls: "nemotron-index-progress-status" });
       statusTextDiv.setText("Starting analysis...");
 
-      populateBtn.addEventListener("click", async () => {
+      populateBtn.addEventListener("click", () => { void (async () => {
         populateBtn.disabled = true;
         populateBtn.setText("Analyzing...");
-        progressBox.style.display = "flex";
+        progressBox.setCssProps({ display: "flex" });
 
         try {
           const index = await buildOrUpdateVaultIndex(
@@ -2100,22 +2088,22 @@ export class NemotronModal extends Modal {
             (curr, total, status) => {
               const pct = total > 0 ? Math.round((curr / total) * 100) : 0;
               pctSpan.setText(`${pct}%`);
-              barFill.style.width = `${pct}%`;
+              barFill.setCssProps({ width: `${pct}%` });
               statusTextDiv.setText(status);
               phaseTitle.setText(curr === total ? "Finalizing Hierarchy..." : "Analyzing Vault Knowledge...");
             }
           );
           new Notice(`Hierarchical Knowledge Tree populated: ${index.totalNotes} notes across ${index.totalFolders} folders.`);
           await this.renderSmartBanner(containerEl);
-        } catch (err: any) {
-          new Notice(`Error during deep indexing: ${err.message}`);
-          populateBtn.setText("Deep Analyze & Populate Knowledge Tree");
+        } catch (err: unknown) {
+          new Notice(`Error during deep indexing: ${err instanceof Error ? err.message : String(err)}`);
+          populateBtn.setText("Deep analyze & populate knowledge tree");
           populateBtn.disabled = false;
-          progressBox.style.display = "none";
+          progressBox.setCssProps({ display: "none" });
         }
-      });
+      })(); });
     } else {
-      containerEl.style.display = "none";
+      containerEl.setCssProps({ display: "none" });
     }
   }
 
@@ -2183,7 +2171,7 @@ export class NemotronModal extends Modal {
     this.importAbortController?.abort();
     if (this.pasteListener) window.removeEventListener("paste", this.pasteListener, true);
     if (this.isGenerating && this.continueGenerationAfterClose) {
-      this.backgroundContent ??= document.createDocumentFragment();
+      this.backgroundContent ??= createFragment();
       while (this.contentEl.firstChild) this.backgroundContent.appendChild(this.contentEl.firstChild);
       return;
     }
@@ -2429,7 +2417,7 @@ export class NemotronModal extends Modal {
       counter++;
     }
 
-    const newFile = (await this.app.vault.create(filePath, finalContent)) as TFile;
+    const newFile = await this.app.vault.create(filePath, finalContent);
 
     const noteSnapshot: FileSnapshot = {
       path: filePath,
@@ -2441,7 +2429,7 @@ export class NemotronModal extends Modal {
     if (this.plugin.settings.autoOpenCreatedNote) {
       try {
         const leaf = this.app.workspace.getLeaf(false);
-        await leaf.openFile(newFile as TFile);
+        await leaf.openFile(newFile);
       } catch (openError) {
         console.warn(`Created "${newFile.path}" but could not open it:`, openError);
       }

@@ -260,9 +260,13 @@ export class AskNotesSearch {
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`${config.provider} embeddings failed (${response.status}): ${response.text}`);
     }
+    const responseData = response.json as {
+      embeddings?: Array<{ values: number[] }>;
+      data?: Array<{ embedding: number[]; index: number }>;
+    };
     const items = isGemini
-      ? response.json?.embeddings?.map((item: { values: number[] }, index: number) => ({ embedding: item.values, index }))
-      : response.json?.data;
+      ? responseData.embeddings?.map((item, index) => ({ embedding: item.values, index }))
+      : responseData.data;
     if (!Array.isArray(items) || items.length !== texts.length) throw new Error(`${config.provider} returned incomplete embeddings.`);
     const vectors = items.sort((a: { index: number }, b: { index: number }) => a.index - b.index)
       .map((item: { embedding: number[] }) => item.embedding);

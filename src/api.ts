@@ -25,9 +25,33 @@ export interface StreamResult {
   reasoning: string;
 }
 
+interface ProviderErrorPayload {
+  error?: { message?: string; status?: number | string; code?: number | string };
+  detail?: string;
+  message?: string;
+}
+
+interface TextBlock { type?: string; text?: string }
+interface ProviderChoice {
+  delta?: { reasoning_content?: string; content?: string };
+  finish_reason?: string | null;
+  message?: { content?: string; reasoning_content?: string };
+}
+interface ProviderResponse {
+  content?: TextBlock[];
+  candidates?: Array<{ content?: { parts?: TextBlock[] } }>;
+  choices?: ProviderChoice[];
+  error?: ProviderErrorPayload["error"];
+}
+
+function textBlocks(blocks: TextBlock[] | undefined): string {
+  return (blocks ?? []).filter((item) => item.type === undefined || item.type === "text")
+    .map((item) => item.text ?? "").join("");
+}
+
 function visionErrorDetail(responseBody: string): string {
   try {
-    const parsed = JSON.parse(responseBody);
+    const parsed = JSON.parse(responseBody) as ProviderErrorPayload;
     return String(parsed?.error?.message || parsed?.detail || parsed?.message || "").trim();
   } catch {
     return responseBody.trim();
@@ -85,7 +109,7 @@ function findMermaidNodeEnd(line: string, openerIndex: number): number {
 }
 
 function sanitizeMermaidNodes(line: string): string {
-  const nodeStart = /(^|[\s;>|])([a-zA-Z0-9_-]+)\s*([\[\{\(])/g;
+  const nodeStart = /(^|[\s;>|])([a-zA-Z0-9_-]+)\s*([[{(])/g;
   let result = "";
   let cursor = 0;
   let match: RegExpExecArray | null;
@@ -139,13 +163,13 @@ export function sanitizeMermaidDiagrams(markdown: string): string {
       }
 
       // 1. Convert old arrow syntax: -- "label" --> or -- label --> to -->|"label"|
-      line = line.replace(/--\s*([^->]+?)\s*-->/g, (m, label) => {
+      line = line.replace(/--\s*([^->]+?)\s*-->/g, (_match: string, label: string) => {
         let clean = label.trim().replace(/^["'\\]+|["'\\]+$/g, "").replace(/"/g, "#quot;");
         return `-->|"${clean}"|`;
       });
 
       // 2. Ensure pipe arrows have quotes: -->|label| -> -->|"label"|
-      line = line.replace(/(-->|-\.->|==>)\s*\|([^|]+)\|\s*/g, (m, arrow, label) => {
+      line = line.replace(/(-->|-\.->|==>)\s*\|([^|]+)\|\s*/g, (_match: string, arrow: string, label: string) => {
         let clean = label.trim().replace(/^["'\\]+|["'\\]+$/g, "").replace(/"/g, "#quot;");
         return `${arrow}|"${clean}"| `;
       });
@@ -189,7 +213,7 @@ export async function extractContentFromImage(
   if (config.availableModels.length > 0 && !config.availableModels.includes(model)) {
     throw new Error(`The selected Image model is no longer in ${PROVIDERS[config.provider].label}'s model list. Fetch models again and choose an available Image model.`);
   }
-  const body: Record<string, any> = { model, max_tokens: 4096, temperature: 0.2 };
+  const body: Record<string, unknown> = { model, max_tokens: 4096, temperature: 0.2 };
   let url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` };
   if (config.provider === "anthropic") {
@@ -217,9 +241,9 @@ export async function extractContentFromImage(
   if (response.status < 200 || response.status >= 300) {
     throw createVisionApiError(response.status, response.text, config.provider, model);
   }
-  const data = response.json;
-  if (config.provider === "anthropic") return (data.content || []).filter((item: any) => item.type === "text").map((item: any) => item.text).join("");
-  if (config.provider === "gemini") return (data.candidates?.[0]?.content?.parts || []).map((item: any) => item.text || "").join("");
+  const data = response.json as ProviderResponse;
+  if (config.provider === "anthropic") return textBlocks(data.content);
+  if (config.provider === "gemini") return textBlocks(data.candidates?.[0]?.content?.parts);
   return typeof data.choices?.[0]?.message?.content === "string" ? data.choices[0].message.content : "";
 }
 
@@ -333,7 +357,7 @@ async function generateWithProviderRequestUrl(
   callbacks?.onStatus?.(`Calling ${config.provider === "anthropic" ? "Claude" : "Gemini"}...`);
   let url: string;
   let headers: Record<string, string> = { "Content-Type": "application/json" };
-  let body: Record<string, any>;
+  let body: Record<string, unknown>;
   if (config.provider === "anthropic") {
     url = `${config.baseUrl.replace(/\/+$/, "")}/messages`;
     headers["x-api-key"] = config.apiKey;
@@ -352,10 +376,10 @@ async function generateWithProviderRequestUrl(
   if (response.status < 200 || response.status >= 300) {
     throw new Error(`${config.provider === "anthropic" ? "Claude" : "Gemini"} API error (${response.status}): ${response.text}`);
   }
-  const data = response.json;
+  const data = response.json as ProviderResponse;
   const content = config.provider === "anthropic"
-    ? (data.content || []).filter((item: any) => item.type === "text").map((item: any) => item.text).join("")
-    : (data.candidates?.[0]?.content?.parts || []).map((item: any) => item.text || "").join("");
+    ? textBlocks(data.content)
+    : textBlocks(data.candidates?.[0]?.content?.parts);
   if (!content) throw new Error("The provider returned an empty response.");
   callbacks?.onContent?.(content);
   return { content: content.trim(), reasoning: "" };
@@ -393,10 +417,12 @@ type NvidiaApiError = Error & {
 function createProviderApiError(statusCode: number, responseBody: string): NvidiaApiError {
   let detail = responseBody.trim();
   try {
-    const parsed = JSON.parse(responseBody);
+    const parsed = JSON.parse(responseBody) as ProviderErrorPayload;
     if (parsed.error?.message) detail = parsed.error.message;
     else if (parsed.detail) detail = String(parsed.detail);
-  } catch {}
+  } catch {
+    // Keep the unparsed response text as the error detail.
+  }
 
   if (!detail) detail = "The requested model endpoint is unavailable.";
   return Object.assign(new Error(`Provider API error (${statusCode}): ${detail}`), {
@@ -424,10 +450,10 @@ function waitForRetry(delay: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new DOMException("Aborted", "AbortError")); return; }
     const onAbort = () => {
-      clearTimeout(timer);
+      window.clearTimeout(timer);
       reject(new DOMException("Aborted", "AbortError"));
     };
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
       resolve();
     }, delay);
@@ -473,13 +499,13 @@ function streamChatCompletionAttempt(
     let req: http.ClientRequest | undefined;
     let settled = false;
     let receivedResponseData = false;
-    let idleTimer: ReturnType<typeof setTimeout> | undefined;
-    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let idleTimer: number | undefined;
+    let deadlineTimer: number | undefined;
     let fullContent = "";
     let fullReasoning = "";
     const cleanup = () => {
-      clearTimeout(idleTimer);
-      clearTimeout(deadlineTimer);
+      window.clearTimeout(idleTimer);
+      window.clearTimeout(deadlineTimer);
       signal?.removeEventListener("abort", onAbort);
     };
     const fail = (error: Error) => {
@@ -500,8 +526,8 @@ function streamChatCompletionAttempt(
     };
     const onAbort = () => fail(new DOMException("Aborted", "AbortError"));
     const resetIdleTimer = () => {
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => fail(Object.assign(
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => fail(Object.assign(
         new Error("The provider stopped responding for 3 minutes. Try again; the request was stopped."),
         { code: "ETIMEDOUT" },
       )), 180_000);
@@ -510,7 +536,7 @@ function streamChatCompletionAttempt(
     if (signal?.aborted) { onAbort(); return; }
     try {
       const urlObj = new URL(`${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`);
-      const requestBody: Record<string, any> = {
+      const requestBody: Record<string, unknown> = {
         model: settings.model,
         messages: [
           { role: "system", content: systemPrompt },
@@ -539,7 +565,7 @@ function streamChatCompletionAttempt(
         res.on("aborted", () => fail(new Error("The provider closed the response before it finished. Try again.")));
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
           let errBody = "";
-          res.on("data", (chunk) => { if (!settled) { resetIdleTimer(); errBody += chunk.toString(); } });
+          res.on("data", (chunk: Buffer | string) => { if (!settled) { resetIdleTimer(); errBody += chunk.toString(); } });
           res.on("end", () => fail(createProviderApiError(res.statusCode || 500, errBody)));
           return;
         }
@@ -604,8 +630,8 @@ function streamChatCompletionAttempt(
           if (!trimmed.startsWith("data:")) return;
           const data = trimmed.slice(5).trim();
           if (data === "[DONE]") { finish(); return; }
-          let parsed: any;
-          try { parsed = JSON.parse(data); } catch { return; }
+          let parsed: ProviderResponse;
+          try { parsed = JSON.parse(data) as ProviderResponse; } catch { return; }
           if (parsed.error) {
             fail(createProviderApiError(Number(parsed.error.status || parsed.error.code) || 500, JSON.stringify(parsed)));
             return;
@@ -638,7 +664,7 @@ function streamChatCompletionAttempt(
       signal?.addEventListener("abort", onAbort, { once: true });
       req.on("error", fail);
       resetIdleTimer();
-      deadlineTimer = setTimeout(() => fail(new Error("The provider exceeded the 15-minute request limit. Try a shorter source.")), 900_000);
+      deadlineTimer = window.setTimeout(() => fail(new Error("The provider exceeded the 15-minute request limit. Try a shorter source.")), 900_000);
       req.write(postData);
       req.end();
     } catch (error) {
@@ -658,7 +684,7 @@ async function generateWithObsidianRequestUrl(
 ): Promise<StreamResult> {
   callbacks?.onStatus?.("Calling provider API...");
 
-  const requestBody: Record<string, any> = {
+  const requestBody: Record<string, unknown> = {
     model: settings.model,
     messages: [
       { role: "system", content: systemPrompt },
@@ -683,7 +709,7 @@ async function generateWithObsidianRequestUrl(
     throw createProviderApiError(response.status, response.text);
   }
 
-  const data = response.json;
+  const data = response.json as ProviderResponse;
   const choice = data.choices?.[0];
   const content = choice?.message?.content || "";
   const reasoning = choice?.message?.reasoning_content || "";

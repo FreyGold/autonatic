@@ -1,5 +1,6 @@
 import type { NemotronPluginSettings } from "./settings";
 import { requestUrl } from "obsidian";
+import { isRecord } from "./type-guards";
 
 export type AIProvider = "nvidia" | "openai" | "gemini" | "anthropic" | "groq" | "openrouter";
 
@@ -73,9 +74,9 @@ export async function fetchProviderModels(
   } else headers.Authorization = `Bearer ${apiKey}`;
 
   const base = baseUrl.replace(/\/+$/, "");
-  const allModels: any[] = [];
+  const allModels: unknown[] = [];
   let cursor = "";
-  let firstResponse: any;
+  let firstResponse: unknown;
   for (let page = 0; page < 50; page++) {
     const url = new URL(`${base}/models`);
     if (provider === "gemini" && cursor) url.searchParams.set("pageToken", cursor);
@@ -87,23 +88,31 @@ export async function fetchProviderModels(
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`${PROVIDERS[provider].label} rejected the key or model-list request (${response.status}): ${response.text}`);
     }
-    firstResponse ||= response.json;
-    const batch: any[] = Array.isArray(response.json?.data) ? response.json.data
-      : Array.isArray(response.json?.models) ? response.json.models : [];
+    const responseData = response.json as { data?: unknown; models?: unknown; nextPageToken?: unknown; has_more?: unknown };
+    firstResponse ||= responseData;
+    const batch: unknown[] = Array.isArray(responseData.data) ? responseData.data
+      : Array.isArray(responseData.models) ? responseData.models : [];
     allModels.push(...batch);
-    if (provider === "gemini" && response.json?.nextPageToken) cursor = response.json.nextPageToken;
-    else if (provider === "anthropic" && response.json?.has_more && batch.length) cursor = batch[batch.length - 1].id;
+    if (provider === "gemini" && typeof responseData.nextPageToken === "string") cursor = responseData.nextPageToken;
+    else if (provider === "anthropic" && responseData.has_more === true && batch.length) {
+      const last = batch[batch.length - 1];
+      cursor = isRecord(last) && typeof last.id === "string" ? last.id : "";
+    }
     else break;
   }
-  const getId = (model: any): string => String(model.id || model.name || "").replace(/^models\//, "");
-  const records = allModels.filter((model) => getId(model));
+  const getId = (model: Record<string, unknown>): string => {
+    const id = typeof model.id === "string" ? model.id : typeof model.name === "string" ? model.name : "";
+    return id.replace(/^models\//, "");
+  };
+  const records = allModels.filter(isRecord).filter((model) => getId(model));
   let chat = records.filter((model) => {
     const id = getId(model).toLowerCase();
     if (provider === "gemini" && Array.isArray(model.supportedGenerationMethods)) {
       return model.supportedGenerationMethods.includes("generateContent");
     }
-    if (provider === "openrouter" && Array.isArray(model.architecture?.output_modalities)) {
-      return model.architecture.output_modalities.includes("text");
+    const architecture = isRecord(model.architecture) ? model.architecture : undefined;
+    if (provider === "openrouter" && Array.isArray(architecture?.output_modalities)) {
+      return architecture.output_modalities.includes("text");
     }
     if (provider === "openai" && model.owned_by === "openai" && /^(text-embedding|embedding)/i.test(id)) return false;
     if (provider === "groq" && model.active === false) return false;
@@ -115,8 +124,9 @@ export async function fetchProviderModels(
     if (provider === "gemini" && Array.isArray(model.supportedGenerationMethods)) {
       return model.supportedGenerationMethods.some((method: string) => /embedcontent/i.test(method));
     }
-    if (provider === "openrouter" && Array.isArray(model.architecture?.output_modalities)) {
-      return model.architecture.output_modalities.includes("embeddings");
+    const architecture = isRecord(model.architecture) ? model.architecture : undefined;
+    if (provider === "openrouter" && Array.isArray(architecture?.output_modalities)) {
+      return architecture.output_modalities.includes("embeddings");
     }
     return /embedding|embed/i.test(id) && !/rerank/i.test(id);
   }).map(getId);
@@ -124,8 +134,9 @@ export async function fetchProviderModels(
   if (provider === "openrouter") {
     const embeddingResponse = await requestUrl({ url: `${base}/embeddings/models`, method: "GET", headers, throw: false });
     if (embeddingResponse.status >= 200 && embeddingResponse.status < 300) {
-      const models: any[] = Array.isArray(embeddingResponse.json?.data) ? embeddingResponse.json.data : [];
-      embeddings = models.map(getId).filter(Boolean);
+      const embeddingData = embeddingResponse.json as { data?: unknown };
+      const models: unknown[] = Array.isArray(embeddingData.data) ? embeddingData.data : [];
+      embeddings = models.filter(isRecord).map(getId).filter(Boolean);
     }
   }
 

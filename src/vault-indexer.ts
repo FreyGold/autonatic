@@ -4,6 +4,7 @@ import { isExcludedPath, parseExcludedFolders } from "./privacy-controls";
 import { streamChatCompletion } from "./api";
 import { getGenerationApiKey, getGenerationConfig } from "./providers";
 import { promptDataBlock, PROMPT_DATA_GUIDELINES, REASONING_EXPLANATION_GUIDELINES, STE_INSPIRED_WRITING_GUIDELINES } from "./prompts";
+import { isRecord, stringArray, stringValue } from "./type-guards";
 
 export interface NoteItem {
   title: string;
@@ -91,7 +92,7 @@ export async function extractNoteStructure(
     if (fm.title && typeof fm.title === "string") title = fm.title.trim();
     if (fm.summary && typeof fm.summary === "string") summary = fm.summary.trim();
     if (Array.isArray(fm.tags)) {
-      fm.tags.forEach((t: any) => {
+      fm.tags.forEach((t: unknown) => {
         if (typeof t === "string") tags.push(t);
       });
     } else if (typeof fm.tags === "string") {
@@ -108,7 +109,7 @@ export async function extractNoteStructure(
   try {
     const content = await app.vault.read(file);
     const bodyWithoutYaml = content.replace(/^---\r?\n[\s\S]*?\r?\n---/, "").trim();
-    rawExcerpt = bodyWithoutYaml.slice(0, 800).replace(/[*_#`\[\]]/g, " ").replace(/\s+/g, " ").trim();
+    rawExcerpt = bodyWithoutYaml.slice(0, 800).replace(/[*_#`[\]]/g, " ").replace(/\s+/g, " ").trim();
 
     if (!summary) {
       const calloutMatch = content.match(/>\s*\[!(?:summary|info|abstract|note)\][^\n\r]*\r?\n((?:>[^\n\r]*\r?\n?)+)/i);
@@ -120,7 +121,9 @@ export async function extractNoteStructure(
           .join(" ");
       }
     }
-  } catch {}
+  } catch {
+    // A temporarily unreadable note still contributes its cached metadata.
+  }
 
   return { title, tags, headings, summary, rawExcerpt };
 }
@@ -132,14 +135,14 @@ async function callNemotronJson(
   settings: NemotronPluginSettings,
   systemPrompt: string,
   userPrompt: string
-): Promise<any> {
+): Promise<unknown> {
   const config = getGenerationConfig(settings);
   const response = await streamChatCompletion({ ...settings, apiKey: config.apiKey, baseUrl: config.baseUrl,
-    model: config.model, temperature: 0.2, maxTokens: 3000 } as NemotronPluginSettings,
+    model: config.model, temperature: 0.2, maxTokens: 3000 },
   systemPrompt, userPrompt);
   const content = response.content;
   const jsonMatch = content.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/) || [null, content];
-  return JSON.parse((jsonMatch[1] || content).trim());
+  return JSON.parse((jsonMatch[1] || content).trim()) as unknown;
 }
 
 /**
@@ -201,7 +204,7 @@ export async function buildOrUpdateVaultIndex(
   const totalFiles = mdFiles.length;
 
   const analyzedNotesMap = new Map<string, NoteItem>();
-  const notesToAnalyzeWithAI: { file: TFile; structure: any }[] = [];
+  const notesToAnalyzeWithAI: { file: TFile; structure: Awaited<ReturnType<typeof extractNoteStructure>> }[] = [];
 
   // Phase 1: Structural Extraction
   if (onProgress) onProgress(0, totalFiles, `Reading note structures (0/${totalFiles})...`);
@@ -240,7 +243,7 @@ export async function buildOrUpdateVaultIndex(
     }
 
     if (i % 40 === 0) {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => window.setTimeout(r, 0));
     }
   }
 
@@ -291,10 +294,11 @@ ${REASONING_EXPLANATION_GUIDELINES}`;
 
         if (Array.isArray(responseData)) {
           for (const resItem of responseData) {
-            if (resItem.path && analyzedNotesMap.has(resItem.path)) {
+            if (isRecord(resItem) && typeof resItem.path === "string" && analyzedNotesMap.has(resItem.path)) {
               const noteObj = analyzedNotesMap.get(resItem.path)!;
-              if (resItem.about) noteObj.about = resItem.about.trim();
-              if (Array.isArray(resItem.topics)) noteObj.topics = resItem.topics;
+              if (typeof resItem.about === "string") noteObj.about = resItem.about.trim();
+              const topics = stringArray(resItem.topics);
+              if (topics.length) noteObj.topics = topics;
             }
           }
         }
@@ -302,7 +306,7 @@ ${REASONING_EXPLANATION_GUIDELINES}`;
         console.warn("AI Semantic batch analysis warning:", err);
       }
 
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => window.setTimeout(r, 100));
     }
   }
 
@@ -533,7 +537,9 @@ export function extractSmartDecision(content: string): {
       if (!decisionObj) throw new Error("Invalid smart decision fields.");
       const cleaned = content.replace(rawJsonMatch[0], "").trim();
       return { decision: decisionObj, cleanedContent: cleaned };
-    } catch {}
+    } catch {
+      // The fallback parser below handles malformed embedded JSON.
+    }
   }
 
   return { decision: null, cleanedContent: content };
@@ -601,20 +607,23 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
   if (arrayStart !== -1 && arrayEnd > arrayStart) {
     const rawArrayStr = candidateJson.slice(arrayStart, arrayEnd + 1);
     try {
-      const items = JSON.parse(rawArrayStr);
+      const items = JSON.parse(rawArrayStr) as unknown;
       if (Array.isArray(items) && items.length > 0) {
-        return items.map((it) => ({
-          action: it.action === "append_to_note" ? "append_to_note" : "create_new_note",
-          targetFolder: normalizeFolderPath(it.targetFolder || ""),
-          topicFolder: normalizeFolderPath(it.topicFolder || it.topic || ""),
-          folderStrategy: ["root", "existing_subfolder", "new_subfolder"].includes(it.folderStrategy || it.placement)
-            ? (it.folderStrategy || it.placement)
-            : undefined,
-          targetNotePath: it.targetNotePath,
-          title: it.title || "Synthesized Note",
-          reason: it.reason || "",
-          content: it.content || "",
-        }));
+        return items.filter(isRecord).map((it) => {
+          const strategy = it.folderStrategy ?? it.placement;
+          const folderStrategy = strategy === "root" || strategy === "existing_subfolder" || strategy === "new_subfolder"
+            ? strategy : undefined;
+          return {
+            action: it.action === "append_to_note" ? "append_to_note" : "create_new_note",
+            targetFolder: normalizeFolderPath(stringValue(it.targetFolder)),
+            topicFolder: normalizeFolderPath(stringValue(it.topicFolder ?? it.topic)),
+            folderStrategy,
+            targetNotePath: typeof it.targetNotePath === "string" ? it.targetNotePath : undefined,
+            title: stringValue(it.title, "Synthesized Note"),
+            reason: stringValue(it.reason),
+            content: stringValue(it.content),
+          };
+        });
       }
     } catch {
       const objRegex = /\{\s*"action"\s*:\s*"(append_to_note|create_new_note)"[\s\S]*?"content"\s*:\s*"([\s\S]*?)"\s*\}/g;
@@ -647,7 +656,9 @@ export function extractAtomicDecompositionPlan(rawContent: string): AtomicNoteIt
             reason: reasonMatch ? reasonMatch[1] : "",
             content: unescapedContent,
           });
-        } catch {}
+        } catch {
+          // Ignore one malformed object and continue scanning the remaining plan.
+        }
       }
       if (results.length > 0) return results;
     }

@@ -97,7 +97,7 @@ ${REASONING_EXPLANATION_GUIDELINES}`;
       const userPrompt = `Title: ${promptDataBlock("source-title", request.title)}${focus}\nSource note:\n${promptDataBlock("source-note", request.content)}`;
       const result = await streamChatCompletion(settings, systemPrompt, userPrompt, callbacks, signal);
       const match = result.content.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/);
-      return JSON.parse((match?.[1] ?? result.content).trim());
+      return JSON.parse((match?.[1] ?? result.content).trim()) as unknown;
     },
   });
 }
@@ -120,7 +120,7 @@ export async function planUsefulDiagrams(
         planningSignal,
       );
       const match = result.content.match(/```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```/);
-      return JSON.parse((match?.[1] ?? result.content).trim());
+      return JSON.parse((match?.[1] ?? result.content).trim()) as unknown;
     },
   });
   return planner.plan(changes, maxAutomaticDiagrams, signal);

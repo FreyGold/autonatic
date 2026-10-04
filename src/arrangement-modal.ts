@@ -104,7 +104,7 @@ export class VaultArrangementModal extends Modal {
         const row = snapshots.createDiv({ cls: "autonatic-arrange-snapshot" });
         const details = row.createDiv();
         details.createEl("strong", { text: new Date(snapshot.createdAt).toLocaleString() });
-        details.createEl("span", { text: snapshot.instruction, cls: "autonatic-arrange-snapshot-label" });
+        details.createSpan({ text: snapshot.instruction, cls: "autonatic-arrange-snapshot-label" });
         const restoreButton = row.createEl("button", { text: "Restore" });
         restoreButton.type = "button";
         restoreButton.addEventListener("click", () => {
@@ -126,7 +126,7 @@ export class VaultArrangementModal extends Modal {
           const confirmButton = confirm.createEl("button", { text: "Restore these paths", cls: "mod-cta" });
           confirmButton.type = "button";
           confirmButton.disabled = changed === 0;
-          confirmButton.addEventListener("click", async () => {
+          confirmButton.addEventListener("click", () => { void (async () => {
             setWorking(true);
             confirmButton.disabled = true;
             try {
@@ -136,14 +136,14 @@ export class VaultArrangementModal extends Modal {
                 progress.value = done;
               });
               status.setText(`Restored ${count} note path${count === 1 ? "" : "s"}.`);
-              this.plugin.scheduleIndexUpdate();
+              void this.plugin.scheduleIndexUpdate();
               this.plugin.scheduleAskNotesUpdate();
               renderSnapshots();
               new Notice(`Restored ${count} note path${count === 1 ? "" : "s"}.`);
             } catch (error) {
               status.setText(error instanceof Error ? error.message : "Could not restore this arrangement.");
             } finally { setWorking(false); }
-          });
+          })(); });
         });
       }
     };
@@ -163,15 +163,15 @@ export class VaultArrangementModal extends Modal {
       const list = preview.createDiv({ cls: "autonatic-arrange-moves" });
       for (const move of plan.moves) {
         const row = list.createDiv({ cls: "autonatic-arrange-move" });
-        row.createEl("span", { text: move.from });
-        row.createEl("span", { text: "→", cls: "autonatic-arrange-arrow" });
-        row.createEl("span", { text: move.to });
+        row.createSpan({ text: move.from });
+        row.createSpan({ text: "→", cls: "autonatic-arrange-arrow" });
+        row.createSpan({ text: move.to });
         if (move.reason) row.createEl("small", { text: move.reason });
       }
       const applyButton = preview.createEl("button", { text: `Apply ${plan.moves.length} moves`, cls: "mod-cta autonatic-arrange-apply" });
       applyButton.type = "button";
       applyButton.disabled = plan.conflicts.length > 0;
-      applyButton.addEventListener("click", async () => {
+      applyButton.addEventListener("click", () => { void (async () => {
         setWorking(true);
         applyButton.disabled = true;
         status.setText("Saving the current arrangement...");
@@ -182,7 +182,7 @@ export class VaultArrangementModal extends Modal {
             progress.value = done;
           });
           status.setText(`Moved ${plan.moves.length} notes. Snapshot saved at ${new Date(snapshot.createdAt).toLocaleString()}.`);
-          this.plugin.scheduleIndexUpdate();
+          void this.plugin.scheduleIndexUpdate();
           this.plugin.scheduleAskNotesUpdate();
           clearPlan();
           renderSnapshots();
@@ -191,10 +191,10 @@ export class VaultArrangementModal extends Modal {
           status.setText(error instanceof Error ? error.message : "Could not apply the arrangement.");
           applyButton.disabled = false;
         } finally { setWorking(false); }
-      });
+      })(); });
     };
 
-    planButton.addEventListener("click", async () => {
+    planButton.addEventListener("click", () => { void (async () => {
       clearPlan();
       setWorking(true);
       this.controller = new AbortController();
@@ -221,7 +221,7 @@ export class VaultArrangementModal extends Modal {
         this.controller = null;
         setWorking(false);
       }
-    });
+    })(); });
 
     renderSnapshots();
     instruction.focus();
