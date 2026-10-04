@@ -4,7 +4,7 @@
 
 Turn text, shared AI conversations, and images into structured Markdown notes. Search original passages and organize your vault from the same workspace.
 
-**Current version:** 1.7.11 · **Requires:** Obsidian 1.13.1 or newer on desktop.
+**Current version:** 1.7.12 · **Requires:** Obsidian 1.13.1 or newer on desktop.
 
 ## AI providers
 
@@ -70,10 +70,12 @@ The Create workspace in dark mode:
 ## Installation and updates
 
 1. Download `main.js`, `manifest.json`, `styles.css`, and `versions.json` from a [release](https://github.com/FreyGold/autonatic/releases), or build them from source.
-2. Place the four files in your vault's `.obsidian/plugins/nemotron-note-crafter/` directory. Use your vault's configuration folder if it has a different name.
+2. Place the four files in your vault's `.obsidian/plugins/autonatic/` directory. Use your vault's configuration folder if it has a different name.
 3. Reload Obsidian and enable **Autonatic** under **Settings > Community plugins**.
 
 For an update, replace those four files, keep `data.json` with your saved settings, and toggle Autonatic off/on. Check the version beside the plugin name to confirm the new build has loaded.
+
+**Upgrading from the old plugin folder:** Disable Autonatic and close Obsidian. Rename `.obsidian/plugins/nemotron-note-crafter/` to `.obsidian/plugins/autonatic/`, keeping all existing files, then replace the four release files. Reopen Obsidian and enable Autonatic again. Renaming the whole folder preserves settings, generation history, the vault index, and arrangement snapshots. Reassign any custom Autonatic hotkeys after the plugin ID changes.
 
 ## How to use
 

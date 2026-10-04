@@ -1,6 +1,6 @@
 {
-  "name": "obsidian-nemotron-notes",
-  "version": "1.7.11",
+  "name": "autonatic",
+  "version": "1.7.12",
   "description": "Transform raw text into structured Obsidian notes using your choice of AI provider.",
   "main": "main.js",
   "scripts": {

@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import esbuild from "esbuild";
 
-const outputDir = "/tmp/nemotron-note-crafter-tests";
+const outputDir = "/tmp/autonatic-tests";
 const outputFile = path.join(outputDir, "regression.test.cjs");
 
 await rm(outputDir, { recursive: true, force: true });

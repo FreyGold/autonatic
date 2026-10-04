@@ -55,7 +55,7 @@ export const VAULT_INDEX_FILENAME = "vault-index.json";
 export const LEGACY_VAULT_INDEX_FILENAME = ".nemotron-vault-index.json";
 
 export function vaultIndexPath(app: App): string {
-  return normalizePath(`${app.vault.configDir}/plugins/nemotron-note-crafter/${VAULT_INDEX_FILENAME}`);
+  return normalizePath(`${app.vault.configDir}/plugins/autonatic/${VAULT_INDEX_FILENAME}`);
 }
 
 export async function migrateVaultIndexStorage(app: App): Promise<void> {

@@ -1483,7 +1483,7 @@ test("the vault index migrates out of vault root into plugin data", async () => 
 
   assert.equal(vault.storage.get(vaultIndexPath(app as never)), payload);
   assert.equal(vault.storage.has(LEGACY_VAULT_INDEX_FILENAME), false);
-  assert.match(vaultIndexPath(app as never), /^\.obsidian-test\/plugins\/nemotron-note-crafter\//);
+  assert.match(vaultIndexPath(app as never), /^\.obsidian-test\/plugins\/autonatic\//);
 });
 
 test("vault organizer plans new folders and creates them only when applied", async () => {
