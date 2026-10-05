@@ -116,7 +116,7 @@ export class FolderNavigator {
 
     // Root chip
     const rootChip = this.breadcrumbContainer.createEl("button", {
-      text: "Root",
+      text: "Vault root",
       cls: `nemotron-breadcrumb-chip ${this.currentPath === "" ? "is-active" : ""}`,
     });
     rootChip.type = "button";

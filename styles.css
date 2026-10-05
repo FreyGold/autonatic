@@ -1959,6 +1959,128 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 .autonatic-settings .autonatic-folder-picker .nemotron-folder-nav {
   flex: 1;
   min-width: 0;
+  order: 2;
+}
+.autonatic-settings .autonatic-folder-picker > button {
+  order: 3;
+}
+.autonatic-settings .nemotron-folder-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}
+.autonatic-settings :is(.nemotron-folder-top-row, .nemotron-folder-mid-row, .nemotron-folder-bottom-row) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+.autonatic-settings .nemotron-folder-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  min-width: 0;
+}
+.autonatic-settings .nemotron-folder-nav :is(.nemotron-folder-up-btn, .nemotron-breadcrumb-chip, .nemotron-folder-create-btn) {
+  padding: var(--size-4-1) var(--size-4-2);
+  font-size: var(--font-ui-small);
+}
+.autonatic-settings .nemotron-breadcrumb-chip.is-active {
+  color: var(--text-accent);
+}
+.autonatic-settings :is(.nemotron-breadcrumb-sep, .nemotron-folder-sub-label, .nemotron-folder-input-label, .nemotron-folder-status) {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+.autonatic-settings .nemotron-custom-select-container {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-width: 140px;
+}
+.autonatic-settings .nemotron-custom-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  text-align: start;
+}
+.autonatic-settings :is(.nemotron-select-left, .nemotron-select-label, .nemotron-option-header, .nemotron-option-title-group) {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+.autonatic-settings .nemotron-select-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.autonatic-settings :is(.nemotron-select-chevron, .nemotron-option-check) {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.autonatic-settings .nemotron-custom-select-trigger.is-open .nemotron-select-chevron {
+  transform: rotate(180deg);
+}
+.autonatic-settings .nemotron-custom-select-menu {
+  position: absolute;
+  inset: calc(100% + var(--size-4-1)) 0 auto;
+  z-index: 20;
+  max-height: min(320px, 50dvh);
+  overflow-y: auto;
+  padding: var(--size-4-1);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+}
+.autonatic-settings .nemotron-custom-select-menu[hidden] {
+  display: none;
+}
+.autonatic-settings .nemotron-select-option {
+  padding: var(--size-4-2);
+  border-radius: var(--radius-s);
+  cursor: var(--cursor);
+}
+.autonatic-settings .nemotron-select-option:is(.is-active, :hover) {
+  background: var(--background-modifier-hover);
+}
+.autonatic-settings .nemotron-select-option.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.autonatic-settings .nemotron-option-header {
+  justify-content: space-between;
+}
+.autonatic-settings .nemotron-option-check {
+  visibility: hidden;
+}
+.autonatic-settings .is-selected .nemotron-option-check {
+  visibility: visible;
+  color: var(--text-accent);
+}
+.autonatic-settings .nemotron-folder-input {
+  flex: 1;
+  min-width: 160px;
+}
+.autonatic-settings .nemotron-folder-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+.autonatic-settings .nemotron-folder-status {
+  flex: 1;
 }
 @container autonatic-settings (max-width: 640px) {
   .autonatic-settings .setting-item:not(:is(.mod-toggle, .setting-item-heading)) {

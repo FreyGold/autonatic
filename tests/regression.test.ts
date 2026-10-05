@@ -198,6 +198,7 @@ test("Ask Notes searches only selected Markdown folders and honors exclusions", 
   assert.equal(isAskNoteEligible("Projects/Other/Findings.md", selected, excluded), false);
   assert.equal(isAskNoteEligible("Projects/Research/image.png", selected, excluded), false);
   assert.equal(isAskNoteEligible("Projects/Research/.hidden.md", selected, excluded), false);
+  assert.equal(isAskNoteEligible("Any folder/Note.md", [""], []), true);
 });
 
 test("Ask Notes keeps headings and bounded overlapping passages", () => {

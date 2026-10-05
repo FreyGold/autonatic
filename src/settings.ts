@@ -341,8 +341,11 @@ export class NemotronSettingTab extends PluginSettingTab {
     const folderPicker = containerEl.createDiv({ cls: "autonatic-folder-picker" });
     folderPicker.createEl("label", { text: "Add a folder and its subfolders" });
     let selectedFolder = "";
-    this.askFolderNavigator = new FolderNavigator(this.app, folderPicker, "", (path) => { selectedFolder = path; });
-    const addFolder = folderPicker.createEl("button", { text: "Include folder" });
+    const addFolder = folderPicker.createEl("button", { text: "Include vault root" });
+    this.askFolderNavigator = new FolderNavigator(this.app, folderPicker, "", (path) => {
+      selectedFolder = path;
+      addFolder.setText(path ? "Include folder" : "Include vault root");
+    });
     addFolder.type = "button";
     addFolder.addEventListener("click", () => { void (async () => {
       if (selectedFolder && !(this.app.vault.getAbstractFileByPath(selectedFolder) instanceof TFolder)) {
@@ -350,7 +353,8 @@ export class NemotronSettingTab extends PluginSettingTab {
         return;
       }
       if (!this.plugin.settings.askNotesFolders.includes(selectedFolder)) {
-        this.plugin.settings.askNotesFolders.push(selectedFolder);
+        if (selectedFolder) this.plugin.settings.askNotesFolders.push(selectedFolder);
+        else this.plugin.settings.askNotesFolders = [""];
         await this.plugin.saveSettings();
         this.plugin.scheduleAskNotesUpdate();
         renderIncluded();
