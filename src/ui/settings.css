@@ -10,7 +10,14 @@
   --setting-group-heading-size: var(--an-text-section);
   --setting-group-heading-weight: var(--an-weight-label);
   container: autonatic-settings / inline-size;
-  padding-bottom: var(--an-space-6);
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 var(--an-space-6);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .autonatic-ui.autonatic-settings .autonatic-wordmark {
@@ -29,12 +36,19 @@
 
 .autonatic-ui .autonatic-settings-nav {
   display: flex;
+  width: 100%;
+  min-width: 0;
   align-items: center;
   gap: var(--an-space-2);
   padding: 0 0 var(--an-space-4);
   border-bottom: 1px dashed var(--an-rule);
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+.autonatic-ui .autonatic-settings-section {
+  width: 100%;
+  min-width: 0;
 }
 
 .autonatic-ui .autonatic-settings-nav button {
