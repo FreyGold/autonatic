@@ -8,7 +8,6 @@ import { applyProviderModelDefaults, defaultProviderConfigs, EMBEDDING_PROVIDERS
 import type { SettingsSection } from "./workspace-ui";
 import { renderAutonaticBrand } from "./brand";
 import { GENERATED_NOTES_FALLBACK_FOLDER } from "./note-destination";
-import { applyDesignSystem } from "./design-system";
 
 export interface NemotronPluginSettings {
   generationProvider: AIProvider;
@@ -113,7 +112,6 @@ export class NemotronSettingTab extends PluginSettingTab {
     this.navigationController = new AbortController();
     root.empty();
     root.addClass("autonatic-settings");
-    applyDesignSystem(root);
     const heading = root.createDiv({ cls: "autonatic-settings-heading" });
     renderAutonaticBrand(heading, this.plugin.manifest.version);
     heading.createEl("p", { text: "Providers, note preferences, and vault permissions." });

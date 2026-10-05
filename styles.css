@@ -1795,236 +1795,184 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 }
 
 /* src/ui/settings.css */
-.vertical-tab-content-container:has(.autonatic-settings) {
-  width: 100%;
-  max-width: 960px;
+.modal.mod-settings:has(.autonatic-settings) {
+  --setting-group-max-width: 960px;
 }
-.autonatic-ui.autonatic-settings {
-  --setting-items-background: transparent;
-  --setting-items-radius: 0;
-  --setting-items-border-width: 0;
-  --setting-items-padding-x: 0;
-  --setting-items-padding-y: var(--an-space-4);
-  --setting-group-heading-color: var(--an-ink);
-  --setting-group-heading-size: var(--an-text-section);
-  --setting-group-heading-weight: var(--an-weight-label);
+.autonatic-settings.setting-item {
   container: autonatic-settings / inline-size;
   display: block;
   width: 100%;
   min-width: 0;
   margin: 0;
-  padding: var(--an-space-6) var(--an-space-6) var(--an-space-8);
+  padding: 0 0 var(--size-4-8);
   border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-.autonatic-ui.autonatic-settings .autonatic-wordmark {
-  padding: 0;
-}
-.autonatic-ui .autonatic-settings-heading {
-  padding-bottom: var(--an-space-4);
-}
-.autonatic-ui .autonatic-settings-heading p {
-  margin: var(--an-space-2) 0 0;
-  color: var(--an-muted);
-  font-size: var(--an-text-small);
-}
-.autonatic-ui .autonatic-settings-nav {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  gap: var(--an-space-2);
-  padding: 0 0 var(--an-space-4);
-  border-bottom: 1px dashed var(--an-rule);
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-.autonatic-ui .autonatic-settings-section {
-  width: 100%;
-  min-width: 0;
-}
-.autonatic-ui .autonatic-settings-nav button {
-  min-height: var(--an-control-compact);
-  padding: var(--an-space-1) var(--an-space-3);
-  color: var(--an-muted);
-  flex-shrink: 0;
-}
-.autonatic-ui .autonatic-settings-nav button[aria-selected=true] {
-  border-color: var(--an-muted);
-  background: var(--an-paper);
-  color: var(--an-ink);
-  font-weight: var(--an-weight-label);
-}
-.autonatic-ui .autonatic-settings-nav button:hover:not(:disabled) {
-  border-color: var(--an-muted);
-  background: var(--an-hover);
-  color: var(--an-ink);
-}
-.autonatic-ui .autonatic-settings-section h3 {
-  margin: var(--an-space-6) 0 var(--an-space-2);
-  padding: 0;
-  font-size: var(--an-text-section);
-  font-weight: var(--an-weight-label);
-}
-.autonatic-ui .autonatic-settings-section h4 {
-  margin: var(--an-space-6) 0 var(--an-space-3);
-  padding: 0;
-  font-size: var(--an-text-body);
-  font-weight: var(--an-weight-label);
-}
-.autonatic-ui.autonatic-settings .setting-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(200px, 0.8fr);
-  align-items: center;
-  gap: var(--an-space-6);
-  margin: 0;
-  padding: var(--an-space-4) 0;
-  border: 0;
-  border-bottom: 1px dashed var(--an-rule);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
-.autonatic-ui.autonatic-settings .setting-item-info {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
+.autonatic-settings .autonatic-settings-heading {
+  margin-bottom: var(--size-4-5);
 }
-.autonatic-ui.autonatic-settings .setting-item:where(:has(.checkbox-container, input[type=checkbox])),
-.autonatic-ui.autonatic-settings .setting-item:where(:has(button):not(:has(input, select, textarea))) {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-.autonatic-ui .setting-item-name {
-  margin: 0;
-  font-family: var(--an-font);
-  font-size: var(--an-text-body);
-  font-weight: var(--an-weight-body);
-  color: var(--an-ink);
-}
-.autonatic-ui .setting-item-description {
-  max-width: 64ch;
-  margin-top: var(--an-space-1);
-  font-family: var(--an-font);
-  font-size: var(--an-text-small);
-  color: var(--an-muted);
-  line-height: var(--an-leading);
-}
-.autonatic-ui.autonatic-settings .setting-item-control {
+.autonatic-settings .autonatic-brand {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--an-space-2);
-  min-width: 0;
-  width: 100%;
-  padding: 0;
+  gap: var(--size-4-2);
 }
-.autonatic-ui .setting-item-control :is(input, select) {
+.autonatic-settings .autonatic-brand-mark {
+  display: flex;
+  color: var(--text-accent);
+}
+.autonatic-settings .autonatic-brand-mark svg {
+  width: var(--icon-l);
+  height: var(--icon-l);
+}
+.autonatic-settings .autonatic-wordmark {
+  margin: 0;
+  color: var(--text-normal);
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  line-height: var(--line-height-tight);
+}
+.autonatic-settings .autonatic-version {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.autonatic-settings .autonatic-settings-heading p {
+  margin: var(--size-4-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+.autonatic-settings .autonatic-settings-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-6);
+  padding-bottom: var(--size-4-4);
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+.autonatic-settings .autonatic-settings-nav button {
+  padding: var(--size-4-1) var(--size-4-3);
+  color: var(--text-muted);
+}
+.autonatic-settings .autonatic-settings-nav button[aria-selected=true] {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.autonatic-settings .autonatic-settings-section {
+  width: 100%;
+  min-width: 0;
+}
+.autonatic-settings .setting-item-heading {
+  padding-inline: 0;
+}
+.autonatic-settings .setting-item:not(.setting-item-heading) {
+  margin: 0;
+  padding: var(--size-4-4) 0;
+  border: 0;
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
+  border-radius: 0;
+  background: transparent;
+}
+.autonatic-settings .setting-item-info {
+  min-width: 0;
+}
+.autonatic-settings .setting-item-description {
+  max-width: 64ch;
+}
+.autonatic-settings .setting-item-control {
+  min-width: 0;
+}
+.autonatic-settings .setting-item-control :is(input, select) {
   max-width: 100%;
 }
-.autonatic-ui .setting-item-control textarea {
+.autonatic-settings .setting-item:has(textarea) {
+  flex-direction: column;
+}
+.autonatic-settings .setting-item:has(textarea) .setting-item-info,
+.autonatic-settings .setting-item:has(textarea) .setting-item-control {
+  width: 100%;
+  margin-inline-end: 0;
+}
+.autonatic-settings .setting-item-control textarea {
   width: 100%;
   min-height: 180px;
-  font-family: var(--an-mono);
-  font-size: var(--an-text-small);
-  line-height: var(--an-leading-reading);
+  font-family: var(--font-monospace);
 }
-.autonatic-ui.autonatic-settings .setting-item:has(textarea) {
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--an-space-3);
+.autonatic-settings .autonatic-provider-settings {
+  margin: 0;
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
-.autonatic-ui .setting-item-control .checkbox-container {
-  background: var(--an-border);
+.autonatic-settings .autonatic-provider-settings > summary {
+  padding: var(--size-4-4) 0;
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+  cursor: var(--cursor);
 }
-.autonatic-ui .setting-item-control .checkbox-container.is-enabled {
-  background: var(--an-brand);
+.autonatic-settings .autonatic-provider-settings[open] > summary {
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
-.autonatic-ui .autonatic-provider-settings {
-  margin-bottom: var(--an-space-2);
-  padding: 0;
-  border: 0;
-  border-bottom: 1px dashed var(--an-rule);
-  border-radius: 0;
-  background: transparent;
-}
-.autonatic-ui .autonatic-provider-settings > summary {
-  min-height: var(--an-control-height);
-  padding: var(--an-space-3) 0;
-  font-size: var(--an-text-body);
-  font-weight: var(--an-weight-label);
-  color: var(--an-ink);
-  cursor: pointer;
-}
-.autonatic-ui .autonatic-provider-settings[open] > summary {
-  border-bottom: 1px dashed var(--an-rule);
-}
-.autonatic-ui .autonatic-provider-settings .setting-item:last-child {
+.autonatic-settings .autonatic-provider-settings .setting-item:last-child {
   border-bottom: 0;
 }
-.autonatic-ui .autonatic-provider-settings .setting-item-control:has(input[type=password], input[type=text]) input {
+.autonatic-settings .autonatic-provider-settings .setting-item-control:has(input[type=password], input[type=text]) {
+  flex-wrap: wrap;
+}
+.autonatic-settings .autonatic-provider-settings .setting-item-control:has(input[type=password], input[type=text]) input {
   flex: 1 0 100%;
 }
-.autonatic-ui .autonatic-provider-settings .setting-item-control button {
-  min-height: var(--an-control-compact);
-  padding: var(--an-space-1) var(--an-space-3);
-  font-size: var(--an-text-small);
+.autonatic-settings :is(.autonatic-settings-muted, .autonatic-settings-help) {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-normal);
 }
-.autonatic-ui :is(.autonatic-settings-muted, .autonatic-settings-help) {
-  color: var(--an-muted);
-  font-size: var(--an-text-small);
-  line-height: var(--an-leading);
-}
-.autonatic-ui .autonatic-settings-help {
+.autonatic-settings .autonatic-settings-help {
   max-width: 76ch;
-  margin: var(--an-space-3) 0 var(--an-space-4);
+  margin: var(--size-4-3) 0 var(--size-4-4);
 }
-.autonatic-ui .autonatic-search-index-status {
-  margin: var(--an-space-4) 0;
+.autonatic-settings .autonatic-search-index-status {
+  margin: var(--size-4-4) 0;
   overflow-wrap: anywhere;
 }
-.autonatic-ui .autonatic-included-folder {
+.autonatic-settings .autonatic-included-folder {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--an-space-3);
-  padding: var(--an-space-3) 0;
-  border-bottom: 1px dashed var(--an-rule);
+  gap: var(--size-4-3);
+  padding: var(--size-4-3) 0;
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
-.autonatic-ui .autonatic-included-folder > span {
+.autonatic-settings .autonatic-included-folder > span {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.autonatic-ui .autonatic-folder-picker {
+.autonatic-settings .autonatic-folder-picker {
   display: flex;
   align-items: flex-start;
   flex-wrap: wrap;
-  gap: var(--an-space-3);
-  margin: var(--an-space-4) 0;
+  gap: var(--size-4-3);
+  margin: var(--size-4-4) 0;
 }
-.autonatic-ui .autonatic-folder-picker > label {
+.autonatic-settings .autonatic-folder-picker > label {
   flex-basis: 100%;
-  font-size: var(--an-text-body);
 }
-.autonatic-ui .autonatic-folder-picker .nemotron-folder-nav {
+.autonatic-settings .autonatic-folder-picker .nemotron-folder-nav {
   flex: 1;
   min-width: 0;
 }
 @container autonatic-settings (max-width: 640px) {
-  .autonatic-ui.autonatic-settings {
-    padding: var(--an-space-4);
+  .autonatic-settings .setting-item:not(:is(.mod-toggle, .setting-item-heading)) {
+    flex-direction: column;
   }
-  .autonatic-ui.autonatic-settings .setting-item {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--an-space-3);
+  .autonatic-settings .setting-item:not(:is(.mod-toggle, .setting-item-heading)) .setting-item-info,
+  .autonatic-settings .setting-item:not(:is(.mod-toggle, .setting-item-heading)) .setting-item-control {
+    width: 100%;
+    margin-inline-end: 0;
   }
-  .autonatic-ui.autonatic-settings .setting-item:where(:has(.checkbox-container, input[type=checkbox])) {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .autonatic-ui.autonatic-settings .setting-item-control {
+  .autonatic-settings .setting-item-control {
     justify-content: flex-start;
   }
-  .autonatic-ui .autonatic-folder-picker .nemotron-folder-nav {
+  .autonatic-settings .autonatic-folder-picker .nemotron-folder-nav {
     flex-basis: 100%;
   }
 }

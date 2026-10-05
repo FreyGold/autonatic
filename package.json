@@ -1,6 +1,6 @@
 {
   "name": "autonatic",
-  "version": "1.7.15",
+  "version": "1.7.16",
   "description": "Transform raw text into structured Obsidian notes using your choice of AI provider.",
   "main": "main.js",
   "scripts": {
