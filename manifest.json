@@ -1,7 +1,7 @@
 {
   "id": "autonatic",
   "name": "Autonatic",
-  "version": "1.7.14",
+  "version": "1.7.15",
   "minAppVersion": "1.13.1",
   "description": "Turn text and shared AI conversations into structured notes using your choice of AI provider.",
   "author": "Ahmed Tawfik",

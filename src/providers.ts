@@ -25,6 +25,72 @@ export const PROVIDERS: Record<AIProvider, { label: string; baseUrl: string; key
 
 export const EMBEDDING_PROVIDERS: AIProvider[] = ["nvidia", "openai", "gemini", "openrouter"];
 
+interface ProviderModelPreferences {
+  chat: readonly string[];
+  vision: readonly string[];
+  embedding: readonly string[];
+}
+
+const PROVIDER_MODEL_PREFERENCES: Record<AIProvider, ProviderModelPreferences> = {
+  nvidia: {
+    chat: ["deepseek-ai/deepseek-v4.1-flash", "deepseek-ai/deepseek-v4-flash", "nvidia/nemotron-3-super-120b-a12b"],
+    vision: ["meta/llama-3.2-90b-vision-instruct", "meta/llama-3.2-11b-vision-instruct"],
+    embedding: ["nvidia/embed-qa-4", "nvidia/nemotron-3-embed-1b", "nvidia/llama-nemotron-embed-vl-1b-v2"],
+  },
+  openai: {
+    chat: ["gpt-5-mini", "gpt-5.1", "gpt-5", "gpt-4.1-mini", "gpt-4o-mini"],
+    vision: ["gpt-5-mini", "gpt-5.1", "gpt-5", "gpt-4.1-mini", "gpt-4o-mini"],
+    embedding: ["text-embedding-3-small", "text-embedding-3-large"],
+  },
+  gemini: {
+    chat: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-2.5-flash"],
+    vision: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-2.5-flash"],
+    embedding: ["gemini-embedding-2", "gemini-embedding-001"],
+  },
+  anthropic: {
+    chat: ["claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+    vision: ["claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+    embedding: [],
+  },
+  groq: {
+    chat: ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+    vision: ["qwen/qwen3.8-27b", "qwen/qwen3.6-27b", "qwen/qwen3-vl-32b-instruct"],
+    embedding: [],
+  },
+  openrouter: {
+    chat: ["openai/gpt-5-mini", "anthropic/claude-sonnet-5", "google/gemini-3.8-flash"],
+    vision: ["openai/gpt-5-mini", "anthropic/claude-sonnet-5", "google/gemini-3.8-flash"],
+    embedding: ["openai/text-embedding-3-small", "openai/text-embedding-3-large"],
+  },
+};
+
+function firstAvailable(preferences: readonly string[], available: readonly string[]): string {
+  return preferences.find((model) => available.includes(model)) || "";
+}
+
+export function applyProviderModelDefaults(provider: AIProvider, config: ProviderConfig): boolean {
+  const preferences = PROVIDER_MODEL_PREFERENCES[provider];
+  let changed = false;
+  const setDefault = (key: "model" | "visionModel" | "embeddingModel", value: string) => {
+    if (config[key] === value) return;
+    config[key] = value;
+    changed = true;
+  };
+
+  if (config.availableModels.length > 0 && (!config.model || !config.availableModels.includes(config.model))) {
+    setDefault("model", firstAvailable(preferences.chat, config.availableModels) || config.availableModels[0] || "");
+  }
+  if (config.availableModels.length > 0 && (!config.visionModel || !config.availableModels.includes(config.visionModel))) {
+    setDefault("visionModel", firstAvailable(preferences.vision, config.availableModels));
+  }
+  if (config.availableEmbeddingModels.length > 0
+    && (!config.embeddingModel || !config.availableEmbeddingModels.includes(config.embeddingModel))) {
+    setDefault("embeddingModel", firstAvailable(preferences.embedding, config.availableEmbeddingModels)
+      || config.availableEmbeddingModels[0] || "");
+  }
+  return changed;
+}
+
 export function defaultProviderConfigs(): Record<AIProvider, ProviderConfig> {
   return Object.fromEntries(Object.entries(PROVIDERS).map(([key, provider]) => [key, {
     apiKey: "", baseUrl: provider.baseUrl, model: "", visionModel: "", embeddingModel: "",

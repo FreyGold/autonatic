@@ -68,7 +68,7 @@ import {
   ensureNonRootNoteFolder,
   resolveNewNoteFolder,
 } from "../src/note-destination";
-import { getGenerationConfig } from "../src/providers";
+import { applyProviderModelDefaults, defaultProviderConfigs, getGenerationConfig } from "../src/providers";
 import { createVaultFolder } from "../src/folder-creation";
 
 function folderCreationFixture() {
@@ -265,6 +265,67 @@ test("models are unset until fetched from the selected provider", () => {
   assert.equal(resolveTextModel(), "");
   assert.equal(resolveTextModel("provider/model"), "provider/model");
   assert.equal(resolveTextModel("custom/model"), "custom/model");
+});
+
+test("provider catalogs select supported default models", () => {
+  const providers = defaultProviderConfigs();
+  providers.nvidia.availableModels = ["01-ai/yi-large", "meta/llama-3.2-90b-vision-instruct", "deepseek-ai/deepseek-v4.1-flash"];
+  providers.nvidia.availableEmbeddingModels = ["nvidia/nemotron-3-embed-1b", "nvidia/embed-qa-4"];
+  assert.equal(applyProviderModelDefaults("nvidia", providers.nvidia), true);
+  assert.equal(providers.nvidia.model, "deepseek-ai/deepseek-v4.1-flash");
+  assert.equal(providers.nvidia.visionModel, "meta/llama-3.2-90b-vision-instruct");
+  assert.equal(providers.nvidia.embeddingModel, "nvidia/embed-qa-4");
+
+  providers.openai.availableModels = ["gpt-4o-mini", "gpt-5-mini"];
+  providers.openai.availableEmbeddingModels = ["text-embedding-3-large", "text-embedding-3-small"];
+  applyProviderModelDefaults("openai", providers.openai);
+  assert.equal(providers.openai.model, "gpt-5-mini");
+  assert.equal(providers.openai.visionModel, "gpt-5-mini");
+  assert.equal(providers.openai.embeddingModel, "text-embedding-3-small");
+
+  providers.gemini.availableModels = ["gemini-2.5-flash"];
+  providers.gemini.availableEmbeddingModels = ["gemini-embedding-001"];
+  applyProviderModelDefaults("gemini", providers.gemini);
+  assert.equal(providers.gemini.model, "gemini-2.5-flash");
+  assert.equal(providers.gemini.visionModel, "gemini-2.5-flash");
+
+  providers.anthropic.availableModels = ["claude-sonnet-4-6"];
+  applyProviderModelDefaults("anthropic", providers.anthropic);
+  assert.equal(providers.anthropic.model, "claude-sonnet-4-6");
+  assert.equal(providers.anthropic.visionModel, "claude-sonnet-4-6");
+
+  providers.groq.availableModels = ["llama-3.3-70b-versatile", "qwen/qwen3-vl-32b-instruct"];
+  applyProviderModelDefaults("groq", providers.groq);
+  assert.equal(providers.groq.model, "llama-3.3-70b-versatile");
+  assert.equal(providers.groq.visionModel, "qwen/qwen3-vl-32b-instruct");
+
+  providers.openrouter.availableModels = ["anthropic/claude-sonnet-5", "openai/gpt-5-mini"];
+  providers.openrouter.availableEmbeddingModels = ["openai/text-embedding-3-small"];
+  applyProviderModelDefaults("openrouter", providers.openrouter);
+  assert.equal(providers.openrouter.model, "openai/gpt-5-mini");
+  assert.equal(providers.openrouter.visionModel, "openai/gpt-5-mini");
+  assert.equal(providers.openrouter.embeddingModel, "openai/text-embedding-3-small");
+});
+
+test("provider defaults preserve valid user choices and use catalog fallbacks", () => {
+  const config = defaultProviderConfigs().openai;
+  config.availableModels = ["custom/chat"];
+  config.availableEmbeddingModels = ["custom/embed"];
+  config.model = "custom/chat";
+  config.embeddingModel = "custom/embed";
+  assert.equal(applyProviderModelDefaults("openai", config), false);
+  assert.equal(config.model, "custom/chat");
+  assert.equal(config.embeddingModel, "custom/embed");
+  assert.equal(config.visionModel, "");
+
+  const legacyConfig = defaultProviderConfigs().nvidia;
+  legacyConfig.model = "legacy/chat";
+  legacyConfig.visionModel = "legacy/vision";
+  legacyConfig.embeddingModel = "legacy/embed";
+  assert.equal(applyProviderModelDefaults("nvidia", legacyConfig), false);
+  assert.equal(legacyConfig.model, "legacy/chat");
+  assert.equal(legacyConfig.visionModel, "legacy/vision");
+  assert.equal(legacyConfig.embeddingModel, "legacy/embed");
 });
 
 test("legacy NVIDIA image model is used instead of the text generation model", () => {

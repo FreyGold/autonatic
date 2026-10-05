@@ -4,7 +4,7 @@ import {
   DEFAULT_SETTINGS,
   NemotronSettingTab,
 } from "./settings";
-import { getGenerationApiKey, PROVIDERS } from "./providers";
+import { applyProviderModelDefaults, getGenerationApiKey, PROVIDERS, type AIProvider } from "./providers";
 import { NemotronModal } from "./modal";
 import { generateSelectionEdit } from "./api";
 import type { SelectionEditAction } from "./prompts";
@@ -433,13 +433,16 @@ export default class NemotronPlugin extends Plugin {
       model: this.settings.providers.nvidia.model || savedSettings.model || "",
       visionModel: this.settings.providers.nvidia.visionModel || savedSettings.visionModel || "",
     };
+    if (!this.settings.generationProvider) this.settings.generationProvider = "nvidia";
+    if (!this.settings.embeddingProvider) this.settings.embeddingProvider = "nvidia";
+    let settingsChanged = migrateDefaultNotePrompts(this.settings);
+    for (const provider of Object.keys(PROVIDERS) as AIProvider[]) {
+      if (applyProviderModelDefaults(provider, this.settings.providers[provider])) settingsChanged = true;
+    }
     this.settings.apiKey = this.settings.providers.nvidia.apiKey;
     this.settings.baseUrl = this.settings.providers.nvidia.baseUrl;
     this.settings.model = this.settings.providers.nvidia.model;
     this.settings.visionModel = this.settings.providers.nvidia.visionModel;
-    if (!this.settings.generationProvider) this.settings.generationProvider = "nvidia";
-    if (!this.settings.embeddingProvider) this.settings.embeddingProvider = "nvidia";
-    let settingsChanged = migrateDefaultNotePrompts(this.settings);
     if (savedSettings.visionModel && !savedSettings.providers?.nvidia?.visionModel) settingsChanged = true;
     if (savedSettings.propertiesOptInVersion !== DEFAULT_SETTINGS.propertiesOptInVersion) {
       this.settings.enableProperties = false;

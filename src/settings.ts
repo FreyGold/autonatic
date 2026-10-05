@@ -4,7 +4,7 @@ import { CONCISE_OBSIDIAN_SKILL_PROMPT, DETAILED_OBSIDIAN_SKILL_PROMPT, type Not
 import { buildOrUpdateVaultIndex, loadVaultIndex } from "./vault-indexer";
 import { DESTINATION_MODE_OPTIONS, type DestinationMode } from "./destination-modes";
 import { FolderNavigator } from "./folder-nav";
-import { defaultProviderConfigs, EMBEDDING_PROVIDERS, fetchProviderModels, PROVIDERS, type AIProvider } from "./providers";
+import { applyProviderModelDefaults, defaultProviderConfigs, EMBEDDING_PROVIDERS, fetchProviderModels, PROVIDERS, type AIProvider } from "./providers";
 import type { SettingsSection } from "./workspace-ui";
 import { renderAutonaticBrand } from "./brand";
 import { GENERATED_NOTES_FALLBACK_FOLDER } from "./note-destination";
@@ -252,17 +252,13 @@ export class NemotronSettingTab extends PluginSettingTab {
             const models = await fetchProviderModels(providerId, config.baseUrl, apiKey);
             config.availableModels = models.chat;
             config.availableEmbeddingModels = models.embeddings;
-            if (config.model && !models.chat.includes(config.model)) {
-              config.model = "";
-              if (providerId === "nvidia") this.plugin.settings.model = "";
+            applyProviderModelDefaults(providerId, config);
+            if (providerId === "nvidia") {
+              this.plugin.settings.model = config.model;
+              this.plugin.settings.visionModel = config.visionModel;
             }
-            if (config.visionModel && !models.chat.includes(config.visionModel)) {
-              config.visionModel = "";
-              if (providerId === "nvidia") this.plugin.settings.visionModel = "";
-            }
-            if (config.embeddingModel && !models.embeddings.includes(config.embeddingModel)) config.embeddingModel = "";
             await this.plugin.saveSettings();
-            new Notice(`Key accepted. Found ${models.chat.length} chat models${EMBEDDING_PROVIDERS.includes(providerId) ? ` and ${models.embeddings.length} embedding models` : ""}.`);
+            new Notice(`Key accepted. Default models selected from ${models.chat.length} chat models${EMBEDDING_PROVIDERS.includes(providerId) ? ` and ${models.embeddings.length} embedding models` : ""}.`);
             this.update();
           } catch (error) {
             new Notice(error instanceof Error ? error.message : "Could not fetch provider models.", 7000);

@@ -1795,6 +1795,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 }
 
 /* src/ui/settings.css */
+.vertical-tab-content-container:has(.autonatic-settings) {
+  width: 100%;
+  max-width: 960px;
+}
 .autonatic-ui.autonatic-settings {
   --setting-items-background: transparent;
   --setting-items-radius: 0;
@@ -1809,7 +1813,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   width: 100%;
   min-width: 0;
   margin: 0;
-  padding: 0 0 var(--an-space-6);
+  padding: var(--an-space-6) var(--an-space-6) var(--an-space-8);
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -2007,6 +2011,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   min-width: 0;
 }
 @container autonatic-settings (max-width: 640px) {
+  .autonatic-ui.autonatic-settings {
+    padding: var(--an-space-4);
+  }
   .autonatic-ui.autonatic-settings .setting-item {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--an-space-3);
